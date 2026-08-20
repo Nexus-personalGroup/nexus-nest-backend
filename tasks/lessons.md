@@ -95,6 +95,21 @@
 
 **How to apply**：任何用字串比對找裝飾器 / 關鍵字的守則，比對前一律 `stripComments`。判斷 class 層級時再進一步只取 `@Controller(` 到 `export class` 之間——那段不可能夾註解。另外兩個同批踩到的切割錯誤：(1) handler 切塊要**往前**吃掉連續的裝飾器行，否則寫在 `@Post()` 上方的 `@Public()` 會被歸給前一個 handler，造成前一支漏報、本支誤報；(2) 守則本身要有**合成輸入的自我測試**——守則出錯是靜默的，而給偽陰性的守則比沒有守則更危險，它會讓人停止人工檢查。
 
+### 2026-08-20 — openspec 的 MODIFIED 靠「標題字串」比對，改標題會讓封存整個中止
+
+**踩到什麼**：delta spec 用 `## MODIFIED Requirements`，把需求標題從「品質檢查必須在 Merge Request 階段執行」改成「…Pull Request…」，內容也一併更新。`openspec validate` **通過**，但 `openspec archive` 失敗：
+
+```
+platform-ci-quality-gate MODIFIED failed for header "### Requirement: 品質檢查必須在 Pull Request 階段執行" - not found
+Aborted. No files were changed.
+```
+
+**Why**：MODIFIED 是拿 delta 的 `### Requirement:` 標題去 master spec 裡找同名那塊來取代。標題一改就找不到目標。而 `validate` 只檢查 delta 自身的格式合不合法，**不會拿去跟 master spec 對照**——所以「validate 綠 + archive 紅」是這個工具的正常行為，不是壞掉。
+
+**How to apply**：需求要改名就用 `## RENAMED Requirements`（`- FROM:` / `- TO:` 各一行，值是完整的 `### Requirement: <名稱>`）。改名**又**改內容時兩段都要寫，MODIFIED 那段用**改名後**的標題。archive 輸出會顯示 `→ 1 renamed` 確認生效。順帶注意改名後的需求會被移到 master spec 的**末尾**，不留在原位置。
+
+**還好的一點**：archive 失敗時是 `Aborted. No files were changed.`——它不會做到一半留下半套的 master spec。
+
 ## Prisma / 資料庫
 
 - **軟刪除 model 的所有 read path 都要加 `deletedAt: null`**：`findUnique` 只接受 unique 欄位，要過濾軟刪得改用 `findFirst({ where: { id, deletedAt: null } })`。`count` 用於「是否還有相關紀錄」判斷時（如阻擋刪除有成員的角色）也要排除軟刪，否則永遠刪不掉。例外是「恢復」場景才用 `loadIncludingDeleted` 顯式 opt-in。
@@ -225,6 +240,8 @@ export {};
 - **Monorepo 共用 ESLint 基底不能含 tseslint 預設集**：api 走 `recommendedTypeChecked`、web 走 `recommended`，兩者都會註冊 `@typescript-eslint` 外掛；基底再帶一組會觸發 `ConfigError: Cannot redefine plugin`。基底只放 `ignores` + `js.configs.recommended` + 家規（家規以 named export 交由各 workspace **在自己的 tseslint 預設之後**最後套用，否則 `no-explicit-any` 會被蓋回 error）。
 - **type-aware lint 對 ORM 邊界 / jest mock / seed 腳本要分區關掉 `no-unsafe-*`**：這些地方天生 `any`，全開會爆數百個假訊號淹沒真發現（本專案 524 → 9）。核心層（application / domain / infrastructure）維持全嚴格，floating-promise 這類真問題才浮得出來。
 - **`.prettierignore` 相對「執行目錄」解析，不是逐檔就近**（與 `.prettierrc` 不同）：所以 `format` / `format:check` 必須放**根**並從 repo root 跑才吃得到。根 ignore 必排除手寫繁中文件（`**/*.md`，否則 openspec / README 被 reflow）、工具生成檔（`schema.ts`、swagger bundle）、`prisma/migrations`。
+
+- **驗 GitHub Actions workflow 用 Docker 版 actionlint，別用 `pnpm dlx`**：npm 上的 `actionlint` 套件不含執行檔（`ERR_PNPM_DLX_NO_BIN`），而且它**成功時完全沒有輸出**，很容易誤判成沒跑到。用 `docker run --rm -v "$(pwd)":/repo -w /repo rhysd/actionlint:latest .github/workflows/ci.yml`，以 exit code 判定。
 
 ### 2026-08-14 — eslint flat config 中同名規則是「後蓋前」，不會合併 patterns
 

@@ -104,7 +104,7 @@ nexus-nest-backend/
 | `apps/web` 目錄與慣例、shadcn、`@app/api-client` 設計 | [`project/frontend.md`](project/frontend.md) |
 | 單元／e2e／架構守則的分工、覆蓋率門檻、怎麼加一條守則 | [`project/testing.md`](project/testing.md) |
 | spec / change 命名、`api-*` 的請求回應格式、tasks.md 塊式切分 | [`project/openspec-conventions.md`](project/openspec-conventions.md) |
-| `.agents/hooks`、GitLab CI 各 job、完整指令參考 | [`project/tooling.md`](project/tooling.md) |
+| `.agents/hooks`、GitHub Actions 各 job、完整指令參考 | [`project/tooling.md`](project/tooling.md) |
 
 ---
 
