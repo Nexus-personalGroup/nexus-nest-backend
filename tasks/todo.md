@@ -5,7 +5,7 @@
 
 ## 進行中
 
-- **M0 專案骨架**：模板落地 → PostgreSQL 轉換 → GitHub Actions 遷移。驗收＝`docker:deps` / `db:migrate` / `typecheck` / `lint` / `test` / `build` 六項全綠。
+- **M0 專案骨架**：模板落地 ✅ → PostgreSQL 轉換 ✅（`refactor-switch-to-postgres`，待封存）→ GitHub Actions 遷移（`refactor-migrate-ci-to-github-actions`，未開始）。
 
 ## 待辦
 
@@ -28,7 +28,7 @@
 
 - **e2e 有間歇性失敗**：模板期間發生 2 次，皆重跑後全綠、無法重現。共同點是「緊接在另一個會寫檔案的指令之後的第一次執行」——懷疑與 ts-jest 快取或檔案 mtime 有關，未證實。**下次務必用 `test:e2e > /tmp/x.log 2>&1` 保留完整輸出**——前兩次都因為用 grep 管線過濾而沒留下失敗的測試名稱，這是查不下去的主因。
 
-- **傳遞依賴漏洞**：模板期間已把能直接控制的修完，剩餘皆深埋在 `prisma` / `@nestjs/terminus` 等上游相依樹中，**刻意不加 override 強制提版**——相容風險大於收益。轉 PostgreSQL 後依賴樹會變（少了 `mysql2`），需重跑 `pnpm audit` 重新盤點。
+- **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 
 ### 延後功能（繼承自模板的預留）
 

@@ -36,10 +36,10 @@ hook 的**邏輯**放在工具無關的 `.agents/hooks/*.sh`，各家 AI 的設�
 | --- | --- | --- | --- |
 | `npm-install` | prepare | `pnpm install --frozen-lockfile` | `pnpm install` |
 | `quality-check` | quality | 型別 / lint / 單元測試 + **覆蓋率門檻** + 架構守則 | `pnpm typecheck && pnpm lint && pnpm test:cov` |
-| `e2e-test` | quality | 對 `mysql:9` service container 跑完整 e2e | `pnpm --filter @app/api test:e2e` |
+| `e2e-test` | quality | 對 `postgres:17` service container 跑完整 e2e | `pnpm --filter @app/api test:e2e` |
 | `prepare-production` | optimize | Prisma generate + build（**需 `quality-check` 通過**） | `pnpm build` |
 
-**本機重現 CI 的測試環境**：`pnpm verify:ci` 以 `docker compose --profile verify` 起一個 MySQL 9 容器（healthcheck 等就緒、`tmpfs` 跑在記憶體）並執行 e2e，實測約 60 秒。定位是「測試環境重現」而非「pipeline 模擬」——runner 行為與 cache 命中仍只能在實際 pipeline 觀察。
+**本機重現 CI 的測試環境**：`pnpm verify:ci` 以 `docker compose --profile verify` 起一個 PostgreSQL 17 容器（healthcheck 等就緒、`tmpfs` 跑在記憶體）並執行 e2e，實測約 60 秒。定位是「測試環境重現」而非「pipeline 模擬」——runner 行為與 cache 命中仍只能在實際 pipeline 觀察。
 
 ### 容器化（單一 `compose.yml`）
 
@@ -47,13 +47,13 @@ hook 的**邏輯**放在工具無關的 `.agents/hooks/*.sh`，各家 AI 的設�
 
 | 指令 | 起什麼 | 用途 |
 | --- | --- | --- |
-| `pnpm docker:up` | api + web + mysql + redis | 整套跑在容器裡，原始碼 bind mount + 熱重載 |
-| `pnpm docker:deps` | mysql + redis | 只要資料庫，api / web 跑在 host |
-| `pnpm verify:ci` | mysql-verify（`--profile verify`） | 重現 CI e2e 環境，跑完即 `down -v` |
+| `pnpm docker:up` | api + web + postgres + redis | 整套跑在容器裡，原始碼 bind mount + 熱重載 |
+| `pnpm docker:deps` | postgres + redis | 只要資料庫，api / web 跑在 host |
+| `pnpm verify:ci` | postgres-verify（`--profile verify`） | 重現 CI e2e 環境，跑完即 `down -v` |
 
-`mysql-verify` 獨立成一個服務而非共用開發用的那個，因為兩者對資料的要求相反：
+`postgres-verify` 獨立成一個服務而非共用開發用的那個，因為兩者對資料的要求相反：
 開發要 named volume 重啟保留，驗證要 `tmpfs` 每次乾淨。它掛在 profile 底下，
-平常的 `up` 不會啟動它。兩者與 CI 的 service 共用 `mysql:9` 同一條版本線，
+平常的 `up` 不會啟動它。兩者與 CI 的 service 共用 `postgres:17` 同一條版本線，
 避免「本機過、CI 掛」。
 
 對外埠一律避開預設的 3306 / 6379（多數開發機已有一組資料庫在跑），
@@ -86,7 +86,7 @@ hook 的**邏輯**放在工具無關的 `.agents/hooks/*.sh`，各家 AI 的設�
 
 **改了依賴後具名 volume 不會自動更新**：volume 只在第一次建立時從映像複製內容，
 之後即使重建映像也沿用舊的。改 `package.json` / lockfile 後用 `pnpm docker:renew`
-——它只砍 `node_modules` 的 volume 再重建，**不動 `mysql-data` / `redis-data`**。
+——它只砍 `node_modules` 的 volume 再重建，**不動 `postgres-data` / `redis-data`**。
 `docker:reset`（`down -v`）會移除專案的**所有** volume 含資料庫，之後得重跑 `docker:init`。
 
 要點：
@@ -118,10 +118,10 @@ pnpm lint                    # 三個 workspace 全部 eslint
 pnpm test                    # 跑各 workspace 的 test script
 
 # 容器化（單一 compose.yml，詳見上方「容器化」）
-pnpm docker:up               # 整套跑在容器裡（api + web + mysql + redis）
+pnpm docker:up               # 整套跑在容器裡（api + web + postgres + redis）
 pnpm docker:init             # 容器內建表 + seed（首次一次）
 pnpm docker:logs             # 跟蹤 api / web
-pnpm docker:deps             # 只起 mysql + redis，api / web 跑在 host
+pnpm docker:deps             # 只起 postgres + redis，api / web 跑在 host
 pnpm docker:down             # 停止，資料保留
 pnpm docker:renew            # 改依賴後：只重建 node_modules volume，資料保留
 pnpm docker:reset            # 刪除所有 volume（含 DB / Redis 資料）
@@ -146,7 +146,7 @@ pnpm --filter @app/api format
 pnpm --filter @app/api test              # 單元測試 (*.spec.ts)
 pnpm --filter @app/api test:watch
 pnpm --filter @app/api test:cov
-pnpm --filter @app/api test:e2e          # E2E（需 MySQL + Redis）
+pnpm --filter @app/api test:e2e          # E2E（需 PostgreSQL + Redis）
 
 # 資料庫（一律在 apps/api 工作目錄執行）
 pnpm --filter @app/api db:create
@@ -156,6 +156,9 @@ pnpm --filter @app/api db:migrate:deploy       # 生產環境部署
 pnpm --filter @app/api db:generate             # 僅產生 Prisma client（搬 monorepo 後第一次 typecheck 必跑）
 pnpm --filter @app/api db:seed
 pnpm --filter @app/api db:studio
+
+# 由 schema.prisma 的 `///` 產生 COMMENT ON（Prisma 不會自己產生），附加到新 migration
+pnpm --filter @app/api gen:comments >> prisma/migrations/<新migration>/migration.sql
 
 # Swagger
 pnpm --filter @app/api swagger:bundle    # 合併分檔 yaml → openapi.bundle.yaml

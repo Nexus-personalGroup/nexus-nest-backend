@@ -3,15 +3,15 @@
 # -----------------------------------------------------------------------------
 # 三種用法，靠「指定服務」與「profile」區分，不需要多份 compose 檔：
 #
-#   docker compose up -d                    整套跑在容器裡（api + web + mysql + redis）
-#   docker compose up -d mysql redis        只起相依服務，api / web 跑在 host
+#   docker compose up -d                    整套跑在容器裡（api + web + postgres + redis）
+#   docker compose up -d postgres redis     只起相依服務，api / web 跑在 host
 #   docker compose --profile verify up      重現 CI 的 e2e 環境（由 pnpm verify:ci 呼叫）
 #
-# 對應的 pnpm 指令見 README。verify 的 MySQL 獨立成一個服務而非共用上面那個，
+# 對應的 pnpm 指令見 README。verify 的 PostgreSQL 獨立成一個服務而非共用上面那個，
 # 因為兩者對資料的要求相反：開發要 named volume 重啟保留，驗證要 tmpfs 每次乾淨。
 # 它掛在 profile 底下，平常的 `up` 不會啟動它。
 #
-# 對外埠一律避開預設的 3306 / 6379——多數開發機已經有一組資料庫在跑。
+# 對外埠一律避開預設的 5432 / 6379——多數開發機已經有一組資料庫在跑。
 # 可用 repo 根目錄 .env 的 DEV_DB_PORT / DEV_REDIS_PORT / DEV_DB_PASSWORD 覆寫。
 # =============================================================================
 name: nexus-nest-backend
@@ -69,12 +69,12 @@ services:
     environment:
       NODE_ENV: development
       # 連線指向 service 名稱，不是 localhost
-      DB_HOST: mysql
-      DB_PORT: '3306'
-      DB_USERNAME: root
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_USERNAME: postgres
       DB_PASSWORD: ${DEV_DB_PASSWORD:-devsecret}
-      DB_DATABASE: hexagonal_express_db
-      DB_TEST_DATABASE: hexagonal_express_test
+      DB_DATABASE: nexus_db
+      DB_TEST_DATABASE: nexus_test
       REDIS_HOST: redis
       REDIS_PORT: '6379'
       # 開發用假值，長度須滿足 envSchema 的 min(32)。正式環境一律由部署平台注入
@@ -89,7 +89,7 @@ services:
       # macOS 的 bind mount 不傳遞 inotify 事件，tsc watch 必須改輪詢才看得到改動
       TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
     depends_on:
-      mysql: { condition: service_healthy }
+      postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
 
   web:
@@ -104,24 +104,25 @@ services:
     depends_on:
       - api
 
-  mysql:
-    image: mysql:9
+  postgres:
+    image: postgres:17
     environment:
-      MYSQL_ROOT_PASSWORD: ${DEV_DB_PASSWORD:-devsecret}
-      MYSQL_DATABASE: ${DEV_DB_DATABASE:-hexagonal_express_db}
-      MYSQL_ROOT_HOST: '%'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DEV_DB_PASSWORD:-devsecret}
+      POSTGRES_DB: ${DEV_DB_DATABASE:-nexus_db}
     healthcheck:
-      # 不帶 -p：mysqladmin ping 在認證失敗時仍會回應，對「MySQL 起來了沒」已足夠，
-      # 而帶密碼會讓它在容器內 ps 可見，並持續刷 "password on the command line" 警告
-      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      # 必須用 pg_isready 並指定 -U/-d：官方映像在首次初始化時會**先起一次臨時伺服器**
+      # 跑 initdb 與初始化腳本，該階段行程存在、但對外連線尚未開放。
+      # 只檢查行程或埠會得到「已就緒」的錯誤結論，症狀是 api 在初始化中途連線並認證失敗。
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d ${DEV_DB_DATABASE:-nexus_db}']
       interval: 2s
       timeout: 3s
       retries: 30
     ports:
       # 綁 127.0.0.1：只給本機用，不曝露到區網
-      - '127.0.0.1:${DEV_DB_PORT:-3316}:3306'
+      - '127.0.0.1:${DEV_DB_PORT:-5442}:5432'
     volumes:
-      - mysql-data:/var/lib/mysql
+      - postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 
   redis:
@@ -140,29 +141,29 @@ services:
     restart: unless-stopped
 
   # 只在 `--profile verify` 時啟動；由 pnpm verify:ci 呼叫，跑完即 down -v。
-  # 與上面的 mysql 分開而不共用，是因為對資料的要求相反：
+  # 與上面的 postgres 分開而不共用，是因為對資料的要求相反：
   # 這裡要 tmpfs 跑在記憶體——快，而且測試庫本來就該每次拋棄。
-  # 與 GitLab CI 的差異刻意保留：GitLab 的 services 不支援 compose 的 healthcheck 語法，
-  # CI 端沿用手動等待迴圈，兩邊的 MySQL 版本則一致。
-  mysql-verify:
+  # tmpfs 掛在 PGDATA 的父層會讓 initdb 因目錄非空而拒絕啟動，故指定子目錄並設 PGDATA。
+  postgres-verify:
     profiles: [verify]
-    image: mysql:9
+    image: postgres:17
     environment:
-      MYSQL_ROOT_PASSWORD: verify-secret
-      MYSQL_DATABASE: hexagonal_verify_test
-      MYSQL_ROOT_HOST: '%'
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: verify-secret
+      POSTGRES_DB: nexus_verify_test
+      PGDATA: /var/lib/postgresql/data/pgdata
     healthcheck:
-      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d nexus_verify_test']
       interval: 2s
       timeout: 3s
       retries: 30
     tmpfs:
-      - /var/lib/mysql
+      - /var/lib/postgresql/data
     ports:
-      - '127.0.0.1:13306:3306'
+      - '127.0.0.1:15432:5432'
 
 volumes:
-  mysql-data:
+  postgres-data:
   redis-data:
   # node_modules 的具名 volume。**改了依賴後這些不會自動更新**——
   # volume 只在第一次建立時從映像複製內容，之後即使重建映像也沿用舊的。

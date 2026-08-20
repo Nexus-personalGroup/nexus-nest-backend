@@ -105,6 +105,31 @@ export default async function seed(prisma: PrismaClient): Promise<void> {
 
 執行：`pnpm --filter @app/api db:seed`。**production 環境會被擋下**（除非設定 `ALLOW_PROD_SEED=1`）。
 
+### 欄位描述（schema 與資料庫兩層）
+
+`schema.prisma` 的欄位以 `///` 撰寫描述，內容寫**這個欄位在系統中扮演什麼角色、有什麼陷阱**，
+不是把欄位名翻成中文。`id`、一般的 `created_at` / `updated_at` 這類自明欄位不寫。
+
+描述要落在兩個地方，兩者來源相同但機制完全不同：
+
+| 位置 | 怎麼來的 | 誰會看到 |
+| --- | --- | --- |
+| Prisma Client 的 JSDoc | `prisma generate` 自動帶入 `///` | 寫程式時 IDE hover / 自動完成 |
+| PostgreSQL 的 `COMMENT ON` | **手動寫進 migration** | `psql \d+`、DBeaver、直接查庫的人 |
+
+**Prisma 不會從 `///` 產生 `COMMENT ON`**——這是最容易誤解的一點：只加 `///` 的話
+migration 完全不會有任何差異，資料庫端永遠是空的。
+
+因此改動 `///` 之後要開一支新 migration 承載更新後的註解，SQL 由產生器輸出而非手寫：
+
+```bash
+pnpm --filter @app/api gen:comments >> prisma/migrations/<新migration>/migration.sql
+```
+
+`COMMENT ON` 是冪等的，重下同一個欄位會直接覆蓋舊描述，不需要先刪除。
+
+> 目前「改了 `///` 但忘記開 migration」沒有任何檢查會發現，屬於自律項。
+
 ### System Log
 
 `apps/api/src/modules/system-log.module.ts` 透過 `SaveSystemLogPort` 將請求記錄寫入 DB（`PrismaSystemLogRepository`）。欄位：

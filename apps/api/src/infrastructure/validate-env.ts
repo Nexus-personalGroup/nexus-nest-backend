@@ -30,8 +30,8 @@ const envSchema = z.object({
   //預設 7 天
   REFRESH_TOKEN_EXPIRES_IN: z.coerce.number().default(604800),
   // JWT issuer/audience：簽發與驗證一致，避免 token 被共用同 secret 的其他服務重放
-  JWT_ISSUER: z.string().default('hexagonal-api'),
-  JWT_AUDIENCE: z.string().default('hexagonal-web'),
+  JWT_ISSUER: z.string().default('nexus-api'),
+  JWT_AUDIENCE: z.string().default('nexus-web'),
   SESSION_SECRET: z
     .string()
     .min(32)

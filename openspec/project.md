@@ -50,8 +50,8 @@ nexus-nest-backend/
 | Runtime         | Node.js 20+                                                                     |
 | Framework       | NestJS 11 + Express 5                                                           |
 | Language        | TypeScript 5（strict）                                                          |
-| ORM             | Prisma 7 + `@prisma/adapter-mariadb`                                            |
-| Database        | MySQL / MariaDB（driver 層強制 UTC）                                            |
+| ORM             | Prisma 7 + `@prisma/adapter-pg`                                                 |
+| Database        | PostgreSQL 17（UTC 由欄位層 `@db.Timestamptz(3)` 保證，非 driver 設定）        |
 | Validation      | Zod 4（DTO）+ `ParseUUIDPipe`（route param）                                    |
 | Auth            | JWT（`@nestjs/jwt`）+ Redis token blacklist + Redis member-context cache        |
 | Logging         | Pino + `pino-roll`（檔案輪替）+ DB via `SaveSystemLogPort`                      |

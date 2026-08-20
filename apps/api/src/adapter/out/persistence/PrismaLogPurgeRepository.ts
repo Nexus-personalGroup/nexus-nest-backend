@@ -61,10 +61,19 @@ export class PrismaLogPurgeRepository implements PurgeLogsPort {
     for (let batch = 0; batch < MAX_BATCHES; batch += 1) {
       // 表名以 Prisma.raw 帶入，但來源是上方的字面值聯合型別，沒有注入面；
       // cutoff 與筆數仍走參數綁定
+      //
+      // PostgreSQL 的 DELETE **不支援 LIMIT**，分批必須靠子查詢挑出目標列。
+      // 用 ctid 而非 id：ctid 是實體位置，省掉「查 PK → 再用 PK 找列」的第二次索引查找。
+      // 子查詢與 DELETE 在同一個 statement 的快照內求值，且這兩張表是唯寫入不更新的
+      // 日誌表，不存在 ctid 在中途飄掉的情況。
       const deleted = await this.prisma.$executeRaw`
         DELETE FROM ${Prisma.raw(table)}
-        WHERE created_at < ${cutoff}
-        LIMIT ${BATCH_SIZE}`;
+        WHERE ctid IN (
+          SELECT ctid FROM ${Prisma.raw(table)}
+          WHERE created_at < ${cutoff}
+          ORDER BY created_at
+          LIMIT ${BATCH_SIZE}
+        )`;
 
       total += deleted;
       if (deleted < BATCH_SIZE) return total;
