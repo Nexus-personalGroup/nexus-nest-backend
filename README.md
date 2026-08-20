@@ -166,8 +166,17 @@ pnpm --filter @app/api ws:client -- --token <accessToken>
 pnpm --filter @app/api ws:client -- --token <t> --clients 3 --room <roomId> --url http://127.0.0.1:3001
 ```
 
-連上後可在 stdin 輸入 `join <roomId>` / `leave <roomId>` / `ping` / `drop` / `quit`。
-`drop` 主動斷線但不重連，用來觀察 presence 的回收。
+連上後可在 stdin 輸入：
+
+| 指令 | 說明 |
+| --- | --- |
+| `join <roomId>` | 加入房間（之後的 `send` / `sync` 都對這個房間） |
+| `send <文字>` | 送訊息 |
+| `resend <文字>` | 用**固定的** `clientMessageId` 重送——驗證去重（不會產生第二則） |
+| `sync [seq]` | 從指定 seq 補齊；省略則用本機收到的最大 seq |
+| `leave <roomId>` / `ping` / `drop` / `quit` | 離開 / 往返探測 / 主動斷線 / 結束 |
+
+`drop` 主動斷線但不重連，用來觀察 presence 的回收；配合 `sync` 可驗證斷線補齊。
 
 **驗證跨實例**：開兩個 API（`PORT=3000` 與 `PORT=3001`），各連一個客戶端到同一個房間，
 從其中一邊送事件，另一邊要收得到。這件事有自動化測試守著：

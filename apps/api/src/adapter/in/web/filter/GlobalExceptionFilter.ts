@@ -38,6 +38,7 @@ const KIND_TO_STATUS: Record<DomainExceptionKind, HttpStatus> = {
   INVALID: HttpStatus.BAD_REQUEST,
   CONFLICT: HttpStatus.CONFLICT,
   LOCKED: HttpStatus.LOCKED,
+  RATE_LIMITED: HttpStatus.TOO_MANY_REQUESTS,
   INTERNAL: HttpStatus.INTERNAL_SERVER_ERROR,
 };
 

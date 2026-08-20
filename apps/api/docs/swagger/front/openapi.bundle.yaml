@@ -471,6 +471,181 @@ paths:
                 timestamp: '2026-08-20T06:00:00.000Z'
         '500':
           $ref: '#/components/responses/InternalServerError'
+  '/chat-rooms/{roomId}/messages':
+    get:
+      tags:
+        - ChatRoom
+      summary: 查詢房間的歷史訊息
+      description: |
+        只在呼叫者為該房間成員時回傳訊息，非成員回 404（回 403 等於洩漏房間存在）。
+
+        **分頁以 seq 為游標而非頁碼**：訊息會持續新增，用頁碼分頁時新訊息會讓後續頁次
+        整體位移，造成同一則訊息重複出現或被跳過。游標分頁不受寫入影響。
+
+        預設由新到舊回傳（聊天介面從最新往回捲）。往回翻頁時把上一批最舊那則的 seq
+        當成 `beforeSeq` 帶回來。
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: beforeSeq
+          in: query
+          required: false
+          description: 回傳 seq 小於此值的訊息；省略代表從最新開始
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 30
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - list
+                      - hasMore
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - messageId
+                            - roomId
+                            - senderId
+                            - content
+                            - seq
+                            - createdAt
+                          properties:
+                            messageId:
+                              type: string
+                              format: uuid
+                            roomId:
+                              type: string
+                              format: uuid
+                            senderId:
+                              type: string
+                              format: uuid
+                            content:
+                              type: string
+                              maxLength: 4000
+                            seq:
+                              type: integer
+                              description: 房間內單調遞增的序號；訊息順序與斷線補齊的唯一依據
+                              example: 42
+                            createdAt:
+                              type: string
+                              format: date-time
+                      hasMore:
+                        type: boolean
+                        description: 是否還有更早的訊息
+                  timestamp:
+                    type: string
+                    format: date-time
+              example:
+                success: true
+                data:
+                  list:
+                    - messageId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+                      roomId: 550e8400-e29b-41d4-a716-446655440000
+                      senderId: 660e8400-e29b-41d4-a716-446655440001
+                      content: 午餐吃什麼
+                      seq: 42
+                      createdAt: '2026-08-20T06:00:00.000Z'
+                  hasMore: true
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '404':
+          description: 房間不存在，或呼叫者不是成員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 聊天室不存在或你不是成員
+                code: CHAT_ROOM_NOT_FOUND
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/chat-rooms/{roomId}/read':
+    patch:
+      tags:
+        - ChatRoom
+      summary: 更新已讀位置
+      description: |
+        把呼叫者在該房間的已讀位置前進到指定的 seq。
+
+        **只增不減**：客戶端往回捲不代表未讀，因此小於目前值的請求視為無操作而非錯誤
+        ——回錯誤會逼客戶端自己記住目前值並比較，那份狀態很容易與伺服器不一致。
+
+        `lastReadSeq` 大於房間目前的最新 seq 時會被夾住：客戶端不該能把已讀設到
+        尚不存在的訊息，允許的話那些訊息之後真的送出時會一出生就是已讀。
+
+        實際前進時，房間其他成員會收到 `server:roomRead`。
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - lastReadSeq
+              properties:
+                lastReadSeq:
+                  type: integer
+                  minimum: 1
+            example:
+              lastReadSeq: 42
+      responses:
+        '204':
+          description: 已更新（無回應內容）；未前進時同樣回 204
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '404':
+          description: 房間不存在，或呼叫者不是成員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 聊天室不存在或你不是成員
+                code: CHAT_ROOM_NOT_FOUND
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /ping:
     get:
       tags:

@@ -61,6 +61,7 @@ export const ResponseMessages = {
   // 探測任意房間是否存在的工具
   CHAT_ROOM_NOT_FOUND: '聊天室不存在或你不是成員',
   CHAT_ROOM_SELF_DIRECT: '無法與自己建立私聊',
+  CHAT_MESSAGE_RATE_LIMITED: '訊息發送過於頻繁，請稍後再試',
 
   // 系統：刻意維持通用英文訊息，不洩漏內部實作細節
   INTERNAL_SERVER_ERROR: 'Internal server error',

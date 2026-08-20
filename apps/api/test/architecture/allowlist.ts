@@ -109,3 +109,24 @@ export const WS_RESOURCE_ACCESS_EXEMPTIONS: Exemption[] = [
       '離開只影響本條連線，對未加入的 socket room 執行是無害的無操作；驗證成員資格反而會讓「已被移出房間的人無法離開」',
   },
 ];
+
+/**
+ * WS 事件限流的豁免。
+ *
+ * 以 handler 名稱定位（`snippet` 放 handler 名）。能列進來的只有「本身不做寫入、
+ * 且成本受既有機制約束」的事件——「暫時還沒接」不屬於這裡，那會讓豁免變成待辦清單。
+ */
+export const WS_RATE_LIMIT_EXEMPTIONS: Exemption[] = [
+  {
+    file: 'src/adapter/in/ws/ChatGateway.ts',
+    snippet: 'handleSyncRoom',
+    reason:
+      '唯讀且成本有界（單次索引範圍查詢、上限 101 列），不寫入任何資料。針對讀取濫用的正確防線是「連線層的事件限流」而非逐個 use case 接——只擋這一支會給出覆蓋完整的錯覺，而 ping / joinRoom 仍然不受限。該防線列為跟進項（tasks/todo.md）',
+  },
+  {
+    file: 'src/adapter/in/ws/ChatGateway.ts',
+    snippet: 'handleJoinRoom',
+    reason:
+      '只做一次有索引的成員資格查詢、不寫入；重複加入同一個 socket room 是無操作，且單一成員的連線數已受 WS_MAX_CONNECTIONS_PER_MEMBER 約束',
+  },
+];

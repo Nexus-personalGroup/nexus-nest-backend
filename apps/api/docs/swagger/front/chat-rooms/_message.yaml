@@ -1,0 +1,23 @@
+# 訊息的共用結構；歷史查詢與 WS 推送用同一份欄位，客戶端只需一個型別
+type: object
+required: [messageId, roomId, senderId, content, seq, createdAt]
+properties:
+  messageId:
+    type: string
+    format: uuid
+  roomId:
+    type: string
+    format: uuid
+  senderId:
+    type: string
+    format: uuid
+  content:
+    type: string
+    maxLength: 4000
+  seq:
+    type: integer
+    description: 房間內單調遞增的序號；訊息順序與斷線補齊的唯一依據
+    example: 42
+  createdAt:
+    type: string
+    format: date-time

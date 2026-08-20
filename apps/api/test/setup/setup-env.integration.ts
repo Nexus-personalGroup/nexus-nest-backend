@@ -45,6 +45,13 @@ process.env.WEB_STATIC_ROOT = join(tmpdir(), 'nexus-web-dist-integration');
 
 // 排程在整合測試中只會製造 open handle 與非預期的資料異動
 process.env.LOG_PURGE_ENABLED = 'false';
+// 限流閾值調低（預設 20 要送 21 次才觸發，測試會慢且像在做壓力測試），
+// 但**必須高於任何單一測試中「同一成員在同一房間」的最大連發數**——
+// 併發序號測試會由同一人連送 5 則，閾值設 3 時它會以
+// 「ack 沒回來」的形式失敗，而症狀完全指不到限流。
+// 視窗放長是為了避免慢機器上視窗先滑掉而讓限流測試偶發通過
+process.env.WS_MESSAGE_RATE_LIMIT = '10';
+process.env.WS_MESSAGE_RATE_WINDOW_SEC = '60';
 process.env.SCHEDULE_ENABLED = 'false';
 
 // 心跳壓到 1 秒、陳舊門檻 2 秒：實例死亡的情境用預設值要等 45 秒才驗得到，

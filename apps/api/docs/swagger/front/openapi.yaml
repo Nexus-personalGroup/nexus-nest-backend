@@ -204,6 +204,14 @@ paths:
     delete:
       $ref: './chat-rooms/leave.yaml'
 
+  /chat-rooms/{roomId}/messages:
+    get:
+      $ref: './chat-rooms/messages.yaml'
+
+  /chat-rooms/{roomId}/read:
+    patch:
+      $ref: './chat-rooms/read.yaml'
+
   /ping:
     get:
       $ref: './ping.yaml'

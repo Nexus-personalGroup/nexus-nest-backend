@@ -114,6 +114,14 @@ export class PrismaChatRoomRepository implements ChatRoomRepositoryPort {
     return this.prisma.chatRoomMemberRecord.count({ where: { roomId } });
   }
 
+  async getLastSeq(roomId: string): Promise<number | null> {
+    const room = await this.prisma.chatRoomRecord.findUnique({
+      where: { id: roomId },
+      select: { lastSeq: true },
+    });
+    return room?.lastSeq ?? null;
+  }
+
   private readonly summarySelect = {
     id: true,
     roomType: true,

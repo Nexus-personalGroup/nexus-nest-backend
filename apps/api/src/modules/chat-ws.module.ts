@@ -3,6 +3,12 @@ import { ChatGateway } from '@app/adapter/in/ws/ChatGateway';
 import { SocketIoEventPublisher } from '@app/adapter/out/socketio/SocketIoEventPublisher';
 import { EVENT_PUBLISHER_PORT } from '@app/application/port/out/EventPublisherPort';
 import { instanceIdProvider } from '@app/infrastructure/instance-id';
+import { RedisMessageRateLimitAdapter } from '@app/adapter/out/redis/RedisMessageRateLimitAdapter';
+import { MESSAGE_RATE_LIMIT_PORT } from '@app/application/port/out/MessageRateLimitPort';
+import { SEND_MESSAGE_USE_CASE } from '@app/application/port/in/shared/SendMessageUseCase';
+import { SYNC_ROOM_USE_CASE } from '@app/application/port/in/shared/SyncRoomUseCase';
+import { SendMessageService } from '@app/application/service/shared/SendMessageService';
+import { SyncRoomService } from '@app/application/service/shared/SyncRoomService';
 import { MemberContextModule } from './member-context.module';
 import { ChatRoomCoreModule } from './chat-room-core.module';
 
@@ -27,6 +33,14 @@ import { ChatRoomCoreModule } from './chat-room-core.module';
   providers: [
     instanceIdProvider,
     SocketIoEventPublisher,
+    RedisMessageRateLimitAdapter,
+    {
+      provide: MESSAGE_RATE_LIMIT_PORT,
+      useExisting: RedisMessageRateLimitAdapter,
+    },
+    // 送訊息放這裡而非 ChatRoomCoreModule：它要廣播，而 core 刻意不相依本模組
+    { provide: SEND_MESSAGE_USE_CASE, useClass: SendMessageService },
+    { provide: SYNC_ROOM_USE_CASE, useClass: SyncRoomService },
     { provide: EVENT_PUBLISHER_PORT, useExisting: SocketIoEventPublisher },
     ChatGateway,
   ],

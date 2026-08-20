@@ -5,7 +5,7 @@
 
 ## 進行中
 
-（無。`add-chat-rooms` 已完成待合併，下一步是 `add-chat-messaging`。）
+（無。`add-chat-messaging` 已完成待合併，下一步是撤回／刪除訊息或附件訊息。）
 
 ## 待辦
 
@@ -14,10 +14,25 @@
 > Phase 1 只做即時聊天，做到 production 等級。前台另開專案，`apps/web` 為純後台管理。
 > M0 骨架、M1 WS 地基已完成，見「已完成」。
 
-- **M2 聊天核心**：~~房間~~（`add-chat-rooms` 已完成）、訊息、`clientMessageId` 去重、ack 確認、room 內自增 `seq`、斷線補齊。事件契約寫在 `ws-*` 能力底下（格式見 `openspec/project/openspec-conventions.md`）。
-  - 下一個 change：`add-chat-messaging`。房間的成員資格判斷已有單一來源（`ENSURE_ROOM_MEMBERSHIP_USE_CASE`），送訊息直接複用，不要另寫一份。
+- ~~**M2 聊天核心**~~：房間（`add-chat-rooms`）與訊息 + 已讀（`add-chat-messaging`）皆已完成。
+  - 房間的成員資格判斷已有單一來源（`ENSURE_ROOM_MEMBERSHIP_USE_CASE`），送訊息直接複用，不要另寫一份。
+- **撤回／刪除訊息**（確定要做，不在 `add-chat-messaging` 內）：軟刪除訊息並推播讓所有人的畫面同步。
+  **必須是軟刪除**——那一列刪掉會讓 `seq` 出現洞，客戶端無法區分「被撤回」與「我漏收了」。
+  `add-chat-messaging` 的 design.md 已確認現有 schema 加一個 `deletedAt` 就能接上，不需改動既有欄位。
+- **附件訊息**（確定要做，不在 `add-chat-messaging` 內）：訊息帶圖片／檔案。
+  之後加 `messageType` 欄位（預設 `TEXT`）即可，`content` 維持 `TEXT NOT NULL` 不需改。
+  真正要先想清楚的是**前台的上傳授權與容量限制**——既有 attachment 模組是後台側的，
+  那部分與訊息無關，所以它獨立成一個 change 是對的切法。
 - **M3 監控埋點**：Prometheus metrics + `chat_audit_log` + 管理員稽核表。**介面可以晚做，埋點不能晚做**——這類資料無法回溯補齊。
 - **M4 後台介面**：SSE 即時儀表板、使用者 360 視圖、聊天室總覽、檢舉佇列與處置。
+
+### 已知缺口（知情，非遺漏）
+
+- **WebSocket 沒有連線層的事件限流**：HTTP 端有全域 throttle middleware，但連線建立後的
+  每個 WS 事件都是同一條 TCP 連線上的訊框，**不經過任何計次**。目前只有送訊息接了
+  逐 use case 的限流（`add-chat-messaging`），`ping` / `joinRoom` / `syncRoom` 都不受限。
+  正確的防線是「每條連線每秒最多 N 個事件」的傳輸層限制，而非逐個 use case 接——
+  後者只會給出覆蓋完整的錯覺。`ws-rate-limit.spec.ts` 的豁免清單記錄了目前的取捨。
 
 ### 需人工處理（AI 做不到）
 

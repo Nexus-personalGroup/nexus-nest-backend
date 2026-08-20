@@ -15,7 +15,9 @@ export const resetDb = async (prisma: PrismaService): Promise<void> => {
   await prisma.ipWhitelistRecord.deleteMany();
   await prisma.ipBlacklistRecord.deleteMany();
   await prisma.attachmentRecord.deleteMany();
-  // 成員關係先於房間：它的外鍵指向房間，反過來會被 onDelete 卡住
+  // 房間的子表先於房間：外鍵都指向房間，反過來會被 onDelete 卡住
+  await prisma.chatMessageRecord.deleteMany();
+  await prisma.chatRoomReadRecord.deleteMany();
   await prisma.chatRoomMemberRecord.deleteMany();
   await prisma.chatRoomRecord.deleteMany();
   await prisma.role.deleteMany();

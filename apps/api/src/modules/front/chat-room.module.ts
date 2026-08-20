@@ -1,6 +1,8 @@
 import { Module } from '@nestjs/common';
 import { ChatRoomController } from '../../adapter/in/web/front/chat-room/ChatRoomController';
+import { ChatMessageController } from '../../adapter/in/web/front/chat-message/ChatMessageController';
 import { ChatRoomFacade } from '../../application/facade/front/ChatRoomFacade';
+import { ChatMessageFacade } from '../../application/facade/front/ChatMessageFacade';
 import { CREATE_DIRECT_ROOM_USE_CASE } from '../../application/port/in/front/chat-room/CreateDirectRoomUseCase';
 import { CREATE_GROUP_ROOM_USE_CASE } from '../../application/port/in/front/chat-room/CreateGroupRoomUseCase';
 import { LIST_MY_ROOMS_USE_CASE } from '../../application/port/in/front/chat-room/ListMyRoomsUseCase';
@@ -9,6 +11,12 @@ import { CreateDirectRoomService } from '../../application/service/front/chat-ro
 import { CreateGroupRoomService } from '../../application/service/front/chat-room/CreateGroupRoomService';
 import { ListMyRoomsService } from '../../application/service/front/chat-room/ListMyRoomsService';
 import { LeaveRoomService } from '../../application/service/front/chat-room/LeaveRoomService';
+import { LIST_MESSAGES_USE_CASE } from '../../application/port/in/front/chat-message/ListMessagesUseCase';
+import { MARK_ROOM_READ_USE_CASE } from '../../application/port/in/front/chat-message/MarkRoomReadUseCase';
+import { ListMessagesService } from '../../application/service/front/chat-message/ListMessagesService';
+import { MarkRoomReadService } from '../../application/service/front/chat-message/MarkRoomReadService';
+import { PrismaChatRoomReadRepository } from '../../adapter/out/persistence/chat-message/PrismaChatRoomReadRepository';
+import { CHAT_ROOM_READ_REPOSITORY_PORT } from '../../application/port/out/chat-message/ChatRoomReadRepositoryPort';
 import { MemberPersistenceModule } from '../member-persistence.module';
 import { ChatWsModule } from '../chat-ws.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
@@ -21,13 +29,21 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
  */
 @Module({
   imports: [MemberPersistenceModule, ChatWsModule, ChatRoomCoreModule],
-  controllers: [ChatRoomController],
+  controllers: [ChatRoomController, ChatMessageController],
   providers: [
     { provide: CREATE_DIRECT_ROOM_USE_CASE, useClass: CreateDirectRoomService },
     { provide: CREATE_GROUP_ROOM_USE_CASE, useClass: CreateGroupRoomService },
     { provide: LIST_MY_ROOMS_USE_CASE, useClass: ListMyRoomsService },
     { provide: LEAVE_ROOM_USE_CASE, useClass: LeaveRoomService },
+    { provide: LIST_MESSAGES_USE_CASE, useClass: ListMessagesService },
+    { provide: MARK_ROOM_READ_USE_CASE, useClass: MarkRoomReadService },
+    PrismaChatRoomReadRepository,
+    {
+      provide: CHAT_ROOM_READ_REPOSITORY_PORT,
+      useExisting: PrismaChatRoomReadRepository,
+    },
     ChatRoomFacade,
+    ChatMessageFacade,
   ],
 })
 export class FrontChatRoomModule {}

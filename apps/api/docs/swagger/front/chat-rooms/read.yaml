@@ -1,0 +1,55 @@
+tags: [ChatRoom]
+summary: 更新已讀位置
+description: |
+  把呼叫者在該房間的已讀位置前進到指定的 seq。
+
+  **只增不減**：客戶端往回捲不代表未讀，因此小於目前值的請求視為無操作而非錯誤
+  ——回錯誤會逼客戶端自己記住目前值並比較，那份狀態很容易與伺服器不一致。
+
+  `lastReadSeq` 大於房間目前的最新 seq 時會被夾住：客戶端不該能把已讀設到
+  尚不存在的訊息，允許的話那些訊息之後真的送出時會一出生就是已讀。
+
+  實際前進時，房間其他成員會收到 `server:roomRead`。
+
+parameters:
+  - name: roomId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [lastReadSeq]
+        properties:
+          lastReadSeq:
+            type: integer
+            minimum: 1
+      example:
+        lastReadSeq: 42
+
+responses:
+  '204':
+    description: 已更新（無回應內容）；未前進時同樣回 204
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '404':
+    description: 房間不存在，或呼叫者不是成員
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 聊天室不存在或你不是成員
+          code: CHAT_ROOM_NOT_FOUND
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
