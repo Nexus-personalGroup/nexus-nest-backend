@@ -5,7 +5,7 @@
 
 ## 進行中
 
-- **`improve-ci-run-integration-tests`**：把跨實例整合測試接進 CI。M1 交付了 11 條測試但沒有自動化執行路徑——CI 綠燈目前不代表跨實例廣播還活著，而 M2 會大量改動 WS 層。
+- **`improve-openspec-ws-prefix`**：新增 `ws-` 能力前綴與事件契約的格式檢查，解除 M2 的阻塞。
 
 ## 待辦
 
@@ -14,13 +14,9 @@
 > Phase 1 只做即時聊天，做到 production 等級。前台另開專案，`apps/web` 為純後台管理。
 > M0 骨架、M1 WS 地基已完成，見「已完成」。
 
-- **M2 聊天核心**：房間、訊息、`clientMessageId` 去重、ack 確認、room 內自增 `seq`、斷線補齊。**開工前必須先解決下方的事件契約前綴問題。**
+- **M2 聊天核心**：房間、訊息、`clientMessageId` 去重、ack 確認、room 內自增 `seq`、斷線補齊。事件契約寫在 `ws-*` 能力底下（格式見 `openspec/project/openspec-conventions.md`）。
 - **M3 監控埋點**：Prometheus metrics + `chat_audit_log` + 管理員稽核表。**介面可以晚做，埋點不能晚做**——這類資料無法回溯補齊。
 - **M4 後台介面**：SSE 即時儀表板、使用者 360 視圖、聊天室總覽、檢舉佇列與處置。
-
-### 需決定（M2 開工前）
-
-- **WebSocket 事件契約要放哪個能力前綴**：`openspec-spec-format.spec.ts` 只認 `api-` / `ui-` / `platform-`，且 `api-*` **強制**每個需求寫出 HTTP 請求與回應 JSON。WS 事件沒有 status code，硬套會寫出假的東西。M1 的連線層契約用 `platform-websocket-transport` 名副其實，但 M2 有真正的事件契約（`sendMessage` 的 payload 形狀、ack 回應、錯誤碼），`platform-` 就不合適了。兩條路：新增 `ws-` 前綴並改守則，或放寬 `api-*` 的格式要求以涵蓋非 HTTP 契約。**不解決的話 M2 的事件契約沒有地方可寫。**
 
 ### 需人工處理（AI 做不到）
 
