@@ -1,62 +1,11 @@
 import { WS_RESOURCE_ACCESS_EXEMPTIONS } from './allowlist';
 import { collectSourceFiles, readSource, toRelative } from './helpers';
-
-/**
- * 去掉註解再比對。
- *
- * 與 `authorization-coverage` 同一個理由，而且在這裡更關鍵：說明「這裡有做授權判斷」
- * 的文字，最常出現在**真的有做**的檔案裡。用字串比對的話，偽陰性會集中在本來就正確
- * 的位置——等到有人重構把真呼叫拿掉、註解留著，守則依然全綠。
- */
-const stripComments = (code: string): string =>
-  code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
-
-/**
- * 取得 gateway 建構子中注入的 use case 欄位名。
- *
- * 只認型別以 `UseCase` 結尾的注入，不是「有呼叫任何 this.x」就算數：
- * `presence`、`eventPublisher` 這些也是 port，但它們是副作用的出口，
- * 不會回答「這個人可不可以碰這個資源」。把它們算成授權等於自動放行。
- */
-const useCaseFields = (source: string): string[] => {
-  const pattern =
-    /(?:private|public|protected)\s+readonly\s+(\w+)\s*:\s*\w*UseCase\b/g;
-  return [...stripComments(source).matchAll(pattern)].map((m) => m[1]);
-};
-
-type WsHandler = { name: string; line: number; body: string };
-
-/**
- * 切出每個 `@SubscribeMessage` handler。
- *
- * 起點往前吃掉連續的裝飾器行——與 HTTP 版同樣的理由，裝飾器歸錯 handler
- * 會同時造成漏報與誤報。
- */
-const handlersOf = (source: string): WsHandler[] => {
-  const lines = source.split('\n');
-  const starts: number[] = [];
-
-  lines.forEach((line, index) => {
-    if (!/^\s*@SubscribeMessage\(/.test(line)) return;
-    let begin = index;
-    while (begin > 0 && /^\s*@\w+\(/.test(lines[begin - 1])) begin -= 1;
-    starts.push(begin);
-  });
-
-  return starts.map((start, i) => {
-    const end = starts[i + 1] ?? lines.length;
-    const block = lines.slice(start, end);
-    const signature =
-      block.find((l) => /^\s{2}(async\s+)?\w+\(/.test(l)) ??
-      block.find((l) => /^\s{2}(async\s+)?handle\w*/.test(l)) ??
-      '';
-    return {
-      name: /\s{2}(?:async\s+)?(\w+)\s*\(/.exec(signature)?.[1] ?? '(未知)',
-      line: start + 1,
-      body: stripComments(block.join('\n')),
-    };
-  });
-};
+import {
+  calledUseCases,
+  useCaseFields,
+  wsHandlersOf,
+  type WsHandler,
+} from './ws-source';
 
 /**
  * handler 是否把客戶端提供的識別碼直接餵給 socket 操作。
@@ -91,14 +40,11 @@ export const auditWsResourceAccess = (source: string): WsAudit => {
   const unguarded: WsHandler[] = [];
   let checked = 0;
 
-  for (const handler of handlersOf(source)) {
+  for (const handler of wsHandlersOf(source)) {
     if (!touchesClientResource(handler.body)) continue;
 
     checked += 1;
-    const callsUseCase = fields.some((field) =>
-      new RegExp(`this\\.${field}\\.\\w+\\(`).test(handler.body),
-    );
-    if (!callsUseCase) unguarded.push(handler);
+    if (calledUseCases(handler, fields).length === 0) unguarded.push(handler);
   }
 
   return { unguarded, checked };
@@ -130,7 +76,7 @@ describe('架構守則：WS 事件的資源存取必須經授權判斷', () => {
   it('掃描範圍有效', () => {
     expect(gateways.length).toBeGreaterThan(0);
     expect(
-      gateways.flatMap((f) => handlersOf(readSource(f))).length,
+      gateways.flatMap((f) => wsHandlersOf(readSource(f))).length,
     ).toBeGreaterThan(0);
   });
 
@@ -162,7 +108,7 @@ describe('架構守則：WS 事件的資源存取必須經授權判斷', () => {
 
   it('豁免清單不得有過期項目', () => {
     const live = gateways.flatMap((file) =>
-      handlersOf(readSource(file)).map((handler) => ({
+      wsHandlersOf(readSource(file)).map((handler) => ({
         file: toRelative(file),
         body: handler.body,
       })),

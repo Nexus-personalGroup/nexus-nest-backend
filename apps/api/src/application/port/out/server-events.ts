@@ -18,6 +18,14 @@ export const SERVER_EVENTS = {
   ROOM_LEFT: 'roomLeft',
   /** 房間成員加入或離開，送給該房間其餘成員 */
   ROOM_MEMBER_CHANGED: 'roomMemberChanged',
+  /** 送訊息成功的回執，只回給送出的那條連線 */
+  MESSAGE_ACK: 'messageAck',
+  /** 新訊息，送給房間所有成員（含送出者自己） */
+  MESSAGE_CREATED: 'messageCreated',
+  /** 斷線補齊的結果，只回給要求補齊的那條連線 */
+  ROOM_SYNCED: 'roomSynced',
+  /** 某成員的已讀位置前進，送給房間其他成員 */
+  ROOM_READ: 'roomRead',
 } as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];

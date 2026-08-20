@@ -52,4 +52,6 @@ export interface ChatRoomRepositoryPort {
   /** 移除成員關係；回傳 false 表示本來就不是成員 */
   removeMember(roomId: string, memberId: string): Promise<boolean>;
   countMembers(roomId: string): Promise<number>;
+  /** 房間目前已配出的最大訊息序號；房間不存在時回 null */
+  getLastSeq(roomId: string): Promise<number | null>;
 }

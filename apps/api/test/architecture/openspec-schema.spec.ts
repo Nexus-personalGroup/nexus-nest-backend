@@ -167,4 +167,28 @@ describe('架構守則：openspec 自訂 schema 的執行路徑', () => {
             )}\n以 \`openspec new change "<name>" --schema ${SCHEMA_NAME}\` 重建，或直接改 .openspec.yaml 的 schema 欄位`,
     ).toBe('');
   });
+
+  /**
+   * `openspec/config.yaml` 決定「不帶 `--schema` 時用哪一份 schema」。
+   *
+   * 這個檔案是 `openspec new change` 自己產生的，預設值是內建的 `spec-driven`——
+   * 也就是說，**它一出現就是錯的**，而且錯得沒有徵兆：change 照樣建得起來、
+   * `openspec validate` 照樣過，只是本專案的格式規範全部不生效。
+   *
+   * 上一條規則（skill 必帶 `--schema`）擋的是 AI 照著指令走的情況；
+   * 這一條擋的是有人手動下指令、或 `openspec config` 把預設改回去。
+   */
+  it('專案預設 schema 必須指向自訂 schema', () => {
+    const configPath = join(OPENSPEC_ROOT, 'config.yaml');
+
+    expect(
+      !existsSync(configPath)
+        ? `找不到 ${configPath}：預設 schema 未釘住，不帶 --schema 建立的 change 會靜默套用內建 schema`
+        : new RegExp(`^\\s*schema:\\s*${SCHEMA_NAME}\\s*$`, 'm').test(
+              readFileSync(configPath, 'utf8'),
+            )
+          ? ''
+          : `openspec/config.yaml 的 schema 不是 ${SCHEMA_NAME}：不帶 --schema 建立的 change 會靜默套用內建 schema，本專案的格式規範全部失效`,
+    ).toBe('');
+  });
 });

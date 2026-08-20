@@ -12,13 +12,20 @@
  *
  * 連上之後可用的互動指令（直接在 stdin 輸入）：
  *   join <roomId>      加入房間（必須是真實房間且你是成員）
+ *   send <文字>        送訊息到目前房間
+ *   resend <文字>      用固定的 clientMessageId 重送——驗證去重
+ *   sync [seq]         從指定 seq 補齊；省略則用本機收到的最大 seq
  *   leave <roomId>     離開房間
  *   ping               往返探測
  *   drop               主動斷線（不重連，用於觀察 presence 的回收）
  *   quit               結束
  */
 import * as readline from 'readline';
+import { randomUUID } from 'crypto';
 import { io, Socket } from 'socket.io-client';
+
+/** resend 指令用的固定識別碼；重送的定義就是「沿用同一個 clientMessageId」 */
+const RESEND_ID = randomUUID();
 
 interface Options {
   url: string;
@@ -110,10 +117,56 @@ const main = (): void => {
     output: process.stdout,
   });
 
+  /** 目前使用的房間：送訊息與補齊都需要它，不必每次重打 */
+  let activeRoom = options.room ?? '';
+  /** 各連線最後收到的 seq，供 sync 使用 */
+  const lastSeq = new Map<string, number>();
+
+  sockets.forEach((s, i) => {
+    const label = `client-${i + 1}`;
+    s.on('messageCreated', (p: { seq: number }) => {
+      lastSeq.set(label, Math.max(lastSeq.get(label) ?? 0, p.seq));
+    });
+  });
+
   rl.on('line', (line) => {
-    const [command, arg] = line.trim().split(/\s+/);
+    const [command, ...rest] = line.trim().split(/\s+/);
+    const arg = rest[0];
     switch (command) {
+      case 'send': {
+        // 每次送出都產生新的 clientMessageId；要驗證去重請用 resend
+        const content = rest.join(' ');
+        sockets.forEach((s) =>
+          s.emit('sendMessage', {
+            roomId: activeRoom,
+            clientMessageId: randomUUID(),
+            content,
+          }),
+        );
+        break;
+      }
+      case 'resend': {
+        // 沿用同一個 clientMessageId，用來觀察「重送不產生第二則」
+        const content = rest.join(' ');
+        sockets.forEach((s) =>
+          s.emit('sendMessage', {
+            roomId: activeRoom,
+            clientMessageId: RESEND_ID,
+            content,
+          }),
+        );
+        break;
+      }
+      case 'sync':
+        sockets.forEach((s, i) =>
+          s.emit('syncRoom', {
+            roomId: activeRoom,
+            lastSeq: arg ? Number(arg) : (lastSeq.get(`client-${i + 1}`) ?? 0),
+          }),
+        );
+        break;
       case 'join':
+        activeRoom = arg ?? activeRoom;
         sockets.forEach((s) => s.emit('joinRoom', { roomId: arg }));
         break;
       case 'leave':

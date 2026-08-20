@@ -21,6 +21,10 @@ import {
   LEAVE_ROOM_USE_CASE,
   LeaveRoomUseCase,
 } from '@app/application/port/in/front/chat-room/LeaveRoomUseCase';
+import {
+  MARK_ROOM_READ_USE_CASE,
+  MarkRoomReadUseCase,
+} from '@app/application/port/in/front/chat-message/MarkRoomReadUseCase';
 
 export interface WsInstance {
   app: NestExpressApplication;
@@ -32,6 +36,8 @@ export interface WsInstance {
   presence: PresencePort;
   /** 讓測試能從「這個實例」觸發離開房間，藉此驗證通知確實跨實例送達 */
   leaveRoom: LeaveRoomUseCase;
+  /** 同上，用於已讀通知 */
+  markRoomRead: MarkRoomReadUseCase;
   prisma: PrismaService;
   jwt: JwtService;
   /** 正常關閉：走 shutdown hooks，presence 會被清乾淨 */
@@ -70,6 +76,7 @@ export const startInstance = async (port: number): Promise<WsInstance> => {
     eventPublisher: app.get(SocketIoEventPublisher),
     presence: app.get<PresencePort>(PRESENCE_PORT),
     leaveRoom: app.get<LeaveRoomUseCase>(LEAVE_ROOM_USE_CASE),
+    markRoomRead: app.get<MarkRoomReadUseCase>(MARK_ROOM_READ_USE_CASE),
     prisma: app.get(PrismaService),
     jwt: app.get(JwtService),
     close: async () => {

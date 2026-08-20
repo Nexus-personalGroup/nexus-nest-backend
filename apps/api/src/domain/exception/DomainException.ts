@@ -15,6 +15,7 @@ export type DomainExceptionKind =
   | 'INVALID'
   | 'CONFLICT'
   | 'LOCKED'
+  | 'RATE_LIMITED'
   | 'INTERNAL';
 
 /**

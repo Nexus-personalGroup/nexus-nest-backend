@@ -294,6 +294,15 @@ const envSchema = z.object({
   WS_OFFLINE_BROADCAST_DELAY: z.coerce.number().int().min(0).default(5),
   /** 單一成員允許的同時連線數上限（多裝置、多分頁），超過時拒絕最新的連線 */
   WS_MAX_CONNECTIONS_PER_MEMBER: z.coerce.number().int().min(1).default(10),
+  /**
+   * 送訊息的限流：每人每房間在一個視窗內允許的則數。
+   *
+   * 閾值放環境變數而非寫死：實際值要等真實使用資料才調得準，而為了調一個數字
+   * 改程式碼、重新部署，最後的結果是沒有人去調。預設值是保守的起點，不是建議值。
+   */
+  WS_MESSAGE_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
+  /** 送訊息限流的視窗長度（秒） */
+  WS_MESSAGE_RATE_WINDOW_SEC: z.coerce.number().int().min(1).default(10),
 
   // ─── 排程（@nestjs/schedule，範例排程預設關閉） ───
   /** 範例排程是否啟用；正式排程依需求改寫 ExampleScheduler，測試環境保持關閉 */

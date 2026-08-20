@@ -12,6 +12,8 @@
 export const CLIENT_EVENTS = {
   JOIN_ROOM: 'joinRoom',
   LEAVE_ROOM: 'leaveRoom',
+  SEND_MESSAGE: 'sendMessage',
+  SYNC_ROOM: 'syncRoom',
   PING: 'ping',
 } as const;
 

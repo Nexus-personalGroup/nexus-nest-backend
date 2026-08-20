@@ -25,6 +25,14 @@ import {
   EnsureRoomMembershipUseCase,
 } from '@app/application/port/in/shared/EnsureRoomMembershipUseCase';
 import {
+  SEND_MESSAGE_USE_CASE,
+  SendMessageUseCase,
+} from '@app/application/port/in/shared/SendMessageUseCase';
+import {
+  SYNC_ROOM_USE_CASE,
+  SyncRoomUseCase,
+} from '@app/application/port/in/shared/SyncRoomUseCase';
+import {
   PRESENCE_PORT,
   PresencePort,
 } from '@app/application/port/out/presence/PresencePort';
@@ -39,6 +47,8 @@ import {
   RoomMembershipRequest,
   roomMembershipSchema,
 } from './RoomMembershipRequest';
+import { SendMessageRequest, sendMessageSchema } from './SendMessageRequest';
+import { SyncRoomRequest, syncRoomSchema } from './SyncRoomRequest';
 
 /** 已完成認證的連線。member 由 `handleConnection` 保證設定 */
 export interface AuthenticatedSocket extends Socket {
@@ -92,6 +102,10 @@ export class ChatGateway
     @Inject(PRESENCE_PORT) private readonly presence: PresencePort,
     @Inject(ENSURE_ROOM_MEMBERSHIP_USE_CASE)
     private readonly ensureRoomMembership: EnsureRoomMembershipUseCase,
+    @Inject(SEND_MESSAGE_USE_CASE)
+    private readonly sendMessage: SendMessageUseCase,
+    @Inject(SYNC_ROOM_USE_CASE)
+    private readonly syncRoom: SyncRoomUseCase,
     private readonly eventPublisher: SocketIoEventPublisher,
     @Inject(INSTANCE_ID) private readonly instanceId: string,
   ) {}
@@ -251,6 +265,59 @@ export class ChatGateway
   ): Promise<void> {
     await client.leave(payload.roomId);
     client.emit(SERVER_EVENTS.ROOM_LEFT, { roomId: payload.roomId });
+  }
+
+  /**
+   * 送出訊息。
+   *
+   * **ack 一定在 use case 完成之後才送。** 樂觀回覆（先 ack 再寫）在寫入失敗時
+   * 會讓使用者看到一則實際不存在的訊息，而且沒有回頭修正的機會——
+   * 客戶端已經把它畫在畫面上了。
+   *
+   * 廣播由 service 經 `EventPublisherPort` 送出，這裡不碰 Socket.IO 的房間 API：
+   * 「送給誰」是業務判斷，「怎麼送到」才是傳輸細節。
+   */
+  @SubscribeMessage(CLIENT_EVENTS.SEND_MESSAGE)
+  async handleSendMessage(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody(new ZodValidationPipe(sendMessageSchema))
+    payload: SendMessageRequest,
+  ): Promise<void> {
+    const message = await this.sendMessage.execute({
+      roomId: payload.roomId,
+      senderId: client.member.sub,
+      content: payload.content,
+      clientMessageId: payload.clientMessageId,
+    });
+
+    // ack 帶回 clientMessageId，讓客戶端把它對應到自己樂觀顯示的那一則。
+    // 重送時這裡回的是首次寫入的結果，因此「重送」與「首次送出」對客戶端一致
+    client.emit(SERVER_EVENTS.MESSAGE_ACK, {
+      clientMessageId: payload.clientMessageId,
+      messageId: message.messageId,
+      seq: message.seq,
+      createdAt: message.createdAt,
+    });
+  }
+
+  /**
+   * 斷線補齊：回傳客戶端 `lastSeq` 之後的訊息。
+   *
+   * 只回給提出要求的那條連線，不廣播——其他人沒有漏接。
+   */
+  @SubscribeMessage(CLIENT_EVENTS.SYNC_ROOM)
+  async handleSyncRoom(
+    @ConnectedSocket() client: AuthenticatedSocket,
+    @MessageBody(new ZodValidationPipe(syncRoomSchema))
+    payload: SyncRoomRequest,
+  ): Promise<void> {
+    const result = await this.syncRoom.execute({
+      roomId: payload.roomId,
+      memberId: client.member.sub,
+      lastSeq: payload.lastSeq,
+    });
+
+    client.emit(SERVER_EVENTS.ROOM_SYNCED, result);
   }
 
   /** 連線活性探測。回傳值走 Socket.IO 的 ack callback，供測試客戶端確認往返正常 */
