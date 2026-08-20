@@ -97,6 +97,16 @@
 
 **How to apply**：任何用字串比對找裝飾器 / 關鍵字的守則，比對前一律 `stripComments`。判斷 class 層級時再進一步只取 `@Controller(` 到 `export class` 之間——那段不可能夾註解。另外兩個同批踩到的切割錯誤：(1) handler 切塊要**往前**吃掉連續的裝飾器行，否則寫在 `@Post()` 上方的 `@Public()` 會被歸給前一個 handler，造成前一支漏報、本支誤報；(2) 守則本身要有**合成輸入的自我測試**——守則出錯是靜默的，而給偽陰性的守則比沒有守則更危險，它會讓人停止人工檢查。
 
+- **新守則在還沒有真實樣本時，「掃描有效性」不能硬性要求 `> 0`**：其他規則都用 `expect(checked).toBeGreaterThan(0)` 防止空轉，但一條為了**未來**的能力而寫的規則（如 `ws-*` 的事件格式檢查，寫在第一支 `ws-` spec 出現之前）套用同樣寫法會一直是紅的。改成「有該類能力時才要求掃到」，並用**合成輸入的自我測試**承擔正確性——那是它唯一的安全網。收尾時再造一個臨時 spec 做反向驗證（確認真的會紅、補齊會綠、刪掉後 `git status` 乾淨），否則規則是否空轉要等幾個月後才知道。
+
+### 2026-08-20 — 描述規則的 spec 會被自己的規則抓出來
+
+**踩到什麼**：新增「`ws-*` 不得使用 `**Success Response**`」的守則後，封存時把該規則寫進 `platform-engineering-guardrails` 的 spec，守則立刻紅——**被抓出來的正是那份描述規則的 spec**。因為它的 scenario 寫著「WHEN `ws-*` 的 spec 出現 `**Success Response**`」，而判斷式是 `body.includes('**Success Response**')`。
+
+**Why**：與 `authorization-coverage` 踩過的註解冒充裝飾器**同型但不同處**——那次是註解，這次是**規則自身的文件**。而且這個缺陷早就存在（`includes` 一直是這樣寫的），只是先前沒有任何 spec 提到過那個字串，所以從未觸發。**規則越是被完整記載，越容易踩到自己。**
+
+**How to apply**：字串比對要能區分「使用」與「提及」。Markdown 的區塊標籤在**實際使用時一律在行首**（`**Success Response** \`200 OK\`：`），在行文中提及則是夾在句子裡的行內程式碼。改用 `/^\s*<escaped>/m` 判斷即可分開兩者。凡是「規則本身會被寫進 spec / 文件」的檢查，都要先問一句：**這條規則描述自己的時候會不會違反自己？**
+
 ### 2026-08-20 — openspec 的 MODIFIED 靠「標題字串」比對，改標題會讓封存整個中止
 
 **踩到什麼**：delta spec 用 `## MODIFIED Requirements`，把需求標題從「品質檢查必須在 Merge Request 階段執行」改成「…Pull Request…」，內容也一併更新。`openspec validate` **通過**，但 `openspec archive` 失敗：

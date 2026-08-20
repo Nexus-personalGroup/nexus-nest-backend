@@ -19,17 +19,24 @@ artifacts:
 
       ## 能力（capability）命名規則
 
-      能力名稱是 kebab-case，並**必須**帶下列三種前綴之一，前綴決定 spec 的寫法：
+      能力名稱是 kebab-case，並**必須**帶下列四種前綴之一，前綴決定 spec 的寫法：
 
       | 前綴 | 用途 | 範例 |
       | --- | --- | --- |
       | `api-` | 後端 endpoint 契約 | `api-member-management` |
       | `ui-` | 前端畫面行為 | `ui-member-management` |
       | `platform-` | 跨切面契約與工程規則，不屬於單一功能 | `platform-api-error-response` |
+      | `ws-` | WebSocket 事件契約 | `ws-chat-message` |
 
       補充規則：
       - `api-` 預設指後台（`/api/admin/*`）。前台（`/api/front/*`）的能力用 `api-front-` 開頭。
       - 前端目前只有一支 admin SPA，`ui-` 不標側。
+      - **`ws-` 不標側**——WebSocket 只服務終端使用者，後台的即時儀表板走 SSE 不走 WS，
+        沒有「WS 的後台面」這種東西。這與 `adapter/in/ws` 不分側的程式碼結構一致。
+        不要比照 `api-front-` 造一個 `ws-front-`；真的出現後台 WS 再新增，
+        屆時有具體需求可以判斷，比現在預先切分準確。
+      - `ws-` 與連線層的工程約束（認證時機、presence 一致性、跨實例送達保證）**分開**：
+        後者屬於 `platform-websocket-transport`，`ws-` 只放事件契約。
       - 同一功能的後端與前端**分成兩支 spec**（`api-member-management` 與 `ui-member-management`），
         因為兩者的驗收方式不同（e2e 打 HTTP vs 元件行為）。
       - 不要為單一 endpoint 開一支新能力。它屬於哪個功能就併進哪支既有 spec。
@@ -106,6 +113,53 @@ artifacts:
       需要新錯誤碼時，spec 裡就要把碼名定下來，實作階段才知道要往兩份常數檔加什麼。
 
       欄位命名依專案慣例（見 `openspec/project.md` 的「命名規範」），不要臆測。
+
+      ## `ws-` 能力：每個事件必須寫出該方向的必填區塊
+
+      WebSocket 是**雙向訊息流**，兩個方向的形狀不對稱，因此不共用 `api-` 的四段式。
+      每個宣告事件的 `### Requirement:` **內文第一行**就是方向標記：
+
+      | 第一行 | 必填區塊 |
+      | --- | --- |
+      | `` `client:<event>` `` | **Payload**、**Ack**、**Failure Responses** |
+      | `` `server:<event>` `` | **Payload** |
+
+      方向標記用 `client:` / `server:` 而非箭頭，且直接對應
+      `adapter/in/ws/events.ts` 的 `CLIENT_EVENTS` / `SERVER_EVENTS`——spec 與實作用同一組詞彙。
+
+      **`client:` 的事件即使沒有 ack，也要寫「**Ack**：本事件無 ack」，不可省略**。
+      省略與「忘了寫」在文件上長得一模一樣，而可靠投遞正是最需要講清楚 ack 的地方。
+
+      `server:` 不寫 Failure——伺服器主動推送沒有對應的失敗回應可回給誰；
+      推送失敗屬於傳輸層問題，由 `platform-websocket-transport` 涵蓋。
+
+      **不要用 `**Success Response**`**——那是 HTTP 的形狀，`ws-` 的回應是 Ack。
+
+      範例：
+
+      ```markdown
+      ### Requirement: 發送訊息
+
+      `client:sendMessage`
+
+      客戶端送出一則訊息。伺服器 MUST 以 clientMessageId 去重…
+
+      **Payload**：
+
+      ```json
+      { "roomId": "…", "content": "…", "clientMessageId": "…" }
+      ```
+
+      **Ack**：
+
+      ```json
+      { "messageId": "…", "seq": 42 }
+      ```
+
+      **Failure Responses**：
+
+      - `code: "ROOM_NOT_FOUND"`：房間不存在或非成員
+      ```
 
       ## `ui-` / `platform-` 能力
 
