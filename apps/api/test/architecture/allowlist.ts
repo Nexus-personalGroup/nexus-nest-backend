@@ -94,3 +94,18 @@ export const SWAGGER_EXEMPT_ROUTES: Array<{ route: string; reason: string }> = [
     reason: '就緒探測用途，不屬對外 API 契約',
   },
 ];
+
+/**
+ * WS 事件資源存取的豁免。
+ *
+ * 這份清單的門檻要高於其他規則：能列進來的只有「該操作對非成員也無害」，
+ * 不包含「暫時還沒接授權」——後者是 TEMPORARY 的用途，而目前沒有。
+ */
+export const WS_RESOURCE_ACCESS_EXEMPTIONS: Exemption[] = [
+  {
+    file: 'src/adapter/in/ws/ChatGateway.ts',
+    snippet: 'client.leave(payload.roomId)',
+    reason:
+      '離開只影響本條連線，對未加入的 socket room 執行是無害的無操作；驗證成員資格反而會讓「已被移出房間的人無法離開」',
+  },
+];

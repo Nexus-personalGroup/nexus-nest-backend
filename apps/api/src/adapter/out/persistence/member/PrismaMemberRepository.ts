@@ -84,6 +84,15 @@ export class PrismaMemberRepository
     return count > 0;
   }
 
+  async findActiveMemberIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.memberRecord.findMany({
+      where: { id: { in: ids }, deletedAt: null, status: true },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
   async createMember(member: Member): Promise<void> {
     try {
       await this.prisma.memberRecord.create({

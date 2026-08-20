@@ -3,7 +3,7 @@ import { LoadMemberPort } from '../../../port/out/member/LoadMemberPort';
 import { PasswordResetTokenPort } from '../../../port/out/auth/PasswordResetTokenPort';
 import { SendEmailPort } from '../../../port/out/shared/SendEmailPort';
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     APP_PASSWORD_RESET_TOKEN_EXPIRES_IN: 30,
     APP_PASSWORD_RESET_URL: 'https://app.test/reset',

@@ -13,7 +13,6 @@ import { DeleteMemberService } from '../../application/service/admin/member/Dele
 import { ListRoleOptionsService } from '../../application/service/admin/member/ListRoleOptionsService';
 import { GetRoleOptionService } from '../../application/service/admin/member/GetRoleOptionService';
 import { PasswordPolicyService } from '../../application/service/shared/PasswordPolicyService';
-import { PrismaMemberRepository } from '../../adapter/out/persistence/member/PrismaMemberRepository';
 import { LIST_MEMBERS_USE_CASE } from '../../application/port/in/admin/member/ListMembersUseCase';
 import { GET_MEMBER_USE_CASE } from '../../application/port/in/admin/member/GetMemberUseCase';
 import { CREATE_MEMBER_USE_CASE } from '../../application/port/in/admin/member/CreateMemberUseCase';
@@ -21,29 +20,15 @@ import { UPDATE_MEMBER_USE_CASE } from '../../application/port/in/admin/member/U
 import { DELETE_MEMBER_USE_CASE } from '../../application/port/in/admin/member/DeleteMemberUseCase';
 import { LIST_ROLE_OPTIONS_USE_CASE } from '../../application/port/in/admin/member/ListRoleOptionsUseCase';
 import { GET_ROLE_OPTION_USE_CASE } from '../../application/port/in/admin/member/GetRoleOptionUseCase';
-import { LOAD_MEMBER_PORT } from '../../application/port/out/member/LoadMemberPort';
-import { SAVE_MEMBER_PORT } from '../../application/port/out/member/SaveMemberPort';
-import { LOAD_MEMBER_CONTEXT_PORT } from '../../application/port/out/member/LoadMemberContextPort';
-import { UPDATE_MEMBER_PASSWORD_PORT } from '../../application/port/out/member/UpdateMemberPasswordPort';
 import { JwtModule } from '../jwt.module';
+import { MemberPersistenceModule } from '../member-persistence.module';
 import { RoleModule } from './role.module';
 import { getEnv } from '../../infrastructure/validate-env';
 
 @Module({
-  imports: [JwtModule, forwardRef(() => RoleModule)],
+  imports: [JwtModule, MemberPersistenceModule, forwardRef(() => RoleModule)],
   controllers: [MemberController, ProfileController],
   providers: [
-    PrismaMemberRepository,
-    { provide: LOAD_MEMBER_PORT, useExisting: PrismaMemberRepository },
-    { provide: SAVE_MEMBER_PORT, useExisting: PrismaMemberRepository },
-    {
-      provide: LOAD_MEMBER_CONTEXT_PORT,
-      useExisting: PrismaMemberRepository,
-    },
-    {
-      provide: UPDATE_MEMBER_PASSWORD_PORT,
-      useExisting: PrismaMemberRepository,
-    },
     { provide: BCRYPT_ROUNDS, useFactory: () => getEnv().BCRYPT_ROUNDS },
     PasswordPolicyService,
     { provide: LIST_MEMBERS_USE_CASE, useClass: ListMembersService },
@@ -55,11 +40,8 @@ import { getEnv } from '../../infrastructure/validate-env';
     { provide: GET_ROLE_OPTION_USE_CASE, useClass: GetRoleOptionService },
     MemberFacade,
   ],
-  exports: [
-    LOAD_MEMBER_PORT,
-    SAVE_MEMBER_PORT,
-    LOAD_MEMBER_CONTEXT_PORT,
-    UPDATE_MEMBER_PASSWORD_PORT,
-  ],
+  // 轉出整個模組而非個別 token：Nest 不允許 export 非本模組提供的 provider，
+  // 而既有的 import 方仍是向 MemberModule 要這些 port
+  exports: [MemberPersistenceModule],
 })
 export class MemberModule {}

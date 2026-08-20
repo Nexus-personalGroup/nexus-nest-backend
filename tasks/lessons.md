@@ -359,3 +359,34 @@ export {};
 - **propose 階段先核對 API contract，不要假設「list 有的欄位 update 也支援」**：例如 role 的 GET 回應有 `status`，但 `PATCH /roles/:id` 的 DTO 沒處理它，誤判成「純前端 change」會在動工後才發現要連動改後端 + Swagger + api-client + spec + e2e。寫 proposal 前先讀 `{Create,Update}*Request.ts` 與對應 service，把每個前端互動點對應到實際 DTO 欄位。
 - **archive 前先把 swagger / api-client / 前端同步完**：這些屬 feat 的尾巴，混進 archive commit 會讓未來 cherry-pick / revert 歸檔時連帶動到 swagger。順序：`swagger:bundle` → `api-client generate` → 驗證鏈 → commit feat → 才 archive。archive 後若 `git status` 還有 swagger / schema.ts 變動，是前面沒做乾淨。
 - **archive commit body 要列出新建 / 修改的 master spec**：只有標題的話，未來 `git log` 追不到「某 capability 何時定義 / reqs 何時變動」。reqs 數量用 `grep -c "^### Requirement:" openspec/specs/<spec>/spec.md` 取得。
+
+### 2026-08-20 — 三個「規則本身沒錯，但看不見新東西」的變體
+
+**踩到什麼**：同一個形狀在 `add-chat-rooms` 又出現了兩次（先前已有 `layering` 只掃 `*Controller.ts`）：
+
+1. `classDecorators()` 從 `@Controller(` 起算取裝飾器區段。`@MemberScoped()` 寫在 `@Controller` 上方，整個被漏看——端點明明表態了卻被判沒表態。
+2. 修法一改成「找最早出現的裝飾器」後，註解裡提到的 `@Roles(` 把起點拉進註解內部，`stripComments` 因為少了 `/*` 開頭而失效，說明文字就此冒充成真裝飾器。守則自身的合成測試 C 當場抓到。
+
+**Why**：字串定位的守則有兩個獨立的失效面——**掃描範圍**（看不看得到）與**判定依據**（看到了判不判得準）。改動其中一個常常破壞另一個。
+
+**How to apply**：定位任何程式碼片段前先 `stripComments`，順序不能反。守則的合成輸入測試不是裝飾——它是唯一會在你改動判定邏輯時出聲的東西；C 這種「註解冒充」案例每條規則都該有一個。
+
+### 2026-08-20 — 錯誤碼與它的 exception 是鏈式依賴，不能分塊
+
+**踩到什麼**：tasks.md 把新增 `ResponseCodes` 放塊 1、用它的 domain exception 放塊 3。塊 1 驗證直接紅：`response-codes.spec.ts` 擋下「已註冊但無人使用」的死碼。
+
+**How to apply**：切塊時，「新增錯誤碼 + 訊息 + exception」視為一個單位。判斷準則是「這個塊單獨跑驗證鏈會不會綠」，不是「概念上是不是同一件事」。
+
+### 2026-08-20 — `roomType` 這類欄位用 DB enum，不要 VarChar + 型別斷言
+
+**踩到什麼**：`roomType String @db.VarChar(16)` 配 TS 聯集型別，讀取端只能寫 `row.roomType as ChatRoomType`。
+
+**Why**：那個 `as` 是在騙型別檢查——DB 裡真的出現非法值時，程式會拿著一個型別系統保證不存在的值繼續跑。
+
+**How to apply**：固定集合的欄位用 Prisma enum。非法值在寫入時就被 DB 擋下，讀取端的型別自然收斂，不需要斷言也不需要 runtime 轉換。（PHP 那邊同理；TS 專案禁的是 TS `enum`，不是 DB enum。）
+
+### 2026-08-20 — 模組互相 import 的解法是抽出「只碰資料庫」的那一層
+
+**踩到什麼**：WS gateway 需要房間成員資格判斷、前台的離開房間需要 WS 的事件送出端 → `FrontChatRoomModule` 與 `ChatWsModule` 互相 import。
+
+**How to apply**：抽出不依賴任何一方的核心（`ChatRoomCoreModule`：持久層 + 成員資格判斷），兩邊都 import 它。**不要用 `forwardRef` 遮**——它讓循環繼續存在，只是不再報錯，而下一個循環會更難拆。抽出的模組要在註解裡寫明「刻意不相依 X」，否則之後有人在裡面加一行推播就把循環帶回來了。

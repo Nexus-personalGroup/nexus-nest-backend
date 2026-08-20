@@ -8,7 +8,7 @@ import { FeatureFlagService } from '../../shared/FeatureFlagService';
 import { InvalidRefreshTokenException } from '@app/domain/exception/InvalidRefreshTokenException';
 import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     ACCESS_SECRET: 'a'.repeat(32),
     REFRESH_SECRET: 'b'.repeat(32),

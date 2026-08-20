@@ -359,3 +359,61 @@ model SeedHistoryRecord {
   @@index([seedName], map: "idx_seed_name")
   @@map("seed_history")
 }
+
+/// 房間類型。用 DB enum 而非字串欄位：非法值在寫入時就被擋掉，
+/// 讀取端也不必把 string 轉回聯集型別（那個轉換只能靠斷言，等於騙過型別檢查）
+enum RoomType {
+  DIRECT
+  GROUP
+
+  @@map("room_type")
+}
+
+/// 聊天室。1:1 私聊與群組共用同一張表，以 roomType 區分
+model ChatRoomRecord {
+  id String @id @default(uuid())
+
+  /// 房間類型：DIRECT（1:1 私聊）| GROUP（群組）
+  roomType RoomType @map("room_type")
+
+  /// 群組名稱。私聊為 null——它的顯示名稱由對方決定，存下來會在對方改名時過時
+  name String? @db.VarChar(100)
+
+  /// 1:1 私聊的正規化鍵：兩個成員 ID 排序後以冒號串接（`min:max`），群組為 null
+  ///
+  /// **這是「同一組人只能有一個私聊房間」的唯一保證來源。** 用「先查有沒有」實作
+  /// 會有競態——兩邊同時開啟對話就建出兩個房間，而症狀是訊息分裂在兩個房間，
+  /// 很難察覺。Postgres 的 unique index 允許多個 null，因此群組不會互相衝突。
+  directKey String? @unique @map("direct_key") @db.VarChar(80)
+
+  /// 建立者的成員 ID。稽核用途，不建外鍵——刪除帳號時不應被卡住
+  createdBy String? @map("created_by") @db.VarChar(36)
+
+  members ChatRoomMemberRecord[]
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("chat_rooms")
+}
+
+/// 房間成員關係
+///
+/// **不做軟刪除**：離開房間即刪除該列。軟刪除的價值在「需要還原」或「需要歷史」，
+/// 而重新加入就是建立新的關係、不需還原；歷史由稽核紀錄負責（M3）。
+/// 代價面則相反——成員關係是每次授權判斷都要查的高頻路徑，
+/// 少一個「所有查詢都要記得加」的條件是實質的簡化。
+model ChatRoomMemberRecord {
+  roomId String         @map("room_id")
+  room   ChatRoomRecord @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+  /// 成員 ID。不建外鍵至 members：帳號刪除的處置屬於業務決定，不該由 DB 層連動
+  memberId String @map("member_id")
+
+  joinedAt DateTime @default(now()) @map("joined_at") @db.Timestamptz(3)
+
+  // memberId 索引供「我的房間列表」；主鍵本身涵蓋 (roomId, memberId) 的授權判斷
+  @@id([roomId, memberId])
+  @@index([memberId], map: "idx_chat_room_members_member")
+  @@map("chat_room_members")
+}

@@ -4,6 +4,7 @@ import { SocketIoEventPublisher } from '@app/adapter/out/socketio/SocketIoEventP
 import { EVENT_PUBLISHER_PORT } from '@app/application/port/out/EventPublisherPort';
 import { instanceIdProvider } from '@app/infrastructure/instance-id';
 import { MemberContextModule } from './member-context.module';
+import { ChatRoomCoreModule } from './chat-room-core.module';
 
 /**
  * WebSocket 連線層
@@ -15,11 +16,14 @@ import { MemberContextModule } from './member-context.module';
  * HTTP 的 JwtAuthGuard 也 import 同一個 module，兩邊拿到的是同一份實作。
  * 這正是「判定邏輯只有一份」在 DI 層面的落實方式。
  *
- * `EVENT_PUBLISHER_PORT` 對外 export：M2 的聊天 service 會用它送訊息，
+ * `EVENT_PUBLISHER_PORT` 對外 export：聊天 service 用它送訊息，
  * 但那些 service 不該、也不需要知道 Socket.IO 的存在。
+ *
+ * 房間的成員資格判斷來自 `ChatRoomCoreModule`——與 REST 的離開房間同一份實作。
+ * 該模組刻意不相依本模組，否則兩者會互相 import。
  */
 @Module({
-  imports: [MemberContextModule],
+  imports: [MemberContextModule, ChatRoomCoreModule],
   providers: [
     instanceIdProvider,
     SocketIoEventPublisher,

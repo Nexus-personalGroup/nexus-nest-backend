@@ -1,0 +1,74 @@
+tags: [ChatRoom]
+summary: 建立或取得私聊房間
+description: |
+  為呼叫者與 targetMemberId 建立一對一私聊房間。
+
+  **同一組成員只會有一個私聊房間**：重複呼叫回傳既有房間，不會建立第二個。
+  唯一性由資料庫的唯一約束提供，因此兩邊同時發起也只會產生一個房間。
+  回 200 而非 201 就是這個原因——重複呼叫時沒有任何東西被建立。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [targetMemberId]
+        properties:
+          targetMemberId:
+            type: string
+            format: uuid
+      example:
+        targetMemberId: 550e8400-e29b-41d4-a716-446655440000
+
+responses:
+  '200':
+    description: 建立成功，或回傳既有房間
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              $ref: './_room.yaml'
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            id: 550e8400-e29b-41d4-a716-446655440000
+            roomType: DIRECT
+            name: null
+            memberCount: 2
+            createdAt: '2026-08-20T06:00:00.000Z'
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '400':
+    description: 對自己建立私聊
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 無法與自己建立私聊
+          code: CHAT_ROOM_SELF_DIRECT
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '404':
+    description: 對象不存在或已停用
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

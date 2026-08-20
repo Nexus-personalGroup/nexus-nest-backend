@@ -5,7 +5,7 @@ import { ClearMemberContextPort } from '../../../port/out/member/ClearMemberCont
 import { SaveAuthLogPort } from '../../../port/out/auth/SaveAuthLogPort';
 import { FeatureFlagService } from '../../shared/FeatureFlagService';
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     ACCESS_SECRET: 'test-access-secret',
     REFRESH_SECRET: 'test-refresh-secret',

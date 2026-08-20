@@ -3,7 +3,7 @@ import { SessionIdleGuard } from './SessionIdleGuard';
 import { SessionActivityPort } from '@app/application/port/out/auth/SessionActivityPort';
 import { FeatureFlagService } from '@app/application/service/shared/FeatureFlagService';
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({ APPLICATION_SESSION_IDLE_TIMEOUT: 120 }),
 }));
 

@@ -1,18 +1,481 @@
 openapi: 3.0.0
 info:
-  title: Hexagonal NestJS 前台 (Front) API
+  title: Nexus 前台 (Front) API
   version: 1.0.0
   description: |
-    前台（公開）API 文件。目前僅骨架示範端點 /ping。
-    實際前台端點以 `gen:module <name> --front` 產生後補進本文件。
+    前台 API 文件。聊天室相關端點需帶 Bearer Token；/ping 為公開骨架示範。
 servers:
   - url: 'http://localhost:3000/api/front'
     description: 本地開發環境（前台 API）
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        使用 Access Token 進行身份驗證
+
+        格式: Bearer {accessToken}
+  schemas:
+    SuccessResponse:
+      type: object
+      description: 通用成功回應格式
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: 操作是否成功
+          example: true
+        data:
+          type: object
+          description: 回應資料
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+          description: 回應時間
+          example: '2024-01-01T00:00:00.000Z'
+    ErrorResponse:
+      type: object
+      description: 通用錯誤回應格式
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: 操作是否成功
+          example: false
+        message:
+          type: string
+          description: 錯誤訊息
+          example: 發生錯誤
+        code:
+          type: string
+          description: 錯誤代碼
+          example: ERROR_CODE
+        timestamp:
+          type: string
+          format: date-time
+          description: 回應時間
+          example: '2024-01-01T00:00:00.000Z'
+  responses:
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 請求參數錯誤
+            code: BAD_REQUEST
+            timestamp: '2024-01-01T00:00:00.000Z'
+    NoToken:
+      description: 缺少授權憑證
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 缺少授權憑證，請先登入
+            code: NO_TOKEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+    TokenRevoked:
+      description: Token 已登出或失效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 已登出或失效
+            code: TOKEN_REVOKED
+            timestamp: '2024-01-01T00:00:00.000Z'
+    TokenExpired:
+      description: Token 已過期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 已過期
+            code: TOKEN_EXPIRED
+            timestamp: '2024-01-01T00:00:00.000Z'
+    InvalidToken:
+      description: Token 無效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 無效
+            code: INVALID_TOKEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+    Forbidden:
+      description: 權限不足
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 權限不足
+            code: FORBIDDEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+    NotFound:
+      description: 資源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 資源不存在
+            code: NOT_FOUND
+            timestamp: '2024-01-01T00:00:00.000Z'
+    Conflict:
+      description: 資源已存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 資源已存在
+            code: CONFLICT
+            timestamp: '2024-01-01T00:00:00.000Z'
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 伺服器發生未預期錯誤
+            code: INTERNAL_SERVER_ERROR
+            timestamp: '2024-01-01T00:00:00.000Z'
 paths:
+  /chat-rooms:
+    get:
+      tags:
+        - ChatRoom
+      summary: 查詢自己的房間列表
+      description: |
+        只回傳呼叫者為成員的房間，沒有查詢他人房間的方式。
+        排序為最近更新優先。
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+          example: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+          example: 15
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - list
+                      - meta
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          $ref: '#/paths/~1chat-rooms~1group/post/responses/201/content/application~1json/schema/properties/data'
+                      meta:
+                        type: object
+                        required:
+                          - page
+                          - limit
+                          - total
+                          - totalPages
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+              example:
+                success: true
+                data:
+                  list:
+                    - id: 550e8400-e29b-41d4-a716-446655440000
+                      roomType: GROUP
+                      name: 專案討論
+                      memberCount: 3
+                      createdAt: '2026-08-20T06:00:00.000Z'
+                  meta:
+                    page: 1
+                    limit: 15
+                    total: 1
+                    totalPages: 1
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /chat-rooms/direct:
+    post:
+      tags:
+        - ChatRoom
+      summary: 建立或取得私聊房間
+      description: |
+        為呼叫者與 targetMemberId 建立一對一私聊房間。
+
+        **同一組成員只會有一個私聊房間**：重複呼叫回傳既有房間，不會建立第二個。
+        唯一性由資料庫的唯一約束提供，因此兩邊同時發起也只會產生一個房間。
+        回 200 而非 201 就是這個原因——重複呼叫時沒有任何東西被建立。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - targetMemberId
+              properties:
+                targetMemberId:
+                  type: string
+                  format: uuid
+            example:
+              targetMemberId: 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '200':
+          description: 建立成功，或回傳既有房間
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/paths/~1chat-rooms~1group/post/responses/201/content/application~1json/schema/properties/data'
+                  timestamp:
+                    type: string
+                    format: date-time
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  roomType: DIRECT
+                  name: null
+                  memberCount: 2
+                  createdAt: '2026-08-20T06:00:00.000Z'
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '400':
+          description: 對自己建立私聊
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 無法與自己建立私聊
+                code: CHAT_ROOM_SELF_DIRECT
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '404':
+          description: 對象不存在或已停用
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 找不到帳號
+                code: MEMBER_NOT_FOUND
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /chat-rooms/group:
+    post:
+      tags:
+        - ChatRoom
+      summary: 建立群組房間
+      description: |
+        建立群組，呼叫者自動成為成員。
+
+        名單中若有不存在或已停用的成員，**整個請求失敗**且不建立房間——
+        略過他們會讓呼叫端以為所有人都加入了，而且沒有任何徵兆。
+        名單含呼叫者自己或重複項目時會自動去重，不視為錯誤。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - memberIds
+              properties:
+                name:
+                  type: string
+                  minLength: 1
+                  maxLength: 100
+                memberIds:
+                  type: array
+                  minItems: 1
+                  maxItems: 200
+                  items:
+                    type: string
+                    format: uuid
+            example:
+              name: 專案討論
+              memberIds:
+                - 550e8400-e29b-41d4-a716-446655440000
+      responses:
+        '201':
+          description: 建立成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - id
+                      - roomType
+                      - memberCount
+                      - createdAt
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      roomType:
+                        type: string
+                        enum:
+                          - DIRECT
+                          - GROUP
+                      name:
+                        type: string
+                        nullable: true
+                        description: 群組名稱；私聊為 null（顯示名稱由對方決定，不落庫）
+                        example: 專案討論
+                      memberCount:
+                        type: integer
+                        example: 3
+                      createdAt:
+                        type: string
+                        format: date-time
+                  timestamp:
+                    type: string
+                    format: date-time
+              example:
+                success: true
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440000
+                  roomType: GROUP
+                  name: 專案討論
+                  memberCount: 3
+                  createdAt: '2026-08-20T06:00:00.000Z'
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '404':
+          description: 名單中有不存在或已停用的成員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 找不到帳號
+                code: MEMBER_NOT_FOUND
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/chat-rooms/{roomId}/members/me':
+    delete:
+      tags:
+        - ChatRoom
+      summary: 離開房間
+      description: |
+        移除呼叫者在該房間的成員關係，並通知房間其餘成員。
+        不採軟刪除——重新加入即建立新的關係。
+
+        非成員呼叫時回 404 而非 403：回 403 等於告訴對方「這個房間存在」。
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 已離開（無回應內容）
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '404':
+          description: 房間不存在，或呼叫者不是成員
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 聊天室不存在或你不是成員
+                code: CHAT_ROOM_NOT_FOUND
+                timestamp: '2026-08-20T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /ping:
     get:
       tags:
         - Front
+      security: []
       summary: 前台健康探測（骨架示範）
       description: |
         公開端點，回傳前台 API 存活訊息，用於驗證 /api/front 路由與前台 swagger 骨架。

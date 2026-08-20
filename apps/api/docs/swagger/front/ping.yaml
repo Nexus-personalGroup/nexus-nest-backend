@@ -1,4 +1,6 @@
 tags: [Front]
+# 全域 security 要求 Bearer Token；本端點公開，明示覆寫為不需要
+security: []
 summary: 前台健康探測（骨架示範）
 description: |
   公開端點，回傳前台 API 存活訊息，用於驗證 /api/front 路由與前台 swagger 骨架。

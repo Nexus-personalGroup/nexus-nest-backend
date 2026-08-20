@@ -10,7 +10,6 @@ import {
 
 const PORT_A = 34_101;
 const PORT_B = 34_102;
-const GROUP = 'group-alpha';
 
 /** 等待某個事件抵達，逾時即失敗——不用固定 sleep，那在慢機器上會偽陰性 */
 const waitForEvent = <T>(
@@ -44,16 +43,31 @@ const waitUntil = async (
 };
 
 /**
- * 加入群組並等待伺服器確認
+ * 加入房間並等待伺服器確認
  *
  * 不用 `emitWithAck`：handler 沒有回傳值，ack callback 永遠不會被呼叫，
  * 該 Promise 會一直掛著直到測試逾時——症狀是「卡 60 秒然後 timeout」，
  * 看起來像廣播壞了，實際上根本沒送出去。
  */
-const joinGroup = async (socket: Socket, groupId: string): Promise<void> => {
-  const joined = waitForEvent(socket, SERVER_EVENTS.GROUP_JOINED);
-  socket.emit(CLIENT_EVENTS.JOIN_GROUP, { groupId });
+const joinRoom = async (socket: Socket, roomId: string): Promise<void> => {
+  const joined = waitForEvent(socket, SERVER_EVENTS.ROOM_JOINED);
+  socket.emit(CLIENT_EVENTS.JOIN_ROOM, { roomId });
   await joined;
+};
+
+/** 建立一個群組房間，成員為指定的人；回傳 roomId */
+const seedRoom = async (
+  prisma: PrismaService,
+  memberIds: string[],
+): Promise<string> => {
+  const room = await prisma.chatRoomRecord.create({
+    data: {
+      roomType: 'GROUP',
+      name: '整合測試房間',
+      members: { create: memberIds.map((memberId) => ({ memberId })) },
+    },
+  });
+  return room.id;
 };
 
 const connect = async (url: string, token: string): Promise<Socket> => {
@@ -82,6 +96,8 @@ describe('WebSocket 跨實例（整合）', () => {
   let prisma: PrismaService;
   let memberId: string;
   let token: string;
+  /** 真實存在且 memberId 是其成員的房間——加入房間現在要通過成員資格判斷 */
+  let roomId: string;
   const sockets: Socket[] = [];
 
   beforeAll(async () => {
@@ -96,6 +112,7 @@ describe('WebSocket 跨實例（整合）', () => {
     });
     memberId = seeded.memberId;
     token = signAccessToken(instanceA.jwt, memberId);
+    roomId = await seedRoom(prisma, [memberId]);
   });
 
   afterEach(async () => {
@@ -163,10 +180,10 @@ describe('WebSocket 跨實例（整合）', () => {
       const socketA = await connectTo(instanceA);
       const socketB = await connectTo(instanceB);
 
-      await Promise.all([joinGroup(socketA, GROUP), joinGroup(socketB, GROUP)]);
+      await Promise.all([joinRoom(socketA, roomId), joinRoom(socketB, roomId)]);
 
       const received = waitForEvent<{ text: string }>(socketB, 'testBroadcast');
-      instanceA.publisher.publishToGroup(GROUP, 'testBroadcast', {
+      instanceA.publisher.publishToRoom(roomId, 'testBroadcast', {
         text: '跨實例',
       });
 
@@ -187,15 +204,108 @@ describe('WebSocket 跨實例（整合）', () => {
       const socketA = await connectTo(instanceA);
       const socketB = await connectTo(instanceB);
 
-      await joinGroup(socketA, GROUP);
+      await joinRoom(socketA, roomId);
 
       const leaked = jest.fn();
       socketB.on('testIsolation', leaked);
       const delivered = waitForEvent(socketA, 'testIsolation');
-      instanceA.publisher.publishToGroup(GROUP, 'testIsolation', {});
+      instanceA.publisher.publishToRoom(roomId, 'testIsolation', {});
 
       await delivered;
       expect(leaked).not.toHaveBeenCalled();
+    });
+  });
+
+  /**
+   * 房間的成員資格。
+   *
+   * **這是本 change 的驗收。** M1 的 `joinGroup` 讓任何已認證使用者拿任意識別碼
+   * 就能加入房間並收到其全部廣播，而它通過了當時所有守則與測試——
+   * 因為沒有任何一項在問「這個人有資格加入嗎」。
+   */
+  describe('房間成員資格', () => {
+    let outsiderToken: string;
+
+    beforeAll(async () => {
+      const outsider = await seedMember(prisma, {
+        email: 'outsider@example.com',
+        password: 'Passw0rd!',
+        roleName: 'outsider',
+      });
+      outsiderToken = signAccessToken(instanceA.jwt, outsider.memberId);
+    });
+
+    it('非成員加入房間 → 收到 CHAT_ROOM_NOT_FOUND', async () => {
+      const socket = await connect(`http://127.0.0.1:${PORT_A}`, outsiderToken);
+      sockets.push(socket);
+
+      const failure = waitForEvent<{ code: string }>(
+        socket,
+        SERVER_EVENTS.ERROR,
+      );
+      socket.emit(CLIENT_EVENTS.JOIN_ROOM, { roomId });
+
+      expect((await failure).code).toBe('CHAT_ROOM_NOT_FOUND');
+    });
+
+    // 只驗錯誤碼不夠：錯誤碼對了但 socket 仍被加進房間的話，隔離其實沒有成立
+    it('非成員加入失敗後 → 收不到該房間的廣播', async () => {
+      const socket = await connect(`http://127.0.0.1:${PORT_A}`, outsiderToken);
+      sockets.push(socket);
+      const member = await connectTo(instanceB);
+      await joinRoom(member, roomId);
+
+      const failure = waitForEvent(socket, SERVER_EVENTS.ERROR);
+      socket.emit(CLIENT_EVENTS.JOIN_ROOM, { roomId });
+      await failure;
+
+      const leaked = jest.fn();
+      socket.on('testMembership', leaked);
+      const delivered = waitForEvent(member, 'testMembership');
+      instanceA.publisher.publishToRoom(roomId, 'testMembership', {});
+
+      await delivered;
+      expect(leaked).not.toHaveBeenCalled();
+    });
+
+    it('房間不存在 → 與非成員同一個錯誤碼', async () => {
+      const socket = await connectTo(instanceA);
+
+      const failure = waitForEvent<{ code: string }>(
+        socket,
+        SERVER_EVENTS.ERROR,
+      );
+      socket.emit(CLIENT_EVENTS.JOIN_ROOM, {
+        roomId: '00000000-0000-4000-8000-0000000000ff',
+      });
+
+      expect((await failure).code).toBe('CHAT_ROOM_NOT_FOUND');
+    });
+
+    it('成員離開房間 → 其他實例上的成員收得到 roomMemberChanged', async () => {
+      const other = await seedMember(prisma, {
+        email: 'leaver@example.com',
+        password: 'Passw0rd!',
+        roleName: 'leaver',
+      });
+      const sharedRoom = await seedRoom(prisma, [memberId, other.memberId]);
+
+      const watcher = await connectTo(instanceA);
+      await joinRoom(watcher, sharedRoom);
+
+      const changed = waitForEvent<{ action: string; memberCount: number }>(
+        watcher,
+        SERVER_EVENTS.ROOM_MEMBER_CHANGED,
+      );
+      // 由實例 B 觸發：跨實例送達才是這裡要證明的事
+      await instanceB.leaveRoom.execute({
+        roomId: sharedRoom,
+        memberId: other.memberId,
+      });
+
+      const payload = await changed;
+      expect(payload.action).toBe('LEFT');
+      expect(payload.memberCount).toBe(1);
     });
   });
 

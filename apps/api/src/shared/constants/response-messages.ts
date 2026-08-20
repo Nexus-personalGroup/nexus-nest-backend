@@ -57,6 +57,10 @@ export const ResponseMessages = {
   INVALID_UPLOAD: (reason: string) => reason,
   ATTACHMENT_NOT_FOUND: '找不到附件',
   ATTACHMENT_FORBIDDEN: '沒有權限刪除此附件',
+  // 「房間不存在」與「你不是成員」刻意共用同一個訊息：分開會讓它變成
+  // 探測任意房間是否存在的工具
+  CHAT_ROOM_NOT_FOUND: '聊天室不存在或你不是成員',
+  CHAT_ROOM_SELF_DIRECT: '無法與自己建立私聊',
 
   // 系統：刻意維持通用英文訊息，不洩漏內部實作細節
   INTERNAL_SERVER_ERROR: 'Internal server error',

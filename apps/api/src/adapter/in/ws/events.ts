@@ -4,29 +4,23 @@
  * **不在 `emit()` / `@SubscribeMessage()` 直接寫字串字面值。** 前一版專案兩邊各自寫死，
  * 改名時編譯器不會有任何反應，要等執行期才發現事件永遠收不到。
  *
- * 命名分兩類：`CLIENT_EVENTS` 是客戶端送進來的，`SERVER_EVENTS` 是伺服器送出去的。
+ * 只放客戶端送進來的事件；伺服器送出的在 `application/port/out/server-events.ts`
+ * ——那些名稱由業務服務決定，而 application 不得相依 adapter。
  */
 
 /** 客戶端 → 伺服器 */
 export const CLIENT_EVENTS = {
-  JOIN_GROUP: 'joinGroup',
-  LEAVE_GROUP: 'leaveGroup',
+  JOIN_ROOM: 'joinRoom',
+  LEAVE_ROOM: 'leaveRoom',
   PING: 'ping',
 } as const;
 
-/** 伺服器 → 客戶端 */
-export const SERVER_EVENTS = {
-  /** 連線建立且認證通過 */
-  CONNECTED: 'connected',
-  /** 認證失敗或事件處理失敗 */
-  ERROR: 'error',
-  /** 群組成員變動 */
-  GROUP_JOINED: 'groupJoined',
-  GROUP_LEFT: 'groupLeft',
-} as const;
-
 export type ClientEvent = (typeof CLIENT_EVENTS)[keyof typeof CLIENT_EVENTS];
-export type ServerEvent = (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];
+
+export {
+  SERVER_EVENTS,
+  type ServerEvent,
+} from '@app/application/port/out/server-events';
 
 /**
  * 個人房間的名稱

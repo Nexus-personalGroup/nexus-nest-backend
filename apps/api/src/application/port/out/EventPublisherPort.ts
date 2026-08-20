@@ -11,13 +11,13 @@ export const EVENT_PUBLISHER_PORT = 'EVENT_PUBLISHER_PORT';
  */
 export interface EventPublisherPort {
   /**
-   * 送給某個群組的所有連線（含其他實例上的）
+   * 送給某個房間的所有連線（含其他實例上的）
    *
-   * @param groupId - 群組識別碼
+   * @param roomId - 房間識別碼
    * @param event - 事件名稱
    * @param payload - 事件內容
    */
-  publishToGroup(groupId: string, event: string, payload: unknown): void;
+  publishToRoom(roomId: string, event: string, payload: unknown): void;
 
   /**
    * 送給某個成員的所有裝置（含其他實例上的）

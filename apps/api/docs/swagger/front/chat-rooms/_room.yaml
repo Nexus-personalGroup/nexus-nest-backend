@@ -1,0 +1,21 @@
+# 房間視圖的共用結構；四支端點的回應都用它，避免各自寫一份而逐漸長歪
+type: object
+required: [id, roomType, memberCount, createdAt]
+properties:
+  id:
+    type: string
+    format: uuid
+  roomType:
+    type: string
+    enum: [DIRECT, GROUP]
+  name:
+    type: string
+    nullable: true
+    description: 群組名稱；私聊為 null（顯示名稱由對方決定，不落庫）
+    example: 專案討論
+  memberCount:
+    type: integer
+    example: 3
+  createdAt:
+    type: string
+    format: date-time

@@ -151,20 +151,25 @@ pnpm --filter @app/api-client generate
 
 `/chat` namespace，認證在連線階段完成（token 走 handshake 的 `auth.token`，**不接受 query string**）。
 
-M1 提供的是連線層地基：認證、在線狀態、跨實例廣播。聊天業務（訊息、房間、已讀）屬於 M2。
+連線層提供認證、在線狀態、跨實例廣播；房間的成員關係由 `/api/front/chat-rooms` 管理。
+訊息、已讀、斷線補齊屬於後續里程碑。
+
+**加入房間需要成員資格**：`client:joinRoom` 會先向 application 層確認呼叫者是該房間的成員，
+不是就回 `CHAT_ROOM_NOT_FOUND`。因此 `join` 要帶的是真實存在的 `roomId`（uuid），
+不能是任意字串——先用 `POST /api/front/chat-rooms/group` 建一個。
 
 ```bash
 # 手動驗證：需要一組 access token（POST /api/admin/auth/login 取 data.accessToken）
 pnpm --filter @app/api ws:client -- --token <accessToken>
 
-# 開 3 條連線、自動加入群組、連到另一個埠的實例
-pnpm --filter @app/api ws:client -- --token <t> --clients 3 --group demo --url http://127.0.0.1:3001
+# 開 3 條連線、自動加入指定房間、連到另一個埠的實例
+pnpm --filter @app/api ws:client -- --token <t> --clients 3 --room <roomId> --url http://127.0.0.1:3001
 ```
 
-連上後可在 stdin 輸入 `join <id>` / `leave <id>` / `ping` / `drop` / `quit`。
+連上後可在 stdin 輸入 `join <roomId>` / `leave <roomId>` / `ping` / `drop` / `quit`。
 `drop` 主動斷線但不重連，用來觀察 presence 的回收。
 
-**驗證跨實例**：開兩個 API（`PORT=3000` 與 `PORT=3001`），各連一個客戶端到同一個群組，
+**驗證跨實例**：開兩個 API（`PORT=3000` 與 `PORT=3001`），各連一個客戶端到同一個房間，
 從其中一邊送事件，另一邊要收得到。這件事有自動化測試守著：
 
 ```bash

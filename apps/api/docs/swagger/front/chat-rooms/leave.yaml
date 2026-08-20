@@ -1,0 +1,34 @@
+tags: [ChatRoom]
+summary: 離開房間
+description: |
+  移除呼叫者在該房間的成員關係，並通知房間其餘成員。
+  不採軟刪除——重新加入即建立新的關係。
+
+  非成員呼叫時回 404 而非 403：回 403 等於告訴對方「這個房間存在」。
+
+parameters:
+  - name: roomId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 已離開（無回應內容）
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '404':
+    description: 房間不存在，或呼叫者不是成員
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 聊天室不存在或你不是成員
+          code: CHAT_ROOM_NOT_FOUND
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

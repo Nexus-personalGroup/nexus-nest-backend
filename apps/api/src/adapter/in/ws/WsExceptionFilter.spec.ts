@@ -50,7 +50,7 @@ describe('WsExceptionFilter', () => {
     // ZodValidationPipe 拋的形狀
     const exception = new BadRequestException({
       message: '資料驗證失敗',
-      errors: [{ field: 'groupId', message: 'Required' }],
+      errors: [{ field: 'roomId', message: 'Required' }],
     });
 
     filter.catch(exception, host);
@@ -59,7 +59,7 @@ describe('WsExceptionFilter', () => {
       'error',
       expect.objectContaining({
         message: '資料驗證失敗',
-        errors: [{ field: 'groupId', message: 'Required' }],
+        errors: [{ field: 'roomId', message: 'Required' }],
       }),
     );
   });

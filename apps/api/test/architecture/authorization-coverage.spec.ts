@@ -1,7 +1,18 @@
 import { collectSourceFiles, readSource } from './helpers';
 
-/** 授權相關的裝飾器；三者任一即算已表態 */
-const AUTHZ_DECORATORS = ['@Permissions(', '@Roles(', '@Public('];
+/**
+ * 授權相關的裝飾器；任一即算已表態。
+ *
+ * `@MemberScoped(` 是前台專用的表態：資源層級授權在 application 層（成員資格不是
+ * 權限碼能表達的東西）。它**不代表免授權**，因此下方另有一條規則限制它只能出現在
+ * `web/front/` 之下——後台繞過 RBAC 的萬用通行證正是這條規則要防的東西。
+ */
+const AUTHZ_DECORATORS = [
+  '@Permissions(',
+  '@Roles(',
+  '@Public(',
+  '@MemberScoped(',
+];
 
 /**
  * 收外部輸入的參數裝飾器。
@@ -22,6 +33,9 @@ const INPUT_DECORATORS = ['@Param(', '@Body(', '@Query('];
 const stripComments = (code: string): string =>
   code.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
+/** class 層可能出現的裝飾器，用來定位裝飾器區段的起點 */
+const CLASS_DECORATOR_ANCHORS = ['@Controller(', ...AUTHZ_DECORATORS];
+
 /**
  * 取 class 層級的裝飾器區段：`@Controller(` 起至 `export class` 為止。
  *
@@ -29,9 +43,19 @@ const stripComments = (code: string): string =>
  * 這兩者之間只會是裝飾器，註解不會夾在中間。
  */
 const classDecorators = (source: string): string => {
-  const start = source.indexOf('@Controller(');
+  // 必須先去註解再定位：註解裡提到的裝飾器會把起點往前拉到註解內部，
+  // 後續的 stripComments 因為少了 `/*` 開頭而失效，說明文字就此冒充成真裝飾器
+  source = stripComments(source);
   const end = source.indexOf('export class');
-  return start >= 0 && start < end ? source.slice(start, end) : '';
+  if (end < 0) return '';
+  // 起點取「最早出現的 class 層裝飾器」而非固定的 @Controller(：
+  // 裝飾器順序是自由的，寫在 @Controller 上方的 @MemberScoped 曾因此被整段漏看，
+  // 症狀是端點明明表態了卻被判定沒表態——誤報比漏報好，但一樣會侵蝕對守則的信任
+  const start = [...CLASS_DECORATOR_ANCHORS]
+    .map((anchor) => source.indexOf(anchor))
+    .filter((index) => index >= 0 && index < end)
+    .reduce((min, index) => Math.min(min, index), Number.MAX_SAFE_INTEGER);
+  return start === Number.MAX_SAFE_INTEGER ? '' : source.slice(start, end);
 };
 
 type Handler = { name: string; line: number; body: string };
@@ -151,6 +175,23 @@ describe('架構守則：接受任意資源識別碼的端點必須表態授權'
         : `以下端點接受任意資源識別碼卻沒有授權裝飾器：\n${unguarded.join(
             '\n',
           )}\n全域 guard 對未標註的路由一律放行，等於任何已登入者都能操作任何人的資源。\n請標 @Permissions / @Roles；確實要公開就標 @Public 明示。`,
+    ).toBe('');
+  });
+
+  it('@MemberScoped 只能出現在前台 controller', () => {
+    const misplaced = controllers
+      .filter((file) => !file.includes('/web/front/'))
+      .filter((file) =>
+        stripComments(readSource(file)).includes('@MemberScoped('),
+      )
+      .map((file) => `  ${file}`);
+
+    expect(
+      misplaced.length === 0
+        ? ''
+        : `以下後台 controller 使用了 @MemberScoped：\n${misplaced.join(
+            '\n',
+          )}\n後台的授權是 RBAC，請用 @Permissions / @Roles；@MemberScoped 會變成繞過權限檢查的通行證。`,
     ).toBe('');
   });
 

@@ -7,12 +7,12 @@
  *
  * 用法：
  *   pnpm --filter @app/api ws:client -- --token <accessToken>
- *   pnpm --filter @app/api ws:client -- --token <t> --url http://127.0.0.1:3001 --group demo
+ *   pnpm --filter @app/api ws:client -- --token <t> --url http://127.0.0.1:3001 --room <roomId>
  *   pnpm --filter @app/api ws:client -- --token <t> --clients 3      # 同時開 3 條連線
  *
  * 連上之後可用的互動指令（直接在 stdin 輸入）：
- *   join <groupId>     加入群組
- *   leave <groupId>    離開群組
+ *   join <roomId>      加入房間（必須是真實房間且你是成員）
+ *   leave <roomId>     離開房間
  *   ping               往返探測
  *   drop               主動斷線（不重連，用於觀察 presence 的回收）
  *   quit               結束
@@ -23,7 +23,7 @@ import { io, Socket } from 'socket.io-client';
 interface Options {
   url: string;
   token: string;
-  group?: string;
+  room?: string;
   clients: number;
 }
 
@@ -45,7 +45,7 @@ const parseArgs = (argv: string[]): Options => {
   return {
     url: get('url') ?? 'http://127.0.0.1:3000',
     token,
-    group: get('group'),
+    room: get('room'),
     clients: Number(get('clients') ?? '1'),
   };
 };
@@ -68,10 +68,10 @@ const createClient = (options: Options, label: string): Socket => {
   socket.on('error', (payload: unknown) =>
     console.error(`[${label}] 錯誤`, payload),
   );
-  socket.on('groupJoined', (p: unknown) =>
+  socket.on('roomJoined', (p: unknown) =>
     console.log(`[${label}] 已加入群組`, p),
   );
-  socket.on('groupLeft', (p: unknown) =>
+  socket.on('roomLeft', (p: unknown) =>
     console.log(`[${label}] 已離開群組`, p),
   );
   socket.on('disconnect', (reason: string) =>
@@ -81,7 +81,7 @@ const createClient = (options: Options, label: string): Socket => {
   // 監看所有伺服器送來的事件——M2 之後會有新事件，不必回頭改這支腳本
   socket.onAny((event: string, ...args: unknown[]) => {
     if (
-      ['connect', 'connected', 'error', 'groupJoined', 'groupLeft'].includes(
+      ['connect', 'connected', 'error', 'roomJoined', 'roomLeft'].includes(
         event,
       )
     ) {
@@ -99,9 +99,9 @@ const main = (): void => {
     createClient(options, `client-${i + 1}`),
   );
 
-  if (options.group) {
+  if (options.room) {
     sockets.forEach((s) =>
-      s.on('connected', () => s.emit('joinGroup', { groupId: options.group })),
+      s.on('connected', () => s.emit('joinRoom', { roomId: options.room })),
     );
   }
 
@@ -114,10 +114,10 @@ const main = (): void => {
     const [command, arg] = line.trim().split(/\s+/);
     switch (command) {
       case 'join':
-        sockets.forEach((s) => s.emit('joinGroup', { groupId: arg }));
+        sockets.forEach((s) => s.emit('joinRoom', { roomId: arg }));
         break;
       case 'leave':
-        sockets.forEach((s) => s.emit('leaveGroup', { groupId: arg }));
+        sockets.forEach((s) => s.emit('leaveRoom', { roomId: arg }));
         break;
       case 'ping':
         sockets.forEach((s, i) =>

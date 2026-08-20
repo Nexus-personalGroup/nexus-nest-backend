@@ -1,17 +1,209 @@
 openapi: 3.0.0
 
 info:
-  title: Hexagonal NestJS 前台 (Front) API
+  title: Nexus 前台 (Front) API
   version: 1.0.0
   description: |
-    前台（公開）API 文件。目前僅骨架示範端點 /ping。
-    實際前台端點以 `gen:module <name> --front` 產生後補進本文件。
+    前台 API 文件。聊天室相關端點需帶 Bearer Token；/ping 為公開骨架示範。
 
 servers:
   - url: http://localhost:3000/api/front
     description: 本地開發環境（前台 API）
 
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        使用 Access Token 進行身份驗證
+
+        格式: Bearer {accessToken}
+
+  schemas:
+    # ===== 通用回應格式 =====
+    SuccessResponse:
+      type: object
+      description: 通用成功回應格式
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: 操作是否成功
+          example: true
+        data:
+          type: object
+          description: 回應資料
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+          description: 回應時間
+          example: '2024-01-01T00:00:00.000Z'
+
+    ErrorResponse:
+      type: object
+      description: 通用錯誤回應格式
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: 操作是否成功
+          example: false
+        message:
+          type: string
+          description: 錯誤訊息
+          example: 發生錯誤
+        code:
+          type: string
+          description: 錯誤代碼
+          example: ERROR_CODE
+        timestamp:
+          type: string
+          format: date-time
+          description: 回應時間
+          example: '2024-01-01T00:00:00.000Z'
+
+  responses:
+    # 400 Bad Request
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 請求參數錯誤
+            code: BAD_REQUEST
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 401 Unauthorized
+    NoToken:
+      description: 缺少授權憑證
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 缺少授權憑證，請先登入
+            code: NO_TOKEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    TokenRevoked:
+      description: Token 已登出或失效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 已登出或失效
+            code: TOKEN_REVOKED
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    TokenExpired:
+      description: Token 已過期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 已過期
+            code: TOKEN_EXPIRED
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    InvalidToken:
+      description: Token 無效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 無效
+            code: INVALID_TOKEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 403 Forbidden
+    Forbidden:
+      description: 權限不足
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 權限不足
+            code: FORBIDDEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 404 Not Found
+    NotFound:
+      description: 資源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 資源不存在
+            code: NOT_FOUND
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 409 Conflict
+    Conflict:
+      description: 資源已存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 資源已存在
+            code: CONFLICT
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 500 Internal Server Error
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 伺服器發生未預期錯誤
+            code: INTERNAL_SERVER_ERROR
+            timestamp: '2024-01-01T00:00:00.000Z'
+
 paths:
+  /chat-rooms:
+    get:
+      $ref: './chat-rooms/list.yaml'
+
+  /chat-rooms/direct:
+    post:
+      $ref: './chat-rooms/create-direct.yaml'
+
+  /chat-rooms/group:
+    post:
+      $ref: './chat-rooms/create-group.yaml'
+
+  /chat-rooms/{roomId}/members/me:
+    delete:
+      $ref: './chat-rooms/leave.yaml'
+
   /ping:
     get:
       $ref: './ping.yaml'

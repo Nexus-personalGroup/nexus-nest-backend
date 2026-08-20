@@ -5,7 +5,7 @@ import { FeatureFlagService } from '@app/application/service/shared/FeatureFlagS
 import { ResolveMemberContextUseCase } from '@app/application/port/in/shared/ResolveMemberContextUseCase';
 import { PasswordChangeRequiredException } from '@app/domain/exception/PasswordChangeRequiredException';
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     APPLICATION_PASSWORD_CHANGE_PERIOD: 6,
   }),
