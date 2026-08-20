@@ -14,7 +14,7 @@ import { IpListNotFoundException } from '@app/domain/exception/IpListNotFoundExc
 import * as Sentry from '@sentry/nestjs';
 
 // buildSystemLogData uses getEnv() internally
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({ REDIS_KEY_PREFIX: 'test:', SERVICE_NAME: 'test' }),
 }));
 

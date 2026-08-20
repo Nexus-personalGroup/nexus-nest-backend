@@ -14,7 +14,7 @@ import { RoleNotFoundException } from '@app/domain/exception/RoleNotFoundExcepti
 
 jest.mock('bcrypt', () => ({ hash: jest.fn() }));
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     APPLICATION_PASSWORD_MIN_LENGTH: 8,
     APPLICATION_PASSWORD_MAX_LENGTH: 32,
@@ -43,6 +43,7 @@ const makeMember = (overrides: { isDefault?: boolean } = {}): Member =>
 
 const mockLoadMember = {
   existsByEmail: jest.fn(),
+  findActiveMemberIds: jest.fn(),
   loadMemberByEmail: jest.fn(),
   loadMemberById: jest.fn(),
   loadMemberDomainById: jest.fn(),

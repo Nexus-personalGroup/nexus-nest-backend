@@ -5,7 +5,7 @@
 
 ## 進行中
 
-- **`improve-openspec-ws-prefix`**：新增 `ws-` 能力前綴與事件契約的格式檢查，解除 M2 的阻塞。
+（無。`add-chat-rooms` 已完成待合併，下一步是 `add-chat-messaging`。）
 
 ## 待辦
 
@@ -14,7 +14,8 @@
 > Phase 1 只做即時聊天，做到 production 等級。前台另開專案，`apps/web` 為純後台管理。
 > M0 骨架、M1 WS 地基已完成，見「已完成」。
 
-- **M2 聊天核心**：房間、訊息、`clientMessageId` 去重、ack 確認、room 內自增 `seq`、斷線補齊。事件契約寫在 `ws-*` 能力底下（格式見 `openspec/project/openspec-conventions.md`）。
+- **M2 聊天核心**：~~房間~~（`add-chat-rooms` 已完成）、訊息、`clientMessageId` 去重、ack 確認、room 內自增 `seq`、斷線補齊。事件契約寫在 `ws-*` 能力底下（格式見 `openspec/project/openspec-conventions.md`）。
+  - 下一個 change：`add-chat-messaging`。房間的成員資格判斷已有單一來源（`ENSURE_ROOM_MEMBERSHIP_USE_CASE`），送訊息直接複用，不要另寫一份。
 - **M3 監控埋點**：Prometheus metrics + `chat_audit_log` + 管理員稽核表。**介面可以晚做，埋點不能晚做**——這類資料無法回溯補齊。
 - **M4 後台介面**：SSE 即時儀表板、使用者 360 視圖、聊天室總覽、檢舉佇列與處置。
 
@@ -52,6 +53,18 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-20 — 工程基礎的兩處補強
+
+**`improve-ci-run-integration-tests`**：M1 交付了 11 條證明跨實例廣播成立的測試，但沒有自動化執行路徑——CI 只跑 unit + e2e，而 e2e 把 Redis mock 掉。**CI 綠燈當時不代表跨實例廣播還活著。** 新增 `integration` job（CI 首次需要 Redis service）。實測只讓 pipeline 多 4 秒，因為它與 `quality`（關鍵路徑）平行跑。
+
+盤點時發現整合測試的 Redis 連線**是靠巧合對上的**：本機 `.env` 給 6389、CI 落到 envSchema 預設的 6379，剛好等於 service container 的埠。已改為明示宣告。
+
+**`improve-openspec-ws-prefix`**：M2 的事件契約沒有地方可寫——`api-` 強制 HTTP 請求/回應，WS 事件沒有 status code。新增第四類前綴 `ws-`（不分側），並定義兩個方向的必填區塊（`client:` 需 Payload / Ack / Failure，`server:` 需 Payload）。
+
+**順帶修掉一個既有 bug**：`body.includes('**Success Response**')` 無法區分「使用區塊」與「行文提及」——把規則寫進 spec 後，**那份描述規則的 spec 被自己的規則抓出來**。`api-*` 的正向檢查也有同樣問題，且方向更危險（行文提及會誤判為通過）。兩處改用行首匹配。
+
+護欄 79 → 86。新規則在 M2 之前沒有真實樣本，正確性由 6 條合成輸入測試 + 臨時造違規 spec 的反向驗證保證。
 
 ### 2026-08-20 — M1 WebSocket 地基（`add-websocket-foundation`）
 

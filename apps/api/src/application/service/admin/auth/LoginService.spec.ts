@@ -20,7 +20,7 @@ jest.mock('bcrypt', () => ({
   hashSync: jest.fn().mockReturnValue('$2b$04$dummy'),
 }));
 
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     ACCESS_SECRET: 'test-access-secret',
     ACCESS_TOKEN_EXPIRES_IN: 7200,
@@ -53,6 +53,7 @@ const mockLoadMember = {
   loadMemberById: jest.fn(),
   loadMemberDomainById: jest.fn(),
   existsByEmail: jest.fn(),
+  findActiveMemberIds: jest.fn(),
   listMembers: jest.fn(),
   loadMemberContext: jest.fn(),
 } as unknown as jest.Mocked<LoadMemberPort>;

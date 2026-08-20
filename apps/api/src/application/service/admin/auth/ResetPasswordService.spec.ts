@@ -12,7 +12,7 @@ import { FeatureFlagService } from '../../shared/FeatureFlagService';
 jest.mock('bcrypt', () => ({ hash: jest.fn() }));
 
 let logoutAfterReset = false;
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({
     BCRYPT_ROUNDS: 10,
     get APPLICATION_IS_LOGOUT_AFTER_PASSWORD_RESET() {

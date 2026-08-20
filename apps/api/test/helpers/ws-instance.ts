@@ -17,6 +17,10 @@ import {
   PRESENCE_PORT,
   PresencePort,
 } from '@app/application/port/out/presence/PresencePort';
+import {
+  LEAVE_ROOM_USE_CASE,
+  LeaveRoomUseCase,
+} from '@app/application/port/in/front/chat-room/LeaveRoomUseCase';
 
 export interface WsInstance {
   app: NestExpressApplication;
@@ -26,6 +30,8 @@ export interface WsInstance {
   /** 具體實作，供測試查詢 adapter 實際持有的連線（`boundServer`） */
   eventPublisher: SocketIoEventPublisher;
   presence: PresencePort;
+  /** 讓測試能從「這個實例」觸發離開房間，藉此驗證通知確實跨實例送達 */
+  leaveRoom: LeaveRoomUseCase;
   prisma: PrismaService;
   jwt: JwtService;
   /** 正常關閉：走 shutdown hooks，presence 會被清乾淨 */
@@ -63,6 +69,7 @@ export const startInstance = async (port: number): Promise<WsInstance> => {
     publisher: app.get<EventPublisherPort>(EVENT_PUBLISHER_PORT),
     eventPublisher: app.get(SocketIoEventPublisher),
     presence: app.get<PresencePort>(PRESENCE_PORT),
+    leaveRoom: app.get<LeaveRoomUseCase>(LEAVE_ROOM_USE_CASE),
     prisma: app.get(PrismaService),
     jwt: app.get(JwtService),
     close: async () => {

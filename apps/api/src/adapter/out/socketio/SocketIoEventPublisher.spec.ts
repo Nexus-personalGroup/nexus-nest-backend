@@ -18,7 +18,7 @@ describe('SocketIoEventPublisher', () => {
     const { server, to, emit } = makeServer();
     publisher.bind(server);
 
-    publisher.publishToGroup('group-1', 'newMessage', { text: 'hi' });
+    publisher.publishToRoom('group-1', 'newMessage', { text: 'hi' });
 
     expect(to).toHaveBeenCalledWith('group-1');
     expect(emit).toHaveBeenCalledWith('newMessage', { text: 'hi' });
@@ -39,7 +39,7 @@ describe('SocketIoEventPublisher', () => {
   it('server 尚未 bind → 不拋出，只記錄', () => {
     // 事件送不出去不該讓觸發它的業務流程整個失敗
     expect(() =>
-      publisher.publishToGroup('group-1', 'newMessage', {}),
+      publisher.publishToRoom('group-1', 'newMessage', {}),
     ).not.toThrow();
   });
 });

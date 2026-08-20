@@ -15,7 +15,6 @@
 
 驗收方式見 `openspec/project/testing.md` 的整合測試段落——本規格的需求
 MUST 以兩個實際運行的實例驗證，單一實例內的行為不構成證據。
-
 ## Requirements
 ### Requirement: 連線必須先通過認證，且與 HTTP 走同一份解析邏輯
 
@@ -115,6 +114,11 @@ Gateway SHALL 只負責：驗證 payload、呼叫 use case、把結果轉成回�
 
 Gateway MUST NOT 直接相依持久層（Prisma 或 repository）。
 
+**資源存取的授權判斷屬於業務規則**，因此也不得寫在 gateway：gateway 呼叫 use case
+取得許可，取得後才執行 socket 操作（`join` / `leave` / `emit`）。
+socket 操作本身是傳輸細節，反過來也不該下沉到 application 層——
+那會讓 application 相依 Socket.IO。
+
 舊專案的 gateway 長到 544 行、把業務邏輯與廣播混在一起，起因不是疏忽，
 而是**當時沒有任何規則會擋下第一次違規**。
 
@@ -127,4 +131,9 @@ Gateway MUST NOT 直接相依持久層（Prisma 或 repository）。
 
 - **WHEN** 限流判斷直接寫在事件 handler 內
 - **THEN** 違反本需求——它是業務規則，屬於 application 層
+
+#### Scenario: 憑客戶端提供的識別碼直接操作 socket
+
+- **WHEN** handler 收到 `roomId` 後未經 application 層判斷即 `client.join()`
+- **THEN** 違反本需求——那等於任何已認證使用者都能加入任意房間並收到其全部廣播
 

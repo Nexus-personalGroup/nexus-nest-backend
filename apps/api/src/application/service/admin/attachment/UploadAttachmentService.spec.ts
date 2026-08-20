@@ -1,4 +1,4 @@
-jest.mock('../../../../infrastructure/validate-env', () => ({
+jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: () => ({ MAX_UPLOAD_BYTES: 5_242_880 }),
 }));
 

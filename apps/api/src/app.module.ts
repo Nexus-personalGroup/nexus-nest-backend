@@ -39,6 +39,7 @@ import { HealthModule } from './modules/health.module';
 import { ChatWsModule } from './modules/chat-ws.module';
 import { MemberContextModule } from './modules/member-context.module';
 import { SchedulerModule } from './modules/scheduler.module';
+import { FrontChatRoomModule } from './modules/front/chat-room.module';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
 import { getEnv } from './infrastructure/validate-env';
@@ -189,6 +190,7 @@ const resolveWebStaticRoot = (): string | null => {
     AttachmentModule,
     // 前台（公開）模組：與後台平鋪 import，路由前綴 /api/front
     PingModule,
+    FrontChatRoomModule,
     // 全域 JwtAuthGuard（APP_GUARD）需在 AppModule 直接取得 JwtService
     JwtModule,
     HealthModule,

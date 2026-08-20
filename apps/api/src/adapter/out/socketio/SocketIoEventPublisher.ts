@@ -36,8 +36,8 @@ export class SocketIoEventPublisher implements EventPublisherPort {
     return this.server;
   }
 
-  publishToGroup(groupId: string, event: string, payload: unknown): void {
-    this.emit(groupId, event, payload);
+  publishToRoom(roomId: string, event: string, payload: unknown): void {
+    this.emit(roomId, event, payload);
   }
 
   publishToMember(memberId: string, event: string, payload: unknown): void {

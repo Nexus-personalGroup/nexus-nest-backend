@@ -21,6 +21,10 @@ import {
   ResolveMemberContextUseCase,
 } from '@app/application/port/in/shared/ResolveMemberContextUseCase';
 import {
+  ENSURE_ROOM_MEMBERSHIP_USE_CASE,
+  EnsureRoomMembershipUseCase,
+} from '@app/application/port/in/shared/EnsureRoomMembershipUseCase';
+import {
   PRESENCE_PORT,
   PresencePort,
 } from '@app/application/port/out/presence/PresencePort';
@@ -32,9 +36,9 @@ import { WsAuthenticated } from './decorator/ws-auth.decorator';
 import { WsExceptionFilter } from './WsExceptionFilter';
 import { CLIENT_EVENTS, SERVER_EVENTS, personalRoom } from './events';
 import {
-  GroupMembershipRequest,
-  groupMembershipSchema,
-} from './GroupMembershipRequest';
+  RoomMembershipRequest,
+  roomMembershipSchema,
+} from './RoomMembershipRequest';
 
 /** 已完成認證的連線。member 由 `handleConnection` 保證設定 */
 export interface AuthenticatedSocket extends Socket {
@@ -86,6 +90,8 @@ export class ChatGateway
     @Inject(RESOLVE_MEMBER_CONTEXT_USE_CASE)
     private readonly resolveMemberContext: ResolveMemberContextUseCase,
     @Inject(PRESENCE_PORT) private readonly presence: PresencePort,
+    @Inject(ENSURE_ROOM_MEMBERSHIP_USE_CASE)
+    private readonly ensureRoomMembership: EnsureRoomMembershipUseCase,
     private readonly eventPublisher: SocketIoEventPublisher,
     @Inject(INSTANCE_ID) private readonly instanceId: string,
   ) {}
@@ -211,24 +217,40 @@ export class ChatGateway
     }
   }
 
-  @SubscribeMessage(CLIENT_EVENTS.JOIN_GROUP)
-  async handleJoinGroup(
+  /**
+   * 把這條連線加入某房間的 socket room。
+   *
+   * **先取得授權再操作 socket。** 少了這一步，任何已認證使用者都能拿任意 roomId
+   * 加入房間並收到其全部廣播——連線層的認證回答的是「你是誰」，
+   * 不是「你可以碰哪些資源」。判斷本身在 application 層：它是業務規則，
+   * 而 REST 的離開房間用的是同一個判斷。
+   */
+  @SubscribeMessage(CLIENT_EVENTS.JOIN_ROOM)
+  async handleJoinRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody(new ZodValidationPipe(groupMembershipSchema))
-    payload: GroupMembershipRequest,
+    @MessageBody(new ZodValidationPipe(roomMembershipSchema))
+    payload: RoomMembershipRequest,
   ): Promise<void> {
-    await client.join(payload.groupId);
-    client.emit(SERVER_EVENTS.GROUP_JOINED, { groupId: payload.groupId });
+    await this.ensureRoomMembership.execute(client.member.sub, payload.roomId);
+    await client.join(payload.roomId);
+    client.emit(SERVER_EVENTS.ROOM_JOINED, { roomId: payload.roomId });
   }
 
-  @SubscribeMessage(CLIENT_EVENTS.LEAVE_GROUP)
-  async handleLeaveGroup(
+  /**
+   * 把這條連線移出某房間的 socket room。
+   *
+   * 不驗成員資格：對一個本來就沒加入的 socket room 執行離開是無害的無操作，
+   * 而驗證反而會讓「已被移出房間的人無法離開」。這筆豁免登記在
+   * `test/architecture/allowlist.ts`。
+   */
+  @SubscribeMessage(CLIENT_EVENTS.LEAVE_ROOM)
+  async handleLeaveRoom(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody(new ZodValidationPipe(groupMembershipSchema))
-    payload: GroupMembershipRequest,
+    @MessageBody(new ZodValidationPipe(roomMembershipSchema))
+    payload: RoomMembershipRequest,
   ): Promise<void> {
-    await client.leave(payload.groupId);
-    client.emit(SERVER_EVENTS.GROUP_LEFT, { groupId: payload.groupId });
+    await client.leave(payload.roomId);
+    client.emit(SERVER_EVENTS.ROOM_LEFT, { roomId: payload.roomId });
   }
 
   /** 連線活性探測。回傳值走 Socket.IO 的 ack callback，供測試客戶端確認往返正常 */

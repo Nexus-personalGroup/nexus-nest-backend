@@ -1,0 +1,75 @@
+tags: [ChatRoom]
+summary: 建立群組房間
+description: |
+  建立群組，呼叫者自動成為成員。
+
+  名單中若有不存在或已停用的成員，**整個請求失敗**且不建立房間——
+  略過他們會讓呼叫端以為所有人都加入了，而且沒有任何徵兆。
+  名單含呼叫者自己或重複項目時會自動去重，不視為錯誤。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [name, memberIds]
+        properties:
+          name:
+            type: string
+            minLength: 1
+            maxLength: 100
+          memberIds:
+            type: array
+            minItems: 1
+            maxItems: 200
+            items:
+              type: string
+              format: uuid
+      example:
+        name: 專案討論
+        memberIds:
+          - 550e8400-e29b-41d4-a716-446655440000
+
+responses:
+  '201':
+    description: 建立成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              $ref: './_room.yaml'
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            id: 550e8400-e29b-41d4-a716-446655440000
+            roomType: GROUP
+            name: 專案討論
+            memberCount: 3
+            createdAt: '2026-08-20T06:00:00.000Z'
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '404':
+    description: 名單中有不存在或已停用的成員
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-20T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
