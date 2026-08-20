@@ -3,10 +3,12 @@ import { RedisService } from '../infrastructure/redis/redis.service';
 import { RedisTokenBlacklistAdapter } from '../adapter/out/redis/RedisTokenBlacklistAdapter';
 import { RedisMemberContextCacheAdapter } from '../adapter/out/redis/RedisMemberContextCacheAdapter';
 import { RedisSessionActivityAdapter } from '../adapter/out/redis/RedisSessionActivityAdapter';
+import { RedisPresenceAdapter } from '../adapter/out/redis/RedisPresenceAdapter';
 import { TOKEN_BLACKLIST_PORT } from '../application/port/out/auth/TokenBlacklistPort';
 import { CLEAR_MEMBER_CONTEXT_PORT } from '../application/port/out/member/ClearMemberContextPort';
 import { MEMBER_CONTEXT_CACHE_PORT } from '../application/port/out/member/MemberContextCachePort';
 import { SESSION_ACTIVITY_PORT } from '../application/port/out/auth/SessionActivityPort';
+import { PRESENCE_PORT } from '../application/port/out/presence/PresencePort';
 
 /**
  * @Global() — 所有 Redis-backed Port 在此統一提供，
@@ -32,6 +34,8 @@ import { SESSION_ACTIVITY_PORT } from '../application/port/out/auth/SessionActiv
       provide: SESSION_ACTIVITY_PORT,
       useExisting: RedisSessionActivityAdapter,
     },
+    RedisPresenceAdapter,
+    { provide: PRESENCE_PORT, useExisting: RedisPresenceAdapter },
   ],
   exports: [
     RedisService,
@@ -39,6 +43,7 @@ import { SESSION_ACTIVITY_PORT } from '../application/port/out/auth/SessionActiv
     CLEAR_MEMBER_CONTEXT_PORT,
     MEMBER_CONTEXT_CACHE_PORT,
     SESSION_ACTIVITY_PORT,
+    PRESENCE_PORT,
   ],
 })
 export class RedisModule {}

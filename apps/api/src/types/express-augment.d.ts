@@ -1,4 +1,4 @@
-import type { MemberContext } from '../adapter/in/web/decorator/current-member.decorator';
+import type { MemberContext } from '../application/port/member-context';
 
 // 將 JwtAuthGuard 掛上的 member 透過 global namespace augmentation 擴到 Express Request，
 // 各 Guard / Interceptor / Decorator 不需再 `as Request & { member: MemberContext }`

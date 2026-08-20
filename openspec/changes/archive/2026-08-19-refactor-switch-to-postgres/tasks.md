@@ -69,5 +69,5 @@
 - [x] 5.1 跑完整驗證鏈並貼出實際輸出
 - [x] 5.2 `pnpm audit` 重新盤點：**77 個，與模板時期完全相同**——移除 `mysql2` 沒有減少任何一項，代表這些漏洞全不在資料庫 driver 這條路徑上。已更新 `tasks/todo.md` 的條目
 - [x] 5.3 更新 `tasks/todo.md`（M0 進度、漏洞盤點）；`tasks/lessons.md` 新增 5 條：`DELETE` 不支援 `LIMIT`、`pg_isready` 與初始化期臨時伺服器、tmpfs 需設 `PGDATA` 子目錄、`///` 不會產生 `COMMENT ON`、Prisma 7 CLI 旗標與非 TTY 卡住
-- [ ] 5.4 **需使用者手動執行**：修改 `apps/api/.env` 與 `apps/api/.env.example` 的 `DB_PORT=5442` / `DB_USERNAME=postgres` / `DB_DATABASE=nexus_db` / `DB_TEST_DATABASE=nexus_test`（AI 對這兩個檔案無寫入權限）
-- [ ] 5.5 `openspec archive refactor-switch-to-postgres` 封存，delta spec 併入 `openspec/specs/`
+- [x] 5.4 **需使用者手動執行**：修改 `apps/api/.env` 與 `apps/api/.env.example` 的 `DB_PORT=5442` / `DB_USERNAME=postgres` / `DB_DATABASE=nexus_db` / `DB_TEST_DATABASE=nexus_test`（AI 對這兩個檔案無寫入權限）
+- [x] 5.5 `openspec archive refactor-switch-to-postgres` 封存，delta spec 併入 `openspec/specs/`

@@ -9,7 +9,7 @@
 **產品目標**：具備可靠投遞與完整可觀測性的即時聊天服務。Phase 1 只做聊天，做到 production 等級——多實例水平擴展、訊息不重不漏、管理端看得見系統與使用者行為。
 
 - **後端 admin REST API**：認證（登入 / 登出 / refresh / 忘記密碼 / 重設密碼）、會員管理、角色與權限管理、安全管理（IP 白名單 / 黑名單 / 帳號解鎖）、健康檢查。
-- **後端即時通訊層**（規劃中，見 `tasks/todo.md` 的 M1–M3）：WebSocket 連線與認證、Redis presence、跨實例廣播、訊息去重與斷線補齊、監控埋點與行為稽核。
+- **後端即時通訊層**：WebSocket 連線與認證、Redis presence（跨實例一致、實例死亡自動回收）、跨實例廣播——**M1 已完成**。訊息去重與斷線補齊（M2）、監控埋點與行為稽核（M3）見 `tasks/todo.md`。
 - **前端 admin SPA**：**純後台管理**——登入、權限保護、會員 / 角色 / 安全管理頁面，以及聊天服務的監控儀表板（規劃中，見 M4）。**使用者端聊天前台為獨立專案，不在本 repo 內。**
 - **共用 API client**：從後端 OpenAPI bundle 自動產生型別 + TanStack Query hooks，後端 controller 改動時前端編譯期捕捉。
 
@@ -65,7 +65,9 @@ nexus-nest-backend/
 | Files           | AWS S3（`@aws-sdk/client-s3`、presigned URL）                                   |
 | Push            | Firebase Admin SDK                                                              |
 | API Docs        | Swagger 3：分檔 yaml + `swagger-cli bundle`                                     |
-| Testing         | Jest 29（unit + supertest e2e）                                                 |
+| WebSocket       | Socket.IO 4 + `@socket.io/redis-adapter`（跨實例廣播）、`/chat` namespace、`transports: ['websocket']` |
+| 在線狀態        | Redis Hash + 心跳續期（`presence:member:{id}`，field 帶最後心跳時間）           |
+| Testing         | Jest 29（unit + supertest e2e + 兩實例 integration）                            |
 
 ### 前端 `apps/web`
 

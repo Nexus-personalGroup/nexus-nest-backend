@@ -5,7 +5,8 @@ import {
   OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { createClient, RedisClientType } from 'redis';
+import { RedisClientType } from 'redis';
+import { createRedisClient } from './redis-client.factory';
 import { createHash, randomUUID } from 'crypto';
 import { getEnv } from '../validate-env';
 
@@ -13,7 +14,6 @@ import { getEnv } from '../validate-env';
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(RedisService.name);
   private client: RedisClientType | null = null;
-  private readonly MAX_RETRIES = 5;
   private _keyPrefix = '';
   private defaultTtl = 0;
 
@@ -22,41 +22,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this._keyPrefix = env.REDIS_KEY_PREFIX;
     this.defaultTtl = env.REDIS_TTL;
 
-    const reconnectStrategy = (retries: number): number | Error => {
-      if (retries >= this.MAX_RETRIES) {
-        this.logger.error('Redis 重試次數已達上限，停止重試');
-        return new Error('Redis 連線失敗');
-      }
-      const delay = Math.min(retries * 1000, 10000);
+    this.client = createRedisClient((retries, delay) =>
       this.logger.warn(
         `Redis 重新連線中 (第 ${retries + 1} 次，延遲 ${delay}ms)`,
-      );
-      return delay;
-    };
-
-    // connectTimeout 避免初次連線無限等待；pingInterval 定期送 PING 偵測 half-open
-    // （socket 開著卻無回應）連線並觸發 reconnect，降低指令卡死的風險。
-    const CONNECT_TIMEOUT_MS = 5000;
-    const PING_INTERVAL_MS = 30000;
-
-    // 優先使用 REDIS_URL（適用 Redis Cloud、Heroku Redis 等雲端服務）
-    this.client = env.REDIS_URL
-      ? createClient({
-          url: env.REDIS_URL,
-          socket: { reconnectStrategy, connectTimeout: CONNECT_TIMEOUT_MS },
-          pingInterval: PING_INTERVAL_MS,
-        })
-      : createClient({
-          socket: {
-            host: env.REDIS_HOST,
-            port: env.REDIS_PORT,
-            reconnectStrategy,
-            connectTimeout: CONNECT_TIMEOUT_MS,
-          },
-          password: env.REDIS_PASSWORD,
-          database: env.REDIS_DB,
-          pingInterval: PING_INTERVAL_MS,
-        });
+      ),
+    );
 
     this.client.on('connect', () => this.logger.log('Redis 連線成功'));
     this.client.on('error', (err) =>
@@ -124,6 +94,97 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   async del(key: string): Promise<void> {
     if (!this.client?.isOpen) return;
     await this.client.del(key);
+  }
+
+  /**
+   * 建立一條獨立的 Redis 連線
+   *
+   * `@socket.io/redis-adapter` 需要 pub 與 sub **兩條各自獨立**的連線——進入
+   * subscribe 模式的連線在 Redis 協定上不能再發一般指令，共用會讓廣播與其他操作互相打架。
+   *
+   * **刻意不複製 `this.client`**：adapter 必須在 `app.init()` 之前取得連線
+   * （gateway 在 init 階段就綁定，那時才換 adapter 已經來不及），而 `onModuleInit`
+   * 要等到 init 才跑——相依既有連線會拿到一個還沒建立的 client。
+   * 連線設定共用 `createRedisClient`，因此仍然只有一份宣告。
+   *
+   * @param label - 用於日誌辨識這條連線的用途
+   * @returns 已連線的 client；呼叫端負責在關閉時 `quit()`
+   */
+  async createDedicatedClient(label: string): Promise<RedisClientType> {
+    const client = createRedisClient();
+    client.on('error', (err) =>
+      this.logger.error(
+        `Redis 錯誤（${label}）`,
+        err instanceof Error ? err.message : String(err),
+      ),
+    );
+    await client.connect();
+    this.logger.log(`Redis 專用連線已建立（${label}）`);
+    return client;
+  }
+
+  /**
+   * 寫入 Hash 欄位並續期整個 key
+   *
+   * presence 用它記錄「某成員的某條連線最後心跳時間」。TTL 每次都重設是刻意的：
+   * 只寫欄位不續期的話，長時間在線的成員反而會因為 key 到期而整批消失。
+   *
+   * 與 `set` 的靜默降級不同，Redis 不可用時**拋出**——presence 若能靜默失敗，
+   * 呼叫端會拿到「沒有任何人在線」而據此做出錯誤的推播決定。
+   */
+  async hashSet(
+    key: string,
+    field: string,
+    value: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    await this.client.hSet(key, field, value);
+    await this.client.expire(key, ttlSeconds);
+  }
+
+  /** 取出 Hash 的所有欄位。Redis 不可用時拋出，理由同 `hashSet` */
+  async hashGetAll(key: string): Promise<Record<string, string>> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    return this.client.hGetAll(key);
+  }
+
+  /**
+   * 刪除 Hash 的指定欄位
+   *
+   * @returns 刪除後該 Hash 剩餘的欄位數；用於判斷「這是不是該成員的最後一條連線」
+   */
+  async hashDelete(key: string, fields: string[]): Promise<number> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    if (fields.length === 0) return this.client.hLen(key);
+    await this.client.hDel(key, fields);
+    return this.client.hLen(key);
+  }
+
+  /**
+   * 掃描符合 pattern 的 key
+   *
+   * 用 SCAN 而非 KEYS：後者在 key 數量大時會阻塞整個 Redis 行程。
+   * 僅供排程的 sweep 使用，**不可用於請求路徑**。
+   */
+  async scanKeys(pattern: string, batchSize = 100): Promise<string[]> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    const found: string[] = [];
+    for await (const keys of this.client.scanIterator({
+      MATCH: pattern,
+      COUNT: batchSize,
+    })) {
+      found.push(...(Array.isArray(keys) ? keys : [keys]));
+    }
+    return found;
   }
 
   /**

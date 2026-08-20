@@ -16,12 +16,20 @@ import {
  * 實際用的是後者。因此兩件事都查。
  */
 describe('架構守則：DTO 由 Zod schema 推導', () => {
-  const files = collectSourceFiles(['src/adapter/in/web'], {
+  // 涵蓋所有接受外部輸入的進入點，不限 HTTP：WebSocket 事件 payload 與
+  // request body 的信任等級完全相同，把掃描範圍綁在 web 目錄等於默許 WS 走較寬鬆的標準
+  const IN_SIDE_DIRS = ['src/adapter/in/web', 'src/adapter/in/ws'] as const;
+
+  const files = collectSourceFiles([...IN_SIDE_DIRS], {
     exclude: ['.spec.ts'],
   }).filter((f) => /(Request|Query)\.ts$/.test(f));
 
   it('掃描範圍有效', () => {
     expect(files.length).toBeGreaterThan(0);
+  });
+
+  it.each(IN_SIDE_DIRS)('%s 有被掃到', (dir) => {
+    expect(files.filter((f) => f.startsWith(dir)).length).toBeGreaterThan(0);
   });
 
   it('每個 DTO 檔都必須以 z.infer 推導型別', () => {

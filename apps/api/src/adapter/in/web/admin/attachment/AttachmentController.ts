@@ -15,10 +15,8 @@ import { AttachmentFacade } from '@app/application/facade/admin/AttachmentFacade
 import { UploadAttachmentResult } from '@app/application/port/in/admin/attachment/UploadAttachmentUseCase';
 import { InvalidUploadException } from '@app/domain/exception/InvalidUploadException';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
-import {
-  CurrentMember,
-  MemberContext,
-} from '../../decorator/current-member.decorator';
+import { CurrentMember } from '../../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 import { Permissions } from '../../decorator/permissions.decorator';
 import { PermissionCode } from '@app/domain/value-object/Role';
 import {

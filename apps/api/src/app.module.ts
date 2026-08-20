@@ -36,6 +36,8 @@ import { JwtAuthGuard } from './adapter/in/web/guard/JwtAuthGuard';
 import { RolesGuard } from './adapter/in/web/guard/RolesGuard';
 import { PermissionsGuard } from './adapter/in/web/guard/PermissionsGuard';
 import { HealthModule } from './modules/health.module';
+import { ChatWsModule } from './modules/chat-ws.module';
+import { MemberContextModule } from './modules/member-context.module';
 import { SchedulerModule } from './modules/scheduler.module';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
@@ -190,6 +192,10 @@ const resolveWebStaticRoot = (): string | null => {
     // 全域 JwtAuthGuard（APP_GUARD）需在 AppModule 直接取得 JwtService
     JwtModule,
     HealthModule,
+    // token → MemberContext 的共用判定，HTTP guard 與 WS gateway 都從這裡取得同一份實作
+    MemberContextModule,
+    // WebSocket 連線層（不分 admin / front 側，見 chat-ws.module.ts）
+    ChatWsModule,
     // 排程：ScheduleModule.forRoot() 全域註冊 SchedulerRegistry；SchedulerModule 宣告各排程器
     ScheduleModule.forRoot(),
     SchedulerModule,

@@ -276,6 +276,25 @@ const envSchema = z.object({
   NOTIFICATION_ALARM_HOUR: z.coerce.number().int().min(0).max(23).default(8),
   NOTIFICATION_ALARM_MINUTE: z.coerce.number().int().min(0).max(59).default(0),
 
+  // ─── WebSocket ───
+  /** 連線的心跳間隔（秒）。presence 靠它續期，太稀疏會讓殭屍存活更久 */
+  WS_HEARTBEAT_INTERVAL: z.coerce.number().int().min(1).default(15),
+  /**
+   * 陳舊判定倍數：超過 `心跳間隔 × 此值` 未更新的連線視為已失效。
+   *
+   * 這是唯一能自動回收「實例被強制終止」所留下之紀錄的機制，不能設為 1——
+   * 單次心跳因網路抖動延遲就會誤判在線使用者為離線。
+   */
+  WS_STALE_MULTIPLIER: z.coerce.number().int().min(2).default(3),
+  /**
+   * 離線廣播的延遲（秒）。使用者斷線後不立即廣播離線，等這段時間確認沒有重連。
+   *
+   * 沒有這段延遲時，一次換頁或短暫斷網會讓聯絡人看到「離線→上線」跳動。
+   */
+  WS_OFFLINE_BROADCAST_DELAY: z.coerce.number().int().min(0).default(5),
+  /** 單一成員允許的同時連線數上限（多裝置、多分頁），超過時拒絕最新的連線 */
+  WS_MAX_CONNECTIONS_PER_MEMBER: z.coerce.number().int().min(1).default(10),
+
   // ─── 排程（@nestjs/schedule，範例排程預設關閉） ───
   /** 範例排程是否啟用；正式排程依需求改寫 ExampleScheduler，測試環境保持關閉 */
   SCHEDULE_ENABLED: z

@@ -132,10 +132,11 @@ pnpm typecheck                                # 三個 workspace 全部 tsc --no
 pnpm lint
 pnpm test                                     # 單元測試 + 架構守則（快，開發時用）
 pnpm --filter @app/api test:e2e               # 改 controller / 路由時加跑（走真 test DB：需本機 PostgreSQL 的 *_test 庫；Redis 仍 mock）
+pnpm --filter @app/api test:integration       # 跨實例 WebSocket（需 pnpm docker:deps 的 postgres + redis）
 
 # 品質檢查（CI 跑的就是這個）
 pnpm test:cov                                 # 單元測試 + 覆蓋率門檻 + 架構守則
-pnpm --filter @app/api test:arch              # 只跑架構守則（19 支規則檔 / 68 項斷言，約 0.5 秒）
+pnpm --filter @app/api test:arch              # 只跑架構守則（19 支規則檔 / 79 項斷言，約 0.5 秒）
 pnpm --filter @app/api swagger:check          # 驗證 swagger bundle 與 api-client 產物是否最新（產物寫入 tmp，不動工作目錄）
 pnpm verify:ci                                # 以容器重現 CI 的 e2e 環境跑一次（需 docker，約 60 秒）
 
@@ -145,6 +146,30 @@ pnpm --filter @app/api-client generate
 ```
 
 **完整指令參考**（含 db、shadcn、build 等）：`openspec/project/tooling.md` → 「完整指令參考」。
+
+## WebSocket（即時通訊）
+
+`/chat` namespace，認證在連線階段完成（token 走 handshake 的 `auth.token`，**不接受 query string**）。
+
+M1 提供的是連線層地基：認證、在線狀態、跨實例廣播。聊天業務（訊息、房間、已讀）屬於 M2。
+
+```bash
+# 手動驗證：需要一組 access token（POST /api/admin/auth/login 取 data.accessToken）
+pnpm --filter @app/api ws:client -- --token <accessToken>
+
+# 開 3 條連線、自動加入群組、連到另一個埠的實例
+pnpm --filter @app/api ws:client -- --token <t> --clients 3 --group demo --url http://127.0.0.1:3001
+```
+
+連上後可在 stdin 輸入 `join <id>` / `leave <id>` / `ping` / `drop` / `quit`。
+`drop` 主動斷線但不重連，用來觀察 presence 的回收。
+
+**驗證跨實例**：開兩個 API（`PORT=3000` 與 `PORT=3001`），各連一個客戶端到同一個群組，
+從其中一邊送事件，另一邊要收得到。這件事有自動化測試守著：
+
+```bash
+pnpm --filter @app/api test:integration
+```
 
 ## 新增功能模組
 

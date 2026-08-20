@@ -11,7 +11,7 @@ import {
   SESSION_ACTIVITY_PORT,
   SessionActivityPort,
 } from '@app/application/port/out/auth/SessionActivityPort';
-import { MemberContext } from '../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 import { getEnv } from '@app/infrastructure/validate-env';
 
 /**

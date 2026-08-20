@@ -229,3 +229,136 @@ describe('架構守則：接受任意資源識別碼的端點必須表態授權'
     });
   });
 });
+
+/**
+ * WebSocket 事件 handler 必須表態認證。
+ *
+ * 與上方的 HTTP 規則是同一個型態的缺陷：**它遵守了所有現存規則，只是缺少
+ * 沒有規則要求它具備的東西**。WS 的認證發生在連線階段（`handleConnection`），
+ * 因此表態的位置在 gateway class；個別事件要繞過就必須明示 `@WsPublic()` 並註明理由。
+ *
+ * 沒有這條規則的話，新增一個忘了認證的 gateway 會一路綠燈——
+ * 前一版專案的 WS 層正是在完全沒有阻力的情況下長歪的。
+ */
+describe('架構守則：WebSocket 事件 handler 必須表態認證', () => {
+  const gateways = collectSourceFiles(['src/adapter/in/ws'], {
+    exclude: ['.spec.ts'],
+  }).filter((file) => file.endsWith('Gateway.ts'));
+
+  /** class 層級的裝飾器區段：`@WebSocketGateway(` 起至 `export class` 為止 */
+  const gatewayClassDecorators = (source: string): string => {
+    const start = source.indexOf('@WebSocketGateway(');
+    const end = source.indexOf('export class');
+    return start >= 0 && start < end ? source.slice(start, end) : '';
+  };
+
+  /** 找出未表態的事件 handler；class 層級已標註時整支 gateway 通過 */
+  const auditGateway = (
+    source: string,
+  ): { unmarked: string[]; handlerCount: number } => {
+    const code = stripComments(source);
+    const classMarked =
+      gatewayClassDecorators(code).includes('@WsAuthenticated(');
+    const lines = code.split('\n');
+    const unmarked: string[] = [];
+    let handlerCount = 0;
+
+    lines.forEach((line, index) => {
+      if (!line.includes('@SubscribeMessage(')) return;
+      handlerCount += 1;
+      if (classMarked) return;
+
+      // 往前吃掉連續的裝飾器行——@WsPublic() 常寫在 @SubscribeMessage 上方
+      let cursor = index;
+      let marked = false;
+      while (cursor >= 0 && /^\s*@/.test(lines[cursor])) {
+        if (
+          lines[cursor].includes('@WsAuthenticated(') ||
+          lines[cursor].includes('@WsPublic(')
+        ) {
+          marked = true;
+          break;
+        }
+        cursor -= 1;
+      }
+      if (!marked) unmarked.push(`第 ${index + 1} 行`);
+    });
+
+    return { unmarked, handlerCount };
+  };
+
+  it('掃描範圍有效', () => {
+    expect(gateways.length).toBeGreaterThan(0);
+    expect(
+      gateways.reduce(
+        (sum, f) => sum + auditGateway(readSource(f)).handlerCount,
+        0,
+      ),
+    ).toBeGreaterThan(0);
+  });
+
+  it('每個事件 handler 都必須被認證涵蓋或明示公開', () => {
+    const offenders: string[] = [];
+
+    for (const file of gateways) {
+      const { unmarked } = auditGateway(readSource(file));
+      offenders.push(...unmarked.map((where) => `  ${file} ${where}`));
+    }
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下 WebSocket 事件 handler 沒有表態認證：\n${offenders.join('\n')}\n請在 gateway class 標 @WsAuthenticated()；確實要公開的個別事件標 @WsPublic() 並註明理由。`,
+    ).toBe('');
+  });
+
+  it('@WsPublic() 必須在鄰近三行內註明理由', () => {
+    const offenders: string[] = [];
+
+    for (const file of gateways) {
+      // 這裡刻意用未去註解的原始碼——要找的正是註解本身
+      const lines = readSource(file).split('\n');
+      lines.forEach((line, index) => {
+        if (!line.includes('@WsPublic(')) return;
+        const hasReason = lines
+          .slice(Math.max(0, index - 3), index)
+          .some((prev) => /\/\/|\*/.test(prev));
+        if (!hasReason) offenders.push(`  ${file}:${index + 1}`);
+      });
+    }
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下 @WsPublic() 沒有註明理由：\n${offenders.join('\n')}\n豁免一旦失去理由就會逐漸長大。`,
+    ).toBe('');
+  });
+
+  /**
+   * 守則自身的測試。
+   *
+   * 與 HTTP 那條同理：這支規則出錯是**靜默的**，只會少報。以合成輸入釘住三個判定。
+   */
+  describe('判定邏輯（合成輸入）', () => {
+    it('A：class 層級標了 @WsAuthenticated → 全部 handler 通過', () => {
+      const src = `@WebSocketGateway({})\n@WsAuthenticated()\nexport class G {\n  @SubscribeMessage('x')\n  h() {}\n}`;
+      expect(auditGateway(src).unmarked).toHaveLength(0);
+    });
+
+    it('B：class 與 handler 都沒標 → 被抓出', () => {
+      const src = `@WebSocketGateway({})\nexport class G {\n  @SubscribeMessage('x')\n  h() {}\n}`;
+      expect(auditGateway(src).unmarked).toHaveLength(1);
+    });
+
+    it('C：只有註解提到 @WsAuthenticated → 仍被抓出', () => {
+      // 註解冒充裝飾器是 HTTP 那條實際踩過的盲區，這裡預先釘住
+      const src = `@WebSocketGateway({})\n// 本 gateway 已由 @WsAuthenticated() 涵蓋\nexport class G {\n  @SubscribeMessage('x')\n  h() {}\n}`;
+      expect(auditGateway(src).unmarked).toHaveLength(1);
+    });
+
+    it('D：handler 層級標了 @WsPublic → 通過', () => {
+      const src = `@WebSocketGateway({})\nexport class G {\n  @WsPublic()\n  @SubscribeMessage('x')\n  h() {}\n}`;
+      expect(auditGateway(src).unmarked).toHaveLength(0);
+    });
+  });
+});
