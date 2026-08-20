@@ -11,7 +11,7 @@
   "scripts": {
     "dev": "concurrently -n api,web -c blue,green \"pnpm --filter @app/api dev\" \"pnpm --filter @app/web dev\"",
     "docker:up": "docker compose up -d --build --wait",
-    "docker:deps": "docker compose up -d --wait mysql redis",
+    "docker:deps": "docker compose up -d --wait postgres redis",
     "docker:init": "docker compose exec api pnpm --filter @app/api db:migrate:deploy && docker compose exec api pnpm --filter @app/api db:seed",
     "docker:logs": "docker compose logs -f api web",
     "docker:renew": "docker compose down && docker volume ls -q --filter name=nexus-nest-backend_node-modules | xargs -r docker volume rm && docker compose up -d --build --wait",

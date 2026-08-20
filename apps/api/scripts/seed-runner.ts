@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { PrismaMariaDb } from '@prisma/adapter-mariadb';
+import { PrismaPg } from '@prisma/adapter-pg';
 import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -25,8 +25,8 @@ const log = pino({
 
 const {
   DB_HOST = 'localhost',
-  DB_PORT = '3306',
-  DB_USERNAME = 'root',
+  DB_PORT = '5432',
+  DB_USERNAME = 'postgres',
   DB_PASSWORD = '',
   DB_DATABASE,
 } = process.env;
@@ -36,14 +36,14 @@ if (!DB_DATABASE) {
   process.exit(1);
 }
 
-// Prisma v7 MariaDB adapter 用物件組態，不用 URL
-const adapter = new PrismaMariaDb({
+// Prisma v7 PostgreSQL adapter 接受 pg.PoolConfig，用物件組態不用 URL
+// UTC 由 schema 的 @db.Timestamptz(3) 保證，不需要 driver 層的時區參數
+const adapter = new PrismaPg({
   host: DB_HOST,
   port: parseInt(DB_PORT, 10),
   user: DB_USERNAME,
   password: DB_PASSWORD,
   database: DB_DATABASE,
-  timezone: 'Z',
 });
 
 const prisma = new PrismaClient({ adapter });

@@ -1,4 +1,4 @@
-import * as mysql from 'mysql2/promise';
+import { Client } from 'pg';
 import * as dotenv from 'dotenv';
 import pino from 'pino';
 
@@ -19,25 +19,36 @@ if (!DB_DATABASE) {
   process.exit(1);
 }
 
+/**
+ * 建立目標資料庫（已存在則略過）
+ *
+ * PostgreSQL 沒有 `CREATE DATABASE IF NOT EXISTS`，且 CREATE DATABASE 不能在
+ * 目標資料庫自身的連線中執行，因此一律先連 `postgres` 維護庫再操作。
+ */
 const createDatabase = async (): Promise<void> => {
-  const connection = await mysql.createConnection({
+  const client = new Client({
     host: DB_HOST || 'localhost',
-    port: parseInt(DB_PORT || '3306', 10),
-    user: DB_USERNAME || 'root',
+    port: parseInt(DB_PORT || '5432', 10),
+    user: DB_USERNAME || 'postgres',
     password: DB_PASSWORD || '',
+    database: 'postgres',
   });
 
-  try {
-    log.info('已連線到 MySQL 伺服器');
+  await client.connect();
 
-    const [rows] = await connection.query(
-      `SELECT SCHEMA_NAME FROM INFORMATION_SCHEMA.SCHEMATA WHERE SCHEMA_NAME = ?`,
+  try {
+    log.info('已連線到 PostgreSQL 伺服器');
+
+    const { rowCount } = await client.query(
+      'SELECT 1 FROM pg_database WHERE datname = $1',
       [DB_DATABASE],
     );
 
-    if ((rows as mysql.RowDataPacket[]).length === 0) {
-      await connection.query(
-        `CREATE DATABASE \`${DB_DATABASE}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+    if (rowCount === 0) {
+      // 資料庫名稱不能走參數化（PostgreSQL 的 DDL 不接受 bind parameter），
+      // 改用 driver 的識別字跳脫，避免名稱含引號時被拼接成任意 SQL
+      await client.query(
+        `CREATE DATABASE ${client.escapeIdentifier(DB_DATABASE)}`,
       );
       log.info(`資料庫 "${DB_DATABASE}" 建立成功！`);
     } else {
@@ -47,7 +58,7 @@ const createDatabase = async (): Promise<void> => {
     log.error({ err: error }, '建立資料庫時發生錯誤');
     process.exit(1);
   } finally {
-    await connection.end();
+    await client.end();
   }
 };
 

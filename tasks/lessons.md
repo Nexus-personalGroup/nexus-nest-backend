@@ -103,9 +103,27 @@
 
 - **P2002 要在 Repository 層轉成 domain exception**：`findByEmail + create` 存在競態。Repository 的 `create` 外層 try/catch，`err.code === 'P2002'` 時丟 domain exception；Service 層不該感知 Prisma 錯誤。
 
-- **MySQL 9 本機開發要設 `allowPublicKeyRetrieval: true`**：MySQL 9 預設 `caching_sha2_password`，非 TLS 連線冷快取下首次認證需向 server 取 RSA 公鑰，取不到會 `ER_CANNOT_RETRIEVE_RSA_KEY`。生產走 TLS 時此選項無作用。
+- **PostgreSQL 的 `DELETE` 不支援 `LIMIT`**：MySQL 可以 `DELETE ... LIMIT n` 分批，PostgreSQL 語法上就沒有這件事。分批要寫成 `DELETE FROM t WHERE ctid IN (SELECT ctid FROM t WHERE ... ORDER BY ... LIMIT n)`。用 `ctid`（實體位置）而非 PK 可省掉第二次索引查找；子查詢與 DELETE 在同一 statement 的快照內求值，對唯寫入不更新的日誌表是安全的。
 
-- **Docker MySQL 剛啟動的前幾秒會 pool timeout**：容器要 5–30 秒才完整 ready，這段期間 Prisma adapter 建不起連線（`pool timeout after 10000ms`），但 mysql2 直連正常。等 10 秒重試即可。
+- **PostgreSQL 容器的 healthcheck 一定要用 `pg_isready`，不能只看行程或埠**：官方映像首次啟動時會**先起一次臨時伺服器**跑 initdb 與初始化腳本，該階段行程已存在但對外連線尚未開放。只檢查行程會得到「已就緒」的錯誤結論，症狀是 api 在資料庫初始化中途連線並以認證失敗告終。
+
+- **`postgres-verify` 的 tmpfs 要掛在 `PGDATA` 的子目錄**：tmpfs 直接掛在 `/var/lib/postgresql/data` 時該目錄非空（掛載點本身），initdb 會拒絕啟動。設 `PGDATA=/var/lib/postgresql/data/pgdata` 讓 initdb 寫進子目錄即可。
+
+### 2026-08-20 — Prisma 的 `///` 註解不會進資料庫，只進 Client 的 JSDoc
+
+**踩到什麼**：以為在 `schema.prisma` 的欄位上加 `///` 描述、重跑 `prisma migrate dev` 就會把描述寫進資料庫。實際上 migration 的 SQL **一個字都不會變**，`psql \d+` 什麼也看不到。
+
+**Why**：`///` 是 Prisma 的 documentation comment，只流向產生的 Prisma Client `.d.ts`（成為 JSDoc）與 DMMF。Prisma **從不產生 `COMMENT ON TABLE / COLUMN`**，資料庫端的註解完全不在它的職責範圍內。兩者是各自獨立的機制，不是同一份資料的兩種呈現。
+
+**How to apply**：要讓描述同時在 IDE 與資料庫可見，就得兩層都寫——`///` 給 Prisma Client，`COMMENT ON` 手動寫進 migration。但**不要手抄**：用 `pnpm --filter @app/api gen:comments` 由 `///` 產生 SQL 再附加到 migration，維持 schema 是單一真相。`COMMENT ON` 冪等，重下會覆蓋，所以改描述時開一支新 migration 重下全部即可。
+
+### 2026-08-20 — Prisma 7 的 CLI 移除了數個常用旗標，且非 TTY 下會靜默卡住
+
+**踩到什麼**：`prisma migrate dev --skip-generate` 報 `unknown or unexpected option`；`prisma migrate reset --force --skip-seed` 直接以 status 130 結束，錯誤輸出被 ts-node 的堆疊蓋掉，看起來像當掉。
+
+**Why**：Prisma 7 精簡了 migrate 子指令的旗標（`--skip-generate` 已不存在）。而偵測到 drift 時 `migrate dev` 會要求互動確認，在非 TTY（腳本、CI、agent）環境下拿不到輸入就以 130 收場——那是 SIGINT 的退出碼，不是「壞掉」。
+
+**How to apply**：先用 `prisma <cmd> --help` 確認旗標存在。要在非互動環境重建資料庫，與其跟 `migrate reset` 的提示搏鬥，不如直接 `psql -c 'DROP SCHEMA public CASCADE; CREATE SCHEMA public;'` 再 `migrate dev`——沒有 drift 就不會有提示。管線加 `< /dev/null` 可讓它立刻失敗而不是掛著等輸入。
 
 ## JWT / 認證
 

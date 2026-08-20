@@ -1,4 +1,4 @@
-import * as mysql from 'mysql2/promise';
+import { Client } from 'pg';
 import * as dotenv from 'dotenv';
 import pino from 'pino';
 
@@ -19,24 +19,35 @@ if (!DB_DATABASE) {
   process.exit(1);
 }
 
+/**
+ * 刪除目標資料庫
+ *
+ * 與 MySQL 不同，PostgreSQL 拒絕刪除仍有連線的資料庫——開著 Prisma Studio
+ * 或 psql 都會讓 DROP 直接失敗。`WITH (FORCE)`（PostgreSQL 13+）會先中斷既有連線。
+ */
 const dropDatabase = async (): Promise<void> => {
-  const connection = await mysql.createConnection({
+  const client = new Client({
     host: DB_HOST || 'localhost',
-    port: parseInt(DB_PORT || '3306', 10),
-    user: DB_USERNAME || 'root',
+    port: parseInt(DB_PORT || '5432', 10),
+    user: DB_USERNAME || 'postgres',
     password: DB_PASSWORD || '',
+    database: 'postgres',
   });
 
-  try {
-    log.info('已連線到 MySQL 伺服器');
+  await client.connect();
 
-    await connection.query(`DROP DATABASE IF EXISTS \`${DB_DATABASE}\``);
+  try {
+    log.info('已連線到 PostgreSQL 伺服器');
+
+    await client.query(
+      `DROP DATABASE IF EXISTS ${client.escapeIdentifier(DB_DATABASE)} WITH (FORCE)`,
+    );
     log.info(`資料庫 "${DB_DATABASE}" 刪除成功！`);
   } catch (error) {
     log.error({ err: error }, '刪除資料庫時發生錯誤');
     process.exit(1);
   } finally {
-    await connection.end();
+    await client.end();
   }
 };
 

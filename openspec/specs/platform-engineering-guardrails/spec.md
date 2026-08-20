@@ -8,9 +8,7 @@
 
 分工判準：單檔即可判定的 import 邊界交給 eslint（lint 期 + IDE 即時），跨檔語意交給架構測試；
 型別能表達的完整性（如常數是否存在）不另寫檢查，交給 TypeScript。
-
 ## Requirements
-
 ### Requirement: 分層邊界檢查
 
 系統 SHALL 以自動化檢查確保 controller 不直接相依持久層。任何 `src/adapter/in/**/*.controller.ts` 檔案 MUST NOT import `PrismaService`、`PrismaClient` 或任何以 `Repository` 結尾的型別。
@@ -107,7 +105,7 @@
 
 #### Scenario: 在無資料庫環境執行
 
-- **WHEN** 在未啟動 MySQL / Redis 的環境執行架構檢查
+- **WHEN** 在未啟動 PostgreSQL / Redis 的環境執行架構檢查
 - **THEN** 檢查正常完成並回報結果
 
 ### Requirement: import 邊界的 lint 期攔截
@@ -517,3 +515,4 @@ script 名稱檢查 MUST 只比對含冒號的名稱——散文中的「`.pnpm 
 
 - **WHEN** `docker/` 底下的註解仍寫著已不存在的 `pnpm <script>`
 - **THEN** 檢查失敗並指出該檔案與指令
+

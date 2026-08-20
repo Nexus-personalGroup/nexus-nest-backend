@@ -43,7 +43,7 @@ e2e spec。jest 的 `testRegex` 是 `test/.*\.e2e-spec\.ts$`，平鋪一樣跑�
 
 E2E 走**真正的 test 資料庫**（非 mock Prisma），只 mock Redis：
 
-- **專用測試庫**：`test/setup/setup-env.e2e.ts` 把 `DB_DATABASE` 覆寫成 `*_test`（本專案 Prisma 走 object-config `PrismaMariaDb`、非 `DATABASE_URL`，故以資料庫「名稱」隔離）；`createE2EApp` 用**真 `PrismaService`** 連該庫。
+- **專用測試庫**：`test/setup/setup-env.e2e.ts` 把 `DB_DATABASE` 覆寫成 `*_test`（本專案 Prisma 走 object-config `PrismaPg`、非 `DATABASE_URL`，故以資料庫「名稱」隔離）；`createE2EApp` 用**真 `PrismaService`** 連該庫。
 - **globalSetup 守門**：目標 DB 名稱不是 `*_test` 就中止（絕不誤 migrate / 清空 dev / prod 庫）；通過才建庫 + `prisma migrate deploy` + seed baseline。腳本內跑 prisma 一律 `pnpm exec`（不用 `npx`，否則噴 pnpm `Unknown env config` warn）。
 - **序列執行**：`test:e2e` 用 `--runInBand`（等同 `maxWorkers:1`）——所有 spec 共用同一測試庫，平行會互相 `deleteMany` race（`AUTH_UNAUTHENTICATED` / `P2025` 間歇失敗）。
 - **關限流**：`setup-env.ts` 設超大 rate limit env 關掉全域 `APP_GUARD ThrottlerGuard`——序列連跑會跨 spec 累計觸發 429；且 `.overrideGuard(ThrottlerGuard)` 對「經 `APP_GUARD` 註冊的全域 guard」**無效**（NestJS 已知坑），只能走 env。

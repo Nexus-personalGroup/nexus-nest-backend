@@ -19,16 +19,16 @@ nexus-nest-backend/
 
 - Node.js **22.13+**（`packageManager` 釘的 pnpm 11 需要，Node 20 會在 `pnpm install` 當場失敗）
 - pnpm **11+**（透過 corepack 啟用：`corepack enable`）
-- MySQL / MariaDB 與 Redis —— 沒有現成的用 Docker 起，見下節（也可整套跑在容器裡）
+- PostgreSQL 17 與 Redis —— 沒有現成的用 Docker 起，見下節（也可整套跑在容器裡）
 
 ## 用 Docker 開發
 
 repo 只有**一份** `compose.yml`，三種用法靠「指定服務」與 profile 區分：
 
 ```bash
-pnpm docker:up   # 整套跑在容器裡：api + web + mysql + redis
-pnpm docker:deps # 只起 mysql + redis，api / web 跑在 host
-pnpm verify:ci   # 重現 CI 的 e2e 環境（--profile verify 起 mysql-verify 於 13306，跑完即拋）
+pnpm docker:up   # 整套跑在容器裡：api + web + postgres + redis
+pnpm docker:deps # 只起 postgres + redis，api / web 跑在 host
+pnpm verify:ci   # 重現 CI 的 e2e 環境（--profile verify 起 postgres-verify 於 15432，跑完即拋）
 ```
 
 ### 整套跑在容器裡
@@ -67,16 +67,16 @@ pnpm docker:reset  # 全部清掉（含 DB 與 Redis 資料），要重跑 docke
 pnpm docker:deps
 ```
 
-對外埠刻意避開預設值——多數開發機已經有 MySQL 3306 / Redis 6379 在跑。
+對外埠刻意避開預設值——多數開發機已經有 PostgreSQL 5432 / Redis 6379 在跑。
 用這個模式時 `apps/api/.env` 要設成：
 
 ```bash
 DB_HOST=127.0.0.1
-DB_PORT=3316          # 非預設 3306
-DB_USERNAME=root
+DB_PORT=5442          # 非預設 5432
+DB_USERNAME=postgres
 DB_PASSWORD=devsecret
-DB_DATABASE=hexagonal_express_db
-DB_TEST_DATABASE=hexagonal_express_test
+DB_DATABASE=nexus_db
+DB_TEST_DATABASE=nexus_test
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6389       # 非預設 6379
 ```
@@ -84,7 +84,9 @@ REDIS_PORT=6389       # 非預設 6379
 要改埠或密碼就在 repo 根目錄的 `.env` 設 `APP_API_PORT` / `APP_WEB_PORT` /
 `DEV_DB_PORT` / `DEV_REDIS_PORT` / `DEV_DB_PASSWORD`（compose 會讀，預設值即上表）。
 
-已經有自己的 MySQL / Redis 就兩個都不用，直接把 `.env` 指向它們即可。
+`pnpm verify:ci` 用的 `postgres-verify` 固定綁 **15432**，跑完即拋，不與上面的開發用資料庫共用。
+
+已經有自己的 PostgreSQL / Redis 就兩個都不用，直接把 `.env` 指向它們即可。
 
 ## 快速開始
 
@@ -129,7 +131,7 @@ pnpm --filter @app/web dev                    # 只啟動前端
 pnpm typecheck                                # 三個 workspace 全部 tsc --noEmit
 pnpm lint
 pnpm test                                     # 單元測試 + 架構守則（快，開發時用）
-pnpm --filter @app/api test:e2e               # 改 controller / 路由時加跑（走真 test DB：需本機 MySQL 的 *_test 庫；Redis 仍 mock）
+pnpm --filter @app/api test:e2e               # 改 controller / 路由時加跑（走真 test DB：需本機 PostgreSQL 的 *_test 庫；Redis 仍 mock）
 
 # 品質檢查（CI 跑的就是這個）
 pnpm test:cov                                 # 單元測試 + 覆蓋率門檻 + 架構守則
@@ -227,7 +229,7 @@ openssl rand -hex 32
 | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | typecheck 報「Property X does not exist on PrismaService」一堆   | Prisma client 沒生成。跑 `pnpm --filter @app/api db:generate`（`predev` / `prebuild` 已自動處理） |
 | `pnpm dev` 啟動報 `Cannot find module '.../dist/main'`          | TS incremental cache 跟 nest deleteOutDir 衝突。刪 `apps/api/dist/.tsbuildinfo` 後重跑           |
-| 登入回 `pool timeout: failed to retrieve a connection`           | Docker MySQL 剛啟動還沒完全 ready，等 10 秒重試                                                  |
+| 登入回 `pool timeout: failed to retrieve a connection`           | Docker PostgreSQL 剛啟動還沒完全 ready，等 10 秒重試                                                  |
 | 後端啟動印 `[FCM] / [S3] 憑證未設定`                             | 未設定的選填功能 debug 訊息，可忽略；正式要用再填 `FCM_*` / `AWS_*` 環境變數                       |
 | e2e 報 `DB_TEST_DATABASE … 名稱須含 "test"`                      | 守門機制生效中。在 `.env` 設一個含 `test` 的測試庫名（如 `myapp_test`），庫不存在會自動建           |
 | 架構守則測試失敗                                                  | 訊息會直接指出違規的 `檔案:行號` 與修正方式。規則清單見 `openspec/specs/platform-engineering-guardrails/spec.md` |
