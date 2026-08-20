@@ -35,12 +35,21 @@ hook 的**邏輯**放在工具無關的 `.agents/hooks/*.sh`，各家 AI 的設�
 | Job | 做什麼 | 對應本機指令 |
 | --- | --- | --- |
 | `quality` | 型別 / lint / 單元測試 + **覆蓋率門檻** + 架構守則 | `pnpm typecheck && pnpm lint && pnpm test:cov` |
-| `e2e` | 對 `postgres:17` service container 跑完整 e2e | `pnpm --filter @app/api test:e2e` |
+| `e2e` | 對 `postgres:17` service container 跑完整 e2e（Redis 於測試中 mock） | `pnpm --filter @app/api test:e2e` |
+| `integration` | 起兩個 API 實例 + **真 Redis**，驗證跨實例廣播 | `pnpm --filter @app/api test:integration` |
 | `build` | Prisma generate + build（**`needs: [quality]`**） | `pnpm build` |
 
-`e2e` 刻意不列入 `build` 的 `needs`——它較慢，不該阻塞產出，但它失敗仍會使整個 workflow 失敗。
+`e2e` 與 `integration` 刻意不列入 `build` 的 `needs`——它們較慢，不該阻塞產出，但失敗仍會使整個 workflow 失敗。
 
-三個 job 的前置步驟（Node + pnpm + 快取 + 安裝）抽在 `.github/actions/setup-workspace`，
+**`integration` 與 `e2e` 分開而非併成一個 job，因為兩者的前置條件相反**：e2e 把 Redis mock 掉
+（它驗的是單一實例內的 API 行為，真 Redis 只會多一個不穩定來源）；integration 必須用真 Redis
+——跨實例廣播完全建立在 pub/sub 之上，mock 掉就沒東西可驗。併在一起還會讓兩套 jest 設定
+在同一個 process 內切換，mock 與真連線打架。
+
+`integration` 是 CI 中**唯一需要 Redis 的 job**。沒有它的話，拿掉 `@socket.io/redis-adapter`
+或改壞它的掛載時機，CI 一樣全綠——那類失效在單一實例內完全看不出來。
+
+四個 job 的前置步驟（Node + pnpm + 快取 + 安裝）抽在 `.github/actions/setup-workspace`，
 理由與 `compose.yml` 的 `x-app-base` anchor 相同：複製出去的設定必然漂移。
 Node 版本取自 `.nvmrc`、pnpm 版本取自 `package.json` 的 `packageManager`，
 CI 不另外宣告版號。
@@ -50,9 +59,16 @@ CI 不另外宣告版號。
 不可改用固定秒數或 TCP 輪詢——PostgreSQL 官方映像初始化時會先起一次臨時伺服器，
 埠已開但尚未接受正式連線，探埠會誤判為就緒。
 
-> ⚠️ **CI 通過與否不會自動擋住合併。** GitHub 的 status check 預設只顯示結果，
-> 必須在 repo Settings → Branches 把 `quality` 與 `e2e` 設為 required status checks。
-> 該設定不在版控內，fork 或重建 repo 後要重新設定。
+> ⚠️ **CI 通過與否目前不會擋住合併，而且現階段無法設定。**
+>
+> GitHub 的 status check 預設只顯示結果，要擋合併必須設 branch protection 或 ruleset。
+> 但本 repo 是 **Free 方案下的私有 organization repo**，兩者皆回 403
+> （`Upgrade to GitHub Pro or make this repository public`）。
+>
+> 也就是說 `platform-ci-quality-gate` 的「品質未通過不得進入建置階段」在這個 repo 上
+> **只有 job 相依（`build` needs `quality`）那一半成立**，人為 merge 的那一半不成立。
+> 解除限制的途徑：把 repo 改為 public、或升級付費方案。在那之前這是知情的缺口，
+> 不是忘記設定。
 
 **本機重現 CI 的測試環境**：`pnpm verify:ci` 以 `docker compose --profile verify` 起一個 PostgreSQL 17 容器（healthcheck 等就緒、`tmpfs` 跑在記憶體）並執行 e2e，實測約 60 秒。定位是「測試環境重現」而非「pipeline 模擬」——runner 行為與 cache 命中仍只能在實際 pipeline 觀察。
 
@@ -106,10 +122,10 @@ CI 不另外宣告版號。
 
 要點：
 
-- **三個 job 都在 Pull Request 觸發** —— PR 正是最該擋下問題的時機。`build` 尤其不能只在推送時跑：`nest build` / `vite build` 會抓到 path alias 解析、decorator metadata 與 emit 階段的錯誤，這些 `tsc --noEmit` 抓不到；只在 push 跑等於「PR 綠燈、合併完 develop 才紅」。
-- `quality` 與 `e2e` 平行執行；前者不需外部服務，多數問題數十秒內回報。`build` 等 `quality` 通過才開始。
+- **四個 job 都在 Pull Request 觸發** —— PR 正是最該擋下問題的時機。`build` 尤其不能只在推送時跑：`nest build` / `vite build` 會抓到 path alias 解析、decorator metadata 與 emit 階段的錯誤，這些 `tsc --noEmit` 抓不到；只在 push 跑等於「PR 綠燈、合併完 develop 才紅」。
+- `quality` / `e2e` / `integration` 平行執行；`quality` 不需外部服務，多數問題數十秒內回報。`build` 等 `quality` 通過才開始。
 - e2e 的 DB 連線走 **job variables**，不在 CI 偽造 `.env`：`applyE2EDbEnv()` 以 dotenv 載入 `.env`，而 **dotenv 不覆寫既有 `process.env`**，因此 CI 供應的變數優先生效。
-- `DB_TEST_DATABASE` 必須含 `test`，否則 e2e 的 globalSetup 守門會中止（防誤連 dev / prod）。
+- `DB_TEST_DATABASE` 必須含 `test`，否則 globalSetup 守門會中止（防誤連 dev / prod）。`e2e` 與 `integration` 用**不同的測試庫**，避免兩個 job 平行執行時互相清資料。
 - `git commit --no-verify` 可繞過 husky pre-commit，但繞不過 CI —— 這是把關的最後一道。
 - **覆蓋率門檻只有 `test:cov` 會執行**（`test` 不帶 coverage，供開發時快速回饋）。兩個 workspace 都設有門檻：api 70/60/70/70、web 75/75/60/75；新增設有門檻的 workspace 時**必須提供 `test:cov`**，否則會被 `pnpm -r test:cov` 靜默略過。
 - `apps/api` 的 `test:cov` 刻意串接架構測試（`jest --coverage && jest --config test/jest.arch.config.js`）—— 只寫 `jest --coverage` 會讓 CI 換用 `test:cov` 後靜默漏掉整組架構守則。

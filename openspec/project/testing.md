@@ -55,6 +55,11 @@ e2e spec。jest 的 `testRegex` 是 `test/.*\.e2e-spec\.ts$`，平鋪一樣跑�
 pnpm --filter @app/api test:integration   # 需要 pnpm docker:deps 起著的 postgres + redis
 ```
 
+**CI 會執行它**（`integration` job，帶 postgres 與 redis 兩個 service container）。
+它的外部相依由 `setup-env.integration.ts` 明示宣告，**不依賴 envSchema 的預設值**
+——那樣是靠兩個獨立決定湊巧一致，改動任一方都會以「連不到服務」的形式失敗，
+而症狀指不到原因。
+
 整合測試在同一個 Node process 內起多個 NestJS 實例，有兩個因此而來的限制：
 `INSTANCE_ID` 必須是 DI provider 而非 module 常數（否則實例共用同一個 ID），
 而「關閉 HTTP server」**不等於** `kill -9`——Socket.IO 的 disconnect 照樣觸發、

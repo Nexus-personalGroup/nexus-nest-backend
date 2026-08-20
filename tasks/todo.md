@@ -5,7 +5,7 @@
 
 ## 進行中
 
-- **M1 收尾**：`add-websocket-foundation` 已實作並驗證完畢（unit 314 / 護欄 79 / e2e 151 / integration 11），尚待封存與合併 `feat/websocket-foundation` → `develop`。
+- **`improve-ci-run-integration-tests`**：把跨實例整合測試接進 CI。M1 交付了 11 條測試但沒有自動化執行路徑——CI 綠燈目前不代表跨實例廣播還活著，而 M2 會大量改動 WS 層。
 
 ## 待辦
 
@@ -24,7 +24,12 @@
 
 ### 需人工處理（AI 做不到）
 
-- **設定 branch protection**：GitHub repo → Settings → Branches，對 `develop` 與 `main` 把 `品質檢查` / `E2E` / `建置` 三個 check 都設為 required status checks。**沒設的話 CI 只會顯示紅燈、不會擋住合併**，`platform-ci-quality-gate` 的保證形同虛設。此設定不在版控內，fork 或重建 repo 後要重設。
+- **決定 CI 要不要能擋住合併**（目前擋不住，且無法設定）：branch protection 與 ruleset 在
+  **Free 方案的私有 organization repo** 上都回 403（`Upgrade to GitHub Pro or make this
+  repository public`）。實測於 2026-08-20。三條路徑：(a) 把 repo 改為 public——免費且立即可用；
+  (b) 升級 GitHub Team；(c) 加一支 pre-push hook 在本機跑檢查——擋得住手滑，擋不住
+  `--no-verify`。**在做出選擇之前，`platform-ci-quality-gate` 的保證只有「job 相依」那一半成立**
+  （`build` needs `quality`），人為 merge 的那一半不成立。這是知情的缺口，不是忘記設定。
 
 > **env 檔的協作方式**：`apps/api/.env` 與 `.env.example` 在 AI 的權限設定中被拒絕存取。
 > 需要改動時由 AI 產生 `apps/api/env` / `env.example`（無點，可寫入），使用者複製過去後刪除暫存檔。
@@ -33,8 +38,6 @@
 ### 觀察中
 
 - **e2e 有間歇性失敗**（繼承自模板）：模板期間發生 2 次，皆重跑後全綠、無法重現。共同點是「緊接在另一個會寫檔案的指令之後的第一次執行」——懷疑與 ts-jest 快取或檔案 mtime 有關，未證實。**下次務必用 `test:e2e > /tmp/x.log 2>&1` 保留完整輸出**——前兩次都因為用 grep 管線過濾而沒留下失敗的測試名稱，這是查不下去的主因。
-
-- **整合測試在 CI 尚未跑過**：`test:integration` 目前只在本機驗證過（同一 process 起多個實例 + 真 Redis）。CI 的 workflow 還沒把它加進去，加之前要先確認 runner 上多實例佔埠與 Redis service 的行為。**在此之前，跨實例廣播沒有自動化把關。**
 
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 

@@ -84,8 +84,66 @@ jobs:
       - run: pnpm --filter @app/api db:generate
       - run: pnpm --filter @app/api test:e2e
 
+  # 跨實例行為：起兩個 API 實例 + 真 Redis，驗證 A 實例送出的事件 B 實例收得到。
+  #
+  # 與 e2e 分開而非併進去，因為兩者的前置條件**相反**：e2e 把 Redis mock 掉
+  # （它驗的是單一實例內的 API 行為，真 Redis 只會多一個不穩定來源），
+  # 這裡則必須用真 Redis——跨實例廣播完全建立在 pub/sub 之上，mock 掉就沒東西可驗。
+  #
+  # 沒有這個 job 的話，拿掉 redis-adapter 或改壞它的掛載時機，CI 一樣全綠——
+  # 那類失效在單一實例內完全看不出來。
+  integration:
+    name: 跨實例整合
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-e2e-secret
+          POSTGRES_DB: nexus_ci_integration_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nexus_ci_integration_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+      # CI 首次需要 Redis——至今不需要是因為 e2e 把它 mock 掉了
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        # 與 compose.yml 的 redis 用同一個判定指令。Redis 沒有 PostgreSQL 那種
+        # 「初始化時先起臨時伺服器」的陷阱，但仍不可用固定秒數等待
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      # 庫名必須含 test，否則 applyE2EDbEnv 的守門會中止（防誤連 dev / prod）。
+      # 與 e2e 用不同的庫，避免兩個 job 平行執行時互相清資料
+      DB_DATABASE: nexus_ci_integration_test
+      DB_TEST_DATABASE: nexus_ci_integration_test
+      # Redis 連線指向 service container。setup-env.integration.ts 有同樣的預設值，
+      # 這裡明寫是為了讓 workflow 自身看得出這個 job 需要 Redis
+      REDIS_HOST: localhost
+      REDIS_PORT: '6379'
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+
+      - run: pnpm --filter @app/api db:generate
+      - run: pnpm --filter @app/api test:integration
+
   # 建置 TypeScript（api + web）。品質未過就不浪費資源建置；
-  # e2e 刻意不列入 needs——它較慢，不該阻塞產出，但失敗仍會使整個 workflow 失敗
+  # e2e 與 integration 刻意不列入 needs——它們較慢，不該阻塞產出，
+  # 但失敗仍會使整個 workflow 失敗
   #
   # PR 階段也要跑：nest build / vite build 會抓到 path alias 解析、decorator metadata
   # 與 emit 階段的錯誤，這些 tsc --noEmit 抓不到。只在 push 時跑等於「PR 是綠的，
