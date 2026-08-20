@@ -4,12 +4,33 @@
  * 與 e2e 的關鍵差別：**不 mock Redis**。跨實例廣播完全建立在 Redis pub/sub 之上，
  * mock 掉等於把要驗證的東西拿掉——那正是前一版專案「單機測試全過、
  * 多實例才發現訊息消失」的成因。
+ *
+ * ## 外部相依
+ *
+ * 這支測試需要**兩個真實服務**：
+ *
+ * - **PostgreSQL**：連線帳密由 `applyE2EDbEnv()` 從 `.env` 載入，資料庫指向 `DB_TEST_DATABASE`
+ * - **Redis**：跨實例廣播的載體，**不可 mock**
+ *
+ * 本機用 `pnpm docker:deps` 起的兩個容器，CI 用 service container。
  */
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { applyE2EDbEnv } from '../helpers/e2e-env';
 
 applyE2EDbEnv();
+
+// Redis 連線**明確宣告**，不依賴 envSchema 的預設值。
+//
+// 原本這裡沒設，本機靠 `.env` 的 6389、CI 沒有 `.env` 就落到 envSchema 預設的
+// `localhost:6379`——剛好等於 service container 的埠。能動，但那是兩個毫無關聯的
+// 決定湊巧一致：改 envSchema 的預設或 compose 的埠，它就會以「連不到 Redis」的形式
+// 失敗，而症狀指不到原因。
+//
+// 預設值取 CI 的 service container；本機由 `.env` 或 shell 覆寫。
+process.env.REDIS_HOST = process.env.REDIS_HOST ?? 'localhost';
+process.env.REDIS_PORT = process.env.REDIS_PORT ?? '6379';
+process.env.REDIS_KEY_PREFIX = 'integration:';
 
 process.env.NODE_ENV = 'test';
 process.env.ACCESS_SECRET = 'integration-access-secret-min-32-chars';
