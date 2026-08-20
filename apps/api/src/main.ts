@@ -63,6 +63,8 @@ import * as yaml from 'js-yaml';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 import { getEnv } from './infrastructure/validate-env';
+import { RedisIoAdapter } from './infrastructure/redis-io.adapter';
+import { RedisService } from './infrastructure/redis/redis.service';
 
 const loadSwaggerDocument = (relPath: string): object => {
   try {
@@ -194,6 +196,12 @@ const bootstrap = async (): Promise<void> => {
   app.flushLogs();
 
   app.enableShutdownHooks();
+
+  // Socket.IO 的跨實例廣播。必須在 listen 之前掛上——WebSocket server 於
+  // listen 時建立，之後才換 adapter 是來不及的
+  const ioAdapter = new RedisIoAdapter(app, app.get(RedisService));
+  await ioAdapter.connect();
+  app.useWebSocketAdapter(ioAdapter);
 
   await app.listen(env.PORT);
   const bootLogger = app.get(Logger);

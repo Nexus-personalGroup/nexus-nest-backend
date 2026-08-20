@@ -24,22 +24,42 @@ apps/api/test/
 │   ├── auth / member / role / security / attachment / front / health
 │   ├── ordering.e2e-spec.ts      # 六處 orderBy 的排序保護（fixture 插入順序刻意與期望相反）
 │   └── serve-static.e2e-spec.ts  # 單一埠：前端 dist + SPA fallback + /api 不被攔截
+├── integration/           # 跨實例／跨行程行為，**用真 Redis**
+│   └── ws-cross-instance.integration-spec.ts
 ├── helpers/               # e2e 與 setup 共用
 │   ├── assertions.ts      # 共用斷言 + describeUnauthorized 產生器
 │   ├── db.ts              # 測試庫 reset / seed
-│   └── e2e-env.ts         # 讀 .env 並算出測試庫連線
+│   ├── e2e-env.ts         # 讀 .env 並算出測試庫連線
+│   └── ws-instance.ts     # 起一個完整 API 實例（含 RedisIoAdapter）+ 簽 token
 ├── setup/                 # jest lifecycle，不含任何測試
 │   ├── test-app.ts        # createE2EApp()（注入真 PrismaService）、createMockRedis()
 │   ├── setup-env.ts       # 單元測試的環境變數（由 package.json 的 jest 欄位載入）
 │   ├── setup-env.e2e.ts   # e2e 環境變數：DB_DATABASE=*_test、關限流
+│   ├── setup-env.integration.ts  # 整合測試環境：**不 mock Redis**、心跳壓到 1 秒
 │   └── global-setup.ts    # 守門（僅 *_test 庫）→ 建庫 + migrate deploy + seed baseline
 ├── jest.arch.config.js    # 架構守則專用設定（rootDir 為 apps/api，不載 setupFiles）
-└── jest.e2e.config.js     # e2e 專用設定（globalSetup + setupFiles + maxWorkers 1）
+├── jest.e2e.config.js     # e2e 專用設定（globalSetup + setupFiles + maxWorkers 1）
+└── jest.integration.config.js  # 整合測試（testTimeout 60s，起多個實例較慢）
 ```
 
-四個目錄的分工是**有守則擋著的**：`e2e-real-database.spec.ts` 會拒絕放在 `test/e2e/` 以外的
+五個目錄的分工是**有守則擋著的**：`e2e-real-database.spec.ts` 會拒絕放在 `test/e2e/` 以外的
 e2e spec。jest 的 `testRegex` 是 `test/.*\.e2e-spec\.ts$`，平鋪一樣跑得到，
 沒有守則的話這個結構會靜默侵蝕回原狀。
+
+**整合測試與 e2e 的前置條件相反**：e2e 驗「單一實例內的 API 行為」且 mock Redis；
+整合測試驗「多個實例之間」，Redis mock 掉就等於把要驗的東西拿掉——跨實例廣播
+完全建立在 Redis pub/sub 之上。兩者混在一起會讓 mock 與真連線在同一個 process 裡打架，
+因此分成兩套 jest 設定。
+
+```bash
+pnpm --filter @app/api test:integration   # 需要 pnpm docker:deps 起著的 postgres + redis
+```
+
+整合測試在同一個 Node process 內起多個 NestJS 實例，有兩個因此而來的限制：
+`INSTANCE_ID` 必須是 DI provider 而非 module 常數（否則實例共用同一個 ID），
+而「關閉 HTTP server」**不等於** `kill -9`——Socket.IO 的 disconnect 照樣觸發、
+`handleDisconnect` 照樣清理 presence。要驗證陳舊回收就直接寫入一筆無人續期的紀錄，
+別用關閉實例來模擬。
 
 E2E 走**真正的 test 資料庫**（非 mock Prisma），只 mock Redis：
 
@@ -68,7 +88,12 @@ E2E 走**真正的 test 資料庫**（非 mock Prisma），只 mock Redis：
 
 門檻只涵蓋**邏輯層**，wiring / 宣告 / 已由 e2e 涵蓋的部分排除在分母外——納入只會稀釋數字，並逼著為 DI 配線寫無意義的測試。
 
-- **後端**（jest）：`coveragePathIgnorePatterns` 排除 `*.module.ts`、`main.ts`、`*Controller.ts`、`*Request.ts`、`*Query.ts`、`port/`、`facade/`、`adapter/out/`、`validate-env.ts`；門檻 70/60/70/70。
+- **後端**（jest）：`coveragePathIgnorePatterns` 排除 `*.module.ts`、`main.ts`、`*Controller.ts`、`*Gateway.ts`、`*Request.ts`、`*Query.ts`、`port/`、`facade/`、`adapter/out/`、`validate-env.ts`；門檻 70/60/70/70。
+
+  `*Gateway.ts` 與 `*Controller.ts` 同一類：in 側的薄進入點，行為由更上層的測試涵蓋
+  （controller 由 e2e、gateway 由 `test/integration/` 的兩實例測試）。**但 filter 與
+  scheduler 不在此列**——它們有實際的判斷邏輯，`GlobalExceptionFilter.spec.ts` 與
+  `ExampleScheduler.spec.ts` 是既有先例。新增這類檔案時要寫單元測試，不要往豁免清單加。
 - **前端**（vitest）：coverage `include` 只列 `src/lib` 與 `src/components`，排除需 Router / api-client context 的組合層（pages、與 `/me` 整合的 hooks）；門檻 75/75/60/75。
 
 門檻只有 `test:cov` 會執行（`test` 不帶 coverage，供開發時快速回饋）。
@@ -82,7 +107,7 @@ pnpm --filter @app/api test:arch   # 只跑架構守則
 pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行）
 ```
 
-現有規則（19 支 / 68 項斷言）：
+現有規則（19 支 / 79 項斷言）：
 
 | 檔案 | 項 | 守住的規則 |
 | --- | --- | --- |

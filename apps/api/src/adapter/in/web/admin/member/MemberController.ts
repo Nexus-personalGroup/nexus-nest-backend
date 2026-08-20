@@ -15,10 +15,8 @@ import {
 import { MemberFacade } from '@app/application/facade/admin/MemberFacade';
 import { PermissionsGuard } from '../../guard/PermissionsGuard';
 import { Permissions } from '../../decorator/permissions.decorator';
-import {
-  CurrentMember,
-  MemberContext,
-} from '../../decorator/current-member.decorator';
+import { CurrentMember } from '../../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 import { PermissionCode } from '@app/domain/value-object/Role';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
 import { listMembersQuerySchema, ListMembersQuery } from './ListMembersQuery';

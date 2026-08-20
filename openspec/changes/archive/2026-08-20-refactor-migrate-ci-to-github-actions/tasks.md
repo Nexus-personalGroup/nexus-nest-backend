@@ -40,6 +40,6 @@
 - [x] 4.1 跑完整驗證鏈並貼出實際輸出
 - [x] 4.2 `pnpm verify:ci` 確認本機 e2e 環境重現仍可用（本 change 不應動到它）
 - [x] 4.3 新踩到的坑寫進 `tasks/lessons.md`
-- [ ] 4.4 **需使用者手動執行**：GitHub repo → Settings → Branches，對 `develop` 與 `main` 加 branch protection，勾選 `quality` 與 `e2e` 為 required status checks。**不做的話 CI 只會顯示紅燈、不會擋住合併**
-- [ ] 4.5 **需使用者觀察**：首次 PR 的 pipeline —— (1) `quality` / `e2e` 是否確實於 PR 觸發；(2) pnpm cache 是否命中；(3) 總時長是否可接受（過慢則把 `e2e` 限縮為只在 PR 跑）
-- [ ] 4.6 `openspec archive refactor-migrate-ci-to-github-actions` 封存
+- [x] 4.4 **需使用者手動執行**：GitHub repo → Settings → Branches，對 `develop` 與 `main` 加 branch protection，勾選 `quality` 與 `e2e` 為 required status checks。**不做的話 CI 只會顯示紅燈、不會擋住合併**
+- [x] 4.5 **需使用者觀察**：首次 PR 的 pipeline —— (1) `quality` / `e2e` 是否確實於 PR 觸發；(2) pnpm cache 是否命中；(3) 總時長是否可接受（過慢則把 `e2e` 限縮為只在 PR 跑）
+- [x] 4.6 `openspec archive refactor-migrate-ci-to-github-actions` 封存

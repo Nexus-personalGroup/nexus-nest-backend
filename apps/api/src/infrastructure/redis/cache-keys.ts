@@ -21,3 +21,16 @@ export const buildSessionActivityKey = (
 
 export const buildPasswordResetKey = (prefix: string, token: string): string =>
   `${prefix}password-reset:${token}`;
+
+/**
+ * 成員的在線連線集合（Hash）。field 為 `{instanceId}:{socketId}`，value 為最後心跳時間。
+ *
+ * 用 Hash 而非 Set：Set 的成員沒有各自的時效，實例被強制終止時來不及清理，
+ * 該成員會被永遠顯示為在線。把心跳時間存在 value 才能過濾掉陳舊的連線。
+ */
+export const buildPresenceKey = (prefix: string, memberId: string): string =>
+  `${prefix}presence:member:${memberId}`;
+
+/** 掃描所有 presence key 的 pattern，供排程 sweep 使用（不可用於請求路徑） */
+export const buildPresenceScanPattern = (prefix: string): string =>
+  `${prefix}presence:member:*`;

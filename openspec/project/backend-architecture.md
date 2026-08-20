@@ -34,6 +34,39 @@ apps/api/src/
 
 **前後台分層**：專案有兩套 API —— 後台（admin，管理端，`/api/admin/*`）與前台（front，公開端，`/api/front/*`）。切分只發生在 **in 側 5 層**（controller / facade / service / port-in / module → 各自進 `admin/` 或 `front/`）；**out 側**（port-out / persistence）、**domain**（model / value-object / exception）、以及 **in 側橫切**（guard / filter / interceptor / decorator）一律**共用、不分前後台**，照 domain 分類放各層根目錄。中性 infra module（health / redis / jwt / email…）留在 `modules/` 根。前台 module 類名加 `Front` 前綴避免與後台同名撞名。**新模組一律用 `gen:module <name> [--admin|--front]` 產生（預設 admin），不要手刻。** Swagger 亦分兩份：後台 `/api/admin/docs`（yaml 在 `docs/swagger/admin/`，餵 `packages/api-client` 給 `apps/web`）、前台 `/api/front/docs`（`docs/swagger/front/`）。health 為中性 ops 端點，不入任一份 client 契約。
 
+### WebSocket 層（`adapter/in/ws`）
+
+即時通訊是**第三個 in 側**，與 admin / front 平行而非其下：
+
+```
+adapter/in/web/     HTTP（分 admin / front 兩側）
+adapter/in/ws/      WebSocket（不分側）
+adapter/in/scheduler/  排程
+```
+
+**為什麼不分側**：聊天 WS 只服務終端使用者，後台的即時儀表板走 SSE 不走 WS，
+沒有「WS 的後台面」這種東西。`side-isolation.spec.ts` 以路徑是否含 `/admin/`、`/front/`
+判定所屬側，因此 `adapter/in/ws` 自然落在該規則之外——這是正確的，不是漏網。
+
+**認證在連線階段完成**，不是逐事件檢查：連線是長期存在的資源，讓未認證的連線先掛著
+再逐事件驗證，等於把判斷散落到每個 handler，漏一個就是漏洞。判定邏輯呼叫
+`ResolveMemberContextUseCase`——**與 HTTP 的 `JwtAuthGuard` 是同一份實作**。
+兩條路徑允許不同的取 token 方式與失敗表現形式，但「這個 token 是否有效」只有一個答案。
+（前一版專案為 WS 重寫了一份，漏掉 `tokenVersion` 比對，導致強制登出對 WS 連線無效。）
+
+**gateway 只做轉譯**：驗證 payload → 呼叫 use case → 轉成回應。業務規則、速率限制、
+狀態判斷都在 application 層。這件事由守則強制——`layering.spec.ts` 與
+`authorization-coverage.spec.ts` 都涵蓋 `*Gateway.ts`，payload 型別則由
+`dto-from-zod.spec.ts` 要求以 `z.infer` 推導。
+
+**事件名稱集中在 `events.ts`**，不在 `emit()` / `@SubscribeMessage()` 寫字串字面值——
+兩邊各自寫死時，改名不會有編譯錯誤，要等執行期才發現事件收不到。
+
+**跨實例廣播**：application 層只認 `EventPublisherPort`，實作掛 `@socket.io/redis-adapter`。
+adapter 必須在 `app.listen()` **之前**掛上（gateway 在 init 階段就綁定），且它取得的
+Redis 連線不能相依 `RedisService` 的生命週期——`onModuleInit` 要等到 init 才跑。
+連線建立走 `createRedisClient` 工廠，設定仍只有一份。
+
 ### 後端慣例
 
 - **Module naming（依 `<side>` = `admin` / `front` 分層）**：in 側依側別分目錄——Controller + DTO → `adapter/in/web/<side>/<module>/`；service → `application/service/<side>/<module>/`（跨前後台共用 service 放 `application/service/shared/`）；facade → `application/facade/<side>/`；port-in → `application/port/in/<side>/<module>/`；module → `modules/<side>/<module>.module.ts`。**共用層不分前後台**：Prisma repository → `adapter/out/persistence/<module>/`、port-out → `application/port/out/<module>/`、domain → `domain/`；Guard / Filter / Decorator / Interceptor 放各自頂層目錄。

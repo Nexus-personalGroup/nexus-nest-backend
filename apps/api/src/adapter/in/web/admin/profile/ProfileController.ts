@@ -1,9 +1,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { MemberFacade } from '@app/application/facade/admin/MemberFacade';
-import {
-  CurrentMember,
-  MemberContext,
-} from '../../decorator/current-member.decorator';
+import { CurrentMember } from '../../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 
 @Controller('admin/me')
 export class ProfileController {

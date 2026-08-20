@@ -20,10 +20,8 @@ import {
   resetPasswordSchema,
 } from './ResetPasswordRequest';
 import { RefreshTokenRequest, refreshTokenSchema } from './RefreshTokenRequest';
-import {
-  CurrentMember,
-  MemberContext,
-} from '../../decorator/current-member.decorator';
+import { CurrentMember } from '../../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 import { Public } from '../../decorator/public.decorator';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
 import { Throttle } from '@nestjs/throttler';

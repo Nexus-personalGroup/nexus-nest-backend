@@ -7,7 +7,7 @@ import {
 import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { PERMISSIONS_KEY } from '../decorator/permissions.decorator';
-import { MemberContext } from '../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 
 /**
  * 權限守衛：必須搭配 JwtAuthGuard 一起使用（JwtAuthGuard 先跑，permissions 才存在）。

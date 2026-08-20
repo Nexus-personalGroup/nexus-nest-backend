@@ -21,10 +21,8 @@ import { ListIpListResult } from '@app/application/port/in/admin/security/Securi
 import { RolesGuard } from '../../guard/RolesGuard';
 import { Roles } from '../../decorator/roles.decorator';
 import { RoleCode } from '@app/domain/value-object/Role';
-import {
-  CurrentMember,
-  MemberContext,
-} from '../../decorator/current-member.decorator';
+import { CurrentMember } from '../../decorator/current-member.decorator';
+import { MemberContext } from '@app/application/port/member-context';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
 import { listIpListQuerySchema, ListIpListQuery } from './ListIpListQuery';
 import {

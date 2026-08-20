@@ -3,66 +3,37 @@ import {
   ExecutionContext,
   Inject,
   Injectable,
-  Logger,
-  OnModuleInit,
   UnauthorizedException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { JwtService } from '@nestjs/jwt';
 import { Request } from 'express';
 import {
-  LOAD_MEMBER_CONTEXT_PORT,
-  LoadMemberContextPort,
-} from '@app/application/port/out/member/LoadMemberContextPort';
-import {
-  TOKEN_BLACKLIST_PORT,
-  TokenBlacklistPort,
-} from '@app/application/port/out/auth/TokenBlacklistPort';
-import {
-  MEMBER_CONTEXT_CACHE_PORT,
-  MemberContextCachePort,
-} from '@app/application/port/out/member/MemberContextCachePort';
+  RESOLVE_MEMBER_CONTEXT_USE_CASE,
+  ResolveMemberContextUseCase,
+} from '@app/application/port/in/shared/ResolveMemberContextUseCase';
 import { FeatureFlagService } from '@app/application/service/shared/FeatureFlagService';
-import { JwtPayload } from '@app/application/port/jwt-payload';
+import { MemberContext } from '@app/application/port/member-context';
 import { getEnv } from '@app/infrastructure/validate-env';
 import { addMonths } from '@app/infrastructure/date';
-import {
-  MemberContext,
-  MemberContextSchema,
-} from '../decorator/current-member.decorator';
 import { IS_PUBLIC_KEY } from '../decorator/public.decorator';
-import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
 import { PasswordChangeRequiredException } from '@app/domain/exception/PasswordChangeRequiredException';
 
 /**
  * 全域認證 Guard（APP_GUARD）。
  * - `@Public()` 標記的路由與 `/api/metrics` 跳過認證。
- * - 驗證 access token、檢查黑名單與帳號狀態，並把 MemberContext 掛到 request。
- * - 比對 payload.tokenVersion 與 DB 現值，攔截被 refresh 重用連坐撤銷的舊 token。
+ * - token 的驗證與 MemberContext 解析委由 `ResolveMemberContextUseCase`——
+ *   WebSocket 的連線認證呼叫的是同一個實作，避免兩條路徑的判定邏輯分歧。
+ * - 本 Guard 只保留 HTTP 專屬的部分：路由層級的豁免、從 header 取 token、
+ *   密碼到期導流（WS 沒有對應的處置流程，故不下沉到共用層）。
  */
 @Injectable()
-export class JwtAuthGuard implements CanActivate, OnModuleInit {
-  private readonly logger = new Logger(JwtAuthGuard.name);
-  private jwtExpiresIn = 0;
-  private permissionCacheTtl = 0;
-
+export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
-    private readonly jwtService: JwtService,
-    @Inject(TOKEN_BLACKLIST_PORT)
-    private readonly tokenBlacklist: TokenBlacklistPort,
-    @Inject(MEMBER_CONTEXT_CACHE_PORT)
-    private readonly memberContextCache: MemberContextCachePort,
-    @Inject(LOAD_MEMBER_CONTEXT_PORT)
-    private readonly loadMemberContext: LoadMemberContextPort,
+    @Inject(RESOLVE_MEMBER_CONTEXT_USE_CASE)
+    private readonly resolveMemberContext: ResolveMemberContextUseCase,
     private readonly featureFlags: FeatureFlagService,
   ) {}
-
-  onModuleInit(): void {
-    const env = getEnv();
-    this.jwtExpiresIn = env.ACCESS_TOKEN_EXPIRES_IN;
-    this.permissionCacheTtl = env.PERMISSION_CACHE_TTL;
-  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<Request>();
@@ -83,106 +54,10 @@ export class JwtAuthGuard implements CanActivate, OnModuleInit {
       throw new UnauthorizedException('缺少授權憑證，請先登入');
     }
 
-    if (await this.tokenBlacklist.isBlacklisted(token)) {
-      this.logger.warn('Token 已在黑名單中');
-      throw new UnauthorizedException('Token 已登出或失效');
-    }
-
-    let payload: JwtPayload;
-    try {
-      payload = this.jwtService.verify<JwtPayload>(token);
-    } catch {
-      throw new UnauthorizedException('Token 驗證失敗');
-    }
-
-    // 防止 refresh token 被當 access token 使用
-    if (payload.type !== 'access') {
-      throw new UnauthorizedException('Token 類型不正確');
-    }
-
-    const cached = await this.memberContextCache.getByMemberId(payload.sub);
-    if (cached) {
-      const context = this.parseCachedContext(cached);
-      if (context) {
-        if (!context.status) throw new AccountDisabledException();
-        this.assertTokenVersion(payload, context.tokenVersion);
-        request.member = context;
-        this.checkPasswordExpiry(context);
-        return true;
-      }
-      // 快取格式不符或內容損毀，fallback 到 DB 查詢並覆寫快取
-      this.logger.warn(
-        '[JwtAuthGuard] MemberContext 快取無法解析，fallback 到 DB 查詢',
-      );
-    }
-
-    // 走到這裡代表快取未命中或內容不可用——Redis **本身**不可用的情況
-    // 在上方的 isBlacklisted 就已經 throw 503 了（兩者是同一個 client.isOpen），
-    // 所以這裡不需要、也不可能是「Redis 掛掉的降級路徑」。
-    const data = await this.loadMemberContext.loadMemberContext(payload.sub);
-    if (!data) {
-      throw new UnauthorizedException('會員不存在');
-    }
-    if (!data.status) throw new AccountDisabledException();
-    this.assertTokenVersion(payload, data.tokenVersion);
-
-    const memberContext: MemberContext = {
-      sub: data.id,
-      email: data.email,
-      roleName: data.roleName,
-      roleCode: data.roleCode,
-      permissions: data.permissions,
-      status: data.status,
-      tokenVersion: data.tokenVersion,
-      lastPasswordChange: data.lastPasswordChange
-        ? data.lastPasswordChange.toISOString()
-        : null,
-    };
-
+    const memberContext = await this.resolveMemberContext.resolve(token);
     request.member = memberContext;
-
-    const now = Math.floor(Date.now() / 1000);
-    const jwtTtl = payload.exp ? payload.exp - now : this.jwtExpiresIn;
-    const ttl = Math.min(jwtTtl, this.permissionCacheTtl);
-    if (ttl > 0) {
-      await this.memberContextCache.setByMemberId(
-        payload.sub,
-        JSON.stringify(memberContext),
-        ttl,
-      );
-    }
-
     this.checkPasswordExpiry(memberContext);
     return true;
-  }
-
-  /**
-   * 解析快取的 MemberContext，無法使用時一律回 null 交由呼叫端走 DB fallback。
-   *
-   * `safeParse` 只保護 schema 不符，不保護 JSON 語法錯誤——快取若因截斷或編碼問題
-   * 不是合法 JSON，`JSON.parse` 會直接拋出並逃出 guard，兜成 500。而這是全域 guard，
-   * 代表**所有已登入請求同時 500**，卻正好發生在 fallback 最該生效的時候。
-   *
-   * @param cached - 快取中的原始字串
-   * @returns 可用的 MemberContext；語法錯誤或格式不符時為 null
-   */
-  private parseCachedContext(cached: string): MemberContext | null {
-    try {
-      const parsed = MemberContextSchema.safeParse(JSON.parse(cached));
-      return parsed.success ? parsed.data : null;
-    } catch {
-      return null;
-    }
-  }
-
-  /** token 版本比對：payload 帶的版本與 DB 現值不符 → 已被連坐撤銷，拒絕 */
-  private assertTokenVersion(
-    payload: JwtPayload,
-    current: number | undefined,
-  ): void {
-    if ((payload.tokenVersion ?? 0) !== (current ?? 0)) {
-      throw new UnauthorizedException('Token 已失效，請重新登入');
-    }
   }
 
   private checkPasswordExpiry(member: MemberContext): void {

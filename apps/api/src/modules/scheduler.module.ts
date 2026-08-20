@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ExampleScheduler } from '../adapter/in/scheduler/ExampleScheduler';
 import { LogRetentionScheduler } from '../adapter/in/scheduler/LogRetentionScheduler';
+import { PresenceSweepScheduler } from '../adapter/in/scheduler/PresenceSweepScheduler';
 import { PurgeLogsService } from '../application/service/shared/PurgeLogsService';
 import { PrismaLogPurgeRepository } from '../adapter/out/persistence/PrismaLogPurgeRepository';
 import { PURGE_LOGS_PORT } from '../application/port/out/shared/PurgeLogsPort';
@@ -15,6 +16,8 @@ import { PURGE_LOGS_PORT } from '../application/port/out/shared/PurgeLogsPort';
   providers: [
     ExampleScheduler,
     LogRetentionScheduler,
+    // PRESENCE_PORT 由 @Global() 的 RedisModule 提供，此處不需 import
+    PresenceSweepScheduler,
     PurgeLogsService,
     PrismaLogPurgeRepository,
     {

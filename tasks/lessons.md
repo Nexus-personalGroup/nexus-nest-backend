@@ -110,6 +110,28 @@ Aborted. No files were changed.
 
 **還好的一點**：archive 失敗時是 `Aborted. No files were changed.`——它不會做到一半留下半套的 master spec。
 
+## WebSocket / 多實例
+
+### 2026-08-20 — `NestFactory.create()` 不會跑 `onModuleInit`，而 WS adapter 必須在 init 之前掛上
+
+**踩到什麼**：`RedisIoAdapter` 從 DI 取 `RedisService` 來建 pub/sub 連線，結果拋 `Redis 尚未初始化`。而且 `main.ts` 有一模一樣的問題，只是還沒人啟動過 dev server 所以沒發現——單元測試與 e2e 都驗不到（e2e 把 Redis mock 掉、也不掛 adapter）。
+
+**Why**：`NestFactory.create()` 只建立容器，`onModuleInit` 要等 `app.init()`（由 `app.listen()` 觸發）才跑。但 **WebSocket gateway 在 `init` 階段就綁定 adapter**，所以「先 init 再掛 adapter」也不成立——那時已經來不及。兩個時機互相矛盾。
+
+**How to apply**：需要在 `listen()` 之前使用的資源，**不能相依任何 NestJS 生命週期 hook**。把連線建立抽成獨立工廠（`createRedisClient`），`RedisService` 與 adapter 各自呼叫；設定仍集中一份，但誰都不等誰。順帶一提，這個 bug 是被兩實例整合測試抓到的——它是唯一會走完整 bootstrap 流程的測試。
+
+### 2026-08-20 — 關閉 HTTP server **不等於** `kill -9`，disconnect handler 照樣會跑
+
+**踩到什麼**：整合測試想驗「實例死亡後 presence 自動回收」，用「關掉第三個實例的 HTTP server」模擬。結果連線數在 kill 後**立刻**歸零，根本沒經過陳舊判定那條路徑——而測試是綠的。
+
+**Why**：關閉 server 會斷開連線，Socket.IO 因此觸發 disconnect 事件，而該實例的 app 還活著，`handleDisconnect` 照常執行並清乾淨 presence。真正的行程死亡是「什麼都不會發生」，兩者差很多。同理，同 process 內的計時器也不會停，會繼續替死掉的連線續期。
+
+**How to apply**：要驗證「無人清理時能否自動回收」，就**直接寫入一筆沒有任何人會續期的紀錄**，別用關閉實例來模擬。單一 process 內無法忠實重現行程死亡，硬做只會得到一個看似綠燈實則沒測到東西的測試。
+
+- **同一 process 起多實例時，`INSTANCE_ID` 不能是 module 層級常數**：module 在 process 內共用，兩個實例會自稱同一個 ID，presence 把兩條連線算成一條。改成 DI provider（`useFactory: () => randomUUID()`）——正式環境一個 process 一個實例，兩種寫法結果相同，但只有後者測得到。
+
+- **`emitWithAck` 對沒有回傳值的 handler 會永遠掛著**：Socket.IO 的 ack callback 只在 handler 回傳值時觸發。handler 是 `Promise<void>` 的話，該 Promise 不會 reject 也不會 resolve，症狀是「卡到測試逾時」，看起來像廣播壞了，其實根本沒送出去。改成 `emit` + 等對應的回應事件。
+
 ## Prisma / 資料庫
 
 - **軟刪除 model 的所有 read path 都要加 `deletedAt: null`**：`findUnique` 只接受 unique 欄位，要過濾軟刪得改用 `findFirst({ where: { id, deletedAt: null } })`。`count` 用於「是否還有相關紀錄」判斷時（如阻擋刪除有成員的角色）也要排除軟刪，否則永遠刪不掉。例外是「恢復」場景才用 `loadIncludingDeleted` 顯式 opt-in。
@@ -200,6 +222,10 @@ export {};
 **Why**：`JwtPayload` 刻意輕量只存 `sub`，`request.member.roleCode` 是 `JwtAuthGuard` **每個 request 從 DB 撈的**。seed 的 role 沒設 `roleCode`，guard 撈到的自然不是 `SUPERADMIN`。
 
 **How to apply**：`seedMember` / `seedRole` 開 `roleCode?` 參數。注意 **roleName（顯示名「管理者」）與 roleCode（權限碼）是兩回事**，gate 比對的是後者。
+
+- **`jest.clearAllMocks()` 不會清掉 `mockReturnValue` 設定的實作**：它只清呼叫紀錄。前一個 `it` 設的回傳值會滲進後面所有測試，症狀是「單獨跑會過、整支跑會失敗」。`beforeEach` 要明確重設每個 mock 的回傳值，或改用 `mockReset()`。
+
+- **debug 測試時不要相信 console.log 的輸出順序**：jest 會緩衝並在報告階段統一輸出，同一支測試內的先後看起來會亂掉，跨 hook（`afterEach`）更明顯。追時序問題要在訊息裡自帶時間戳，或直接量測耗時。
 
 ### 2026-08-16 — 測排序時，fixture 的插入順序必須與期望排序相反
 
