@@ -1,0 +1,42 @@
+name: 準備 workspace
+description: Node + pnpm（版本皆取自版控設定）+ pnpm store 快取 + 安裝依賴
+
+# 三個 job 都需要完全相同的前置步驟。抽成 composite action 而非各自複製，
+# 理由與 compose.yml 的 x-app-base anchor 相同：複製出去的設定必然漂移。
+
+runs:
+  using: composite
+  steps:
+    # Node 版本取自 .nvmrc，與本機 nvm 同一個來源
+    - uses: actions/setup-node@v7
+      with:
+        node-version-file: .nvmrc
+
+    # pnpm 版本取自 package.json 的 packageManager 欄位，不在此另外宣告——
+    # 硬釘版號等於多一處要與本機同步的地方，而它遲早會不同步
+    - name: 啟用 corepack
+      shell: bash
+      run: corepack enable
+      env:
+        # CI 無法回應互動提示，關掉 corepack 下載確認
+        COREPACK_ENABLE_DOWNLOAD_PROMPT: '0'
+
+    - name: 取得 pnpm store 路徑
+      id: pnpm-store
+      shell: bash
+      run: echo "path=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+    # 平行的 job 共用同一個 key，因此 post 階段會有一邊印出
+    #   Failed to save: Unable to reserve cache with key ..., another job may be creating this cache.
+    # 這是**預期行為**，該步驟的 outcome 仍是 success：先完成的 job 存入，後到的被拒。
+    # 代價只是幾秒的重複打包。要消除它得加一個所有 job 都 needs 的暖 cache 前置 job，
+    # 那會把平行變序列，代價遠大於省下的時間
+    - uses: actions/cache@v6
+      with:
+        path: ${{ steps.pnpm-store.outputs.path }}
+        key: ${{ runner.os }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: ${{ runner.os }}-pnpm-
+
+    - name: 安裝依賴
+      shell: bash
+      run: pnpm install --frozen-lockfile

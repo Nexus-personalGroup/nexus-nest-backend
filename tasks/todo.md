@@ -5,7 +5,7 @@
 
 ## 進行中
 
-- **M0 專案骨架**：模板落地 ✅ → PostgreSQL 轉換 ✅（`refactor-switch-to-postgres`，待封存）→ GitHub Actions 遷移（`refactor-migrate-ci-to-github-actions`，未開始）。
+- **M1 WS 地基**（尚未開工）：M0 已全數完成，下一步見「近期里程碑」的 M1。開工前先確認 `refactor/migrate-ci-to-github-actions` 已合併進 `develop`。
 
 ## 待辦
 
@@ -20,9 +20,13 @@
 
 ### 需人工處理（AI 做不到）
 
-- **`.env.example` 補 `ALLOW_PROD_SEED`**：`envSchema` 已宣告，但 `.env.example` 尚未加。此檔在 AI 的權限設定中被拒絕存取，需開發者手動加一行 `ALLOW_PROD_SEED=`（註明僅正式環境用）。
+- **合併 `refactor/migrate-ci-to-github-actions` 到 `develop`**：Change 2 已實作、驗證、封存，但分支尚未合併。開 PR 合併的同時就是 GitHub Actions 的第一次實跑。
 
-- **首次 CI pipeline 需人工觀察**：遷移到 GitHub Actions 後首跑要確認 (1) `quality-check` 與 `e2e-test` 是否在 PR 觸發；(2) cache 是否命中；(3) pipeline 總時長可否接受，過慢可把 `e2e-test` 限縮為只在 PR 跑。
+- **設定 branch protection**：GitHub repo → Settings → Branches，對 `develop` 與 `main` 把 `quality` 與 `e2e` 設為 required status checks。**沒設的話 CI 只會顯示紅燈、不會擋住合併**，`platform-ci-quality-gate` 的保證形同虛設。此設定不在版控內。
+
+- **確認 pnpm store cache 是否命中**：首跑（2026-08-20）`quality` 與 `e2e` 皆於 PR 觸發、各約 1 分鐘通過，時長無需限縮。唯一未驗的是 cache —— 要進 run log 看 `actions/cache` 那步是 `Cache restored from key` 還是 `Cache not found`。第二次之後才有得比。
+
+- **設定 branch protection 時三個 check 都勾**：`品質檢查` / `E2E` / `建置`。首跑時 `建置` 因 `if: github.event_name == 'push'` 在 PR 上是 skipped，已於同一支 PR 移除該條件——理由見 `openspec/project/tooling.md` 的 CI 段落。
 
 ### 觀察中（繼承自模板）
 
@@ -44,4 +48,24 @@
 
 ## 已完成
 
-（nexus 尚未有已完成項目。模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。）
+> 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-20 — M0 專案骨架
+
+從 `hexagonal-nest-express-mysql` 模板衍生出 nexus 後端，兩支 change 走完 propose → apply → archive。
+
+**`refactor-switch-to-postgres`** — MySQL/MariaDB → PostgreSQL 17。六角架構把資料庫關在 `adapter/out/persistence` 與 `infrastructure/prisma` 之內，`application` 與 `domain` 兩層零改動，這是「現在換」可行的原因。
+
+三件事只有做了才會發現：
+
+- **PostgreSQL 的 `DELETE` 不支援 `LIMIT`** —— 日誌清理的分批刪除會直接爆，改走 `ctid IN (SELECT … LIMIT n)`。反向驗證（把 `<` 改成 `>`）確認 3 支 e2e 真的變紅，證明測試在驗 SQL 本身而非只是跑過。
+- **容器 healthcheck 必須用 `pg_isready`** —— 官方映像初始化期間會先起一次臨時伺服器，只探行程或埠會誤判為就緒。已寫成 `platform-container-dev` 的需求。
+- **`compose-files.spec.ts` 擋下了我** —— 它要求 compose 的對外埠必須寫進 README，把文件變成鏈式依賴而非事後補。
+
+順帶把 UTC 保證從 driver 參數（`timezone: 'Z'`）移到欄位層 `@db.Timestamptz(3)`：前者寫在 `PrismaService` 建構子裡，改連線設定時漏掉那行就靜默失效；後者由 schema 保證。並補上 11 表 / 69 欄位的 `///` 描述 + `COMMENT ON`，新增 `gen:comments` 產生器避免兩邊漂移。
+
+**`refactor-migrate-ci-to-github-actions`** — CI 從沒人執行的 GitLab 設定搬到 GitHub Actions。6 個 job 砍成 3 個：`npm-install`、`cleanup`、`pr_agent` 都是為了繞過 GitLab 限制而存在，在 GitHub 上沒有意義。最有價值的是**移除 15 行的等待迴圈**——GitHub Actions 的 service container 支援 healthcheck，CI 與本機從此共用同一套 `pg_isready` 判定，原本「兩套各自會出錯的機制」消失。順手刪掉 `scripts/init-project.sh`（模板衍生腳本，第 3 步是 `rm -rf .git`，在此只有誤執行毀掉歷史的風險）。
+
+**驗收**：`docker:deps` / `db:migrate` / `typecheck` / `lint` / `test`（單元 281 + 護欄 68）/ `build` 六項全綠，e2e 151 支對真實 PostgreSQL 通過。
+
+**本輪解決的模板遺留待辦**：`.env.example` 補 `ALLOW_PROD_SEED`（已隨 PostgreSQL 設定一併重寫）。

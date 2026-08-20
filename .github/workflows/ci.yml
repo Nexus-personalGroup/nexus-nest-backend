@@ -1,0 +1,102 @@
+# 品質關卡
+#
+# 規則細節見 openspec/specs/platform-ci-quality-gate/spec.md。
+#
+# ⚠️ 本 workflow 只負責「執行檢查並回報」。要讓失敗真的擋住合併，
+# 必須在 repo Settings → Branches 把 quality 與 e2e 設為 required status checks——
+# 那項設定不在版控內。
+
+name: CI
+
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+# 同一分支連續推送時取消尚未跑完的舊 run，避免排隊等待已經過時的結果
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # git hook 在 CI 沒有意義，且 husky 在無 .git hooks 目錄時會噪音
+  HUSKY: '0'
+  # typecheck / lint 的 pre script 會跑 db:generate，需要 DB_* 組出 DATABASE_URL。
+  # generate 不連線，但 prisma.config.ts 仍要拼出合法的 URL 字串
+  DB_HOST: localhost
+  DB_PORT: '5432'
+  DB_USERNAME: postgres
+  DB_PASSWORD: ci-e2e-secret
+  DB_DATABASE: nexus_ci_test
+  AWS_MEDIA_LIBRARY_ROOT: local
+
+jobs:
+  # 型別 / lint / 單元測試 + 覆蓋率門檻 + 架構守則。不需外部服務，
+  # 多數問題在此於數十秒內回報，開發者不必等 e2e 的資料庫起來
+  quality:
+    name: 品質檢查
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+
+      - run: pnpm typecheck
+      - run: pnpm lint
+
+      # 必須是 test:cov 不是 test——四個覆蓋率門檻只在前者執行，
+      # 用 test 會讓門檻靜默失效（那正是 platform-ci-quality-gate 要防的事）
+      - name: 單元測試 + 覆蓋率門檻 + 架構守則
+        run: pnpm test:cov
+
+  # 對真實 PostgreSQL 跑完整 API 流程（Redis 於測試中 mock）
+  e2e:
+    name: E2E
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-e2e-secret
+          POSTGRES_DB: nexus_ci_test
+        ports:
+          - 5432:5432
+        # 判定指令與 compose.yml 的 postgres / postgres-verify 一致。
+        # 不可改用固定秒數或 TCP 輪詢：PostgreSQL 官方映像初始化時會先起一次
+        # 臨時伺服器，埠已開但尚未接受正式連線，探埠會誤判為就緒
+        options: >-
+          --health-cmd "pg_isready -U postgres -d nexus_ci_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 30
+
+    env:
+      # 庫名必須含 test，否則 e2e 的 globalSetup 守門會中止（防誤連 dev / prod）
+      DB_TEST_DATABASE: nexus_ci_test
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+
+      # pnpm install 的 postinstall 只建 symlink，client 仍需自行 generate
+      - run: pnpm --filter @app/api db:generate
+      - run: pnpm --filter @app/api test:e2e
+
+  # 建置 TypeScript（api + web）。品質未過就不浪費資源建置；
+  # e2e 刻意不列入 needs——它較慢，不該阻塞產出，但失敗仍會使整個 workflow 失敗
+  #
+  # PR 階段也要跑：nest build / vite build 會抓到 path alias 解析、decorator metadata
+  # 與 emit 階段的錯誤，這些 tsc --noEmit 抓不到。只在 push 時跑等於「PR 是綠的，
+  # 合併完 develop 才紅」——把問題推到最不該爆的地方
+  build:
+    name: 建置
+    runs-on: ubuntu-latest
+    needs: [quality]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-workspace
+
+      - run: pnpm --filter @app/api db:generate
+      - run: pnpm build

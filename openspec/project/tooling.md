@@ -1,6 +1,6 @@
 # AI 工具、CI 與指令參考
 
-> .agents/hooks 的設計、GitLab CI 各 job 職責，以及完整的 per-workspace 指令參考。
+> .agents/hooks 的設計、GitHub Actions 各 job 職責，以及完整的 per-workspace 指令參考。
 
 > 本檔為 `openspec/project.md` 的一部分，導覽見該檔。
 
@@ -28,16 +28,31 @@ hook 的**邏輯**放在工具無關的 `.agents/hooks/*.sh`，各家 AI 的設�
 
 ---
 
-## CI（GitLab）
+## CI（GitHub Actions）
 
-`.gitlab-ci.yml` 的 stages：`prepare → quality → optimize → cleanup → pr_agent`。
+`.github/workflows/ci.yml`，觸發於對 `develop` / `main` 的 Pull Request 與推送。
 
-| Job | Stage | 做什麼 | 對應本機指令 |
-| --- | --- | --- | --- |
-| `npm-install` | prepare | `pnpm install --frozen-lockfile` | `pnpm install` |
-| `quality-check` | quality | 型別 / lint / 單元測試 + **覆蓋率門檻** + 架構守則 | `pnpm typecheck && pnpm lint && pnpm test:cov` |
-| `e2e-test` | quality | 對 `postgres:17` service container 跑完整 e2e | `pnpm --filter @app/api test:e2e` |
-| `prepare-production` | optimize | Prisma generate + build（**需 `quality-check` 通過**） | `pnpm build` |
+| Job | 做什麼 | 對應本機指令 |
+| --- | --- | --- |
+| `quality` | 型別 / lint / 單元測試 + **覆蓋率門檻** + 架構守則 | `pnpm typecheck && pnpm lint && pnpm test:cov` |
+| `e2e` | 對 `postgres:17` service container 跑完整 e2e | `pnpm --filter @app/api test:e2e` |
+| `build` | Prisma generate + build（**`needs: [quality]`**） | `pnpm build` |
+
+`e2e` 刻意不列入 `build` 的 `needs`——它較慢，不該阻塞產出，但它失敗仍會使整個 workflow 失敗。
+
+三個 job 的前置步驟（Node + pnpm + 快取 + 安裝）抽在 `.github/actions/setup-workspace`，
+理由與 `compose.yml` 的 `x-app-base` anchor 相同：複製出去的設定必然漂移。
+Node 版本取自 `.nvmrc`、pnpm 版本取自 `package.json` 的 `packageManager`，
+CI 不另外宣告版號。
+
+**資料庫就緒判定與本機同一套**：service container 用 `--health-cmd "pg_isready …"`，
+與 `compose.yml` 的 `postgres` / `postgres-verify` 完全一致。
+不可改用固定秒數或 TCP 輪詢——PostgreSQL 官方映像初始化時會先起一次臨時伺服器，
+埠已開但尚未接受正式連線，探埠會誤判為就緒。
+
+> ⚠️ **CI 通過與否不會自動擋住合併。** GitHub 的 status check 預設只顯示結果，
+> 必須在 repo Settings → Branches 把 `quality` 與 `e2e` 設為 required status checks。
+> 該設定不在版控內，fork 或重建 repo 後要重新設定。
 
 **本機重現 CI 的測試環境**：`pnpm verify:ci` 以 `docker compose --profile verify` 起一個 PostgreSQL 17 容器（healthcheck 等就緒、`tmpfs` 跑在記憶體）並執行 e2e，實測約 60 秒。定位是「測試環境重現」而非「pipeline 模擬」——runner 行為與 cache 命中仍只能在實際 pipeline 觀察。
 
@@ -91,15 +106,15 @@ hook 的**邏輯**放在工具無關的 `.agents/hooks/*.sh`，各家 AI 的設�
 
 要點：
 
-- **兩個品質 job 在 Merge Request 就觸發**（不像 `prepare-production` 只認分支推送）—— MR 正是最該擋下問題的時機。
-- `quality-check` 與 `e2e-test` 同 stage 平行執行；前者不需外部服務，多數問題數十秒內回報。
+- **三個 job 都在 Pull Request 觸發** —— PR 正是最該擋下問題的時機。`build` 尤其不能只在推送時跑：`nest build` / `vite build` 會抓到 path alias 解析、decorator metadata 與 emit 階段的錯誤，這些 `tsc --noEmit` 抓不到；只在 push 跑等於「PR 綠燈、合併完 develop 才紅」。
+- `quality` 與 `e2e` 平行執行；前者不需外部服務，多數問題數十秒內回報。`build` 等 `quality` 通過才開始。
 - e2e 的 DB 連線走 **job variables**，不在 CI 偽造 `.env`：`applyE2EDbEnv()` 以 dotenv 載入 `.env`，而 **dotenv 不覆寫既有 `process.env`**，因此 CI 供應的變數優先生效。
 - `DB_TEST_DATABASE` 必須含 `test`，否則 e2e 的 globalSetup 守門會中止（防誤連 dev / prod）。
 - `git commit --no-verify` 可繞過 husky pre-commit，但繞不過 CI —— 這是把關的最後一道。
 - **覆蓋率門檻只有 `test:cov` 會執行**（`test` 不帶 coverage，供開發時快速回饋）。兩個 workspace 都設有門檻：api 70/60/70/70、web 75/75/60/75；新增設有門檻的 workspace 時**必須提供 `test:cov`**，否則會被 `pnpm -r test:cov` 靜默略過。
 - `apps/api` 的 `test:cov` 刻意串接架構測試（`jest --coverage && jest --config test/jest.arch.config.js`）—— 只寫 `jest --coverage` 會讓 CI 換用 `test:cov` 後靜默漏掉整組架構守則。
 
-> **不使用 GitLab CI 的專案**：上表「對應本機指令」欄即為等價檢查，請在自己的 CI 平台上照樣執行；否則所有架構守則與測試都只在開發者本機生效。
+> **搬到其他 CI 平台時**：上表「對應本機指令」欄即為等價檢查，照樣執行即可；否則所有架構守則與測試都只在開發者本機生效。
 
 ---
 
