@@ -1,0 +1,36 @@
+tags: [Attachments]
+summary: 刪除附件
+description: 依 id 刪除附件（同時刪除 storage 檔案與 DB 紀錄）。找不到回 404。
+parameters:
+  - name: id
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+    description: 附件 id
+responses:
+  '204':
+    description: 刪除成功（無內容）
+  '404':
+    description: 找不到附件
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    description: |
+      缺 `BACKEND:ATTACHMENT:EDIT` 權限（code: FORBIDDEN），
+      或具權限但非上傳者且非 SUPERADMIN（code: ATTACHMENT_FORBIDDEN）。
+      擁有者檢查不可省——刪除不可逆且會移除實體檔案，而附件 ID 會隨上傳回應外流。
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 沒有權限刪除此附件
+          code: ATTACHMENT_FORBIDDEN
+          timestamp: '2024-01-01T00:00:00.000Z'

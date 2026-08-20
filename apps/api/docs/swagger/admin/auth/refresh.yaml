@@ -1,0 +1,81 @@
+tags: [Auth]
+summary: 更新 Access Token
+description: |
+  使用 Refresh Token 取得新的 Access Token 與新的 Refresh Token（rotation）。
+  舊 Refresh Token 會立即加入黑名單；如果同一個舊 Refresh Token 再次被用 → 401。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [refreshToken]
+        properties:
+          refreshToken:
+            type: string
+            description: Refresh Token
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+responses:
+  '200':
+    description: 更新成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              description: 更新後的 token 雙包
+              required:
+                - accessToken
+                - accessTokenExpiresIn
+                - refreshToken
+                - refreshTokenExpiresIn
+              properties:
+                accessToken:
+                  type: string
+                  description: 新的 Access Token
+                accessTokenExpiresIn:
+                  type: integer
+                  description: Access Token 絕對有效期（秒）
+                refreshToken:
+                  type: string
+                  description: 新的 Refresh Token（舊 token 已加入黑名單）
+                refreshTokenExpiresIn:
+                  type: integer
+                  description: Refresh Token 絕對有效期（秒）
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            accessTokenExpiresIn: 7200
+            refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            refreshTokenExpiresIn: 604800
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '401':
+    description: Refresh Token 無效或已失效
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: Refresh Token 無效
+          code: INVALID_REFRESH_TOKEN
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

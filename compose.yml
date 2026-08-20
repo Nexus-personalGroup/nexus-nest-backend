@@ -1,0 +1,174 @@
+# =============================================================================
+# 開發與驗證環境（單一檔案）
+# -----------------------------------------------------------------------------
+# 三種用法，靠「指定服務」與「profile」區分，不需要多份 compose 檔：
+#
+#   docker compose up -d                    整套跑在容器裡（api + web + mysql + redis）
+#   docker compose up -d mysql redis        只起相依服務，api / web 跑在 host
+#   docker compose --profile verify up      重現 CI 的 e2e 環境（由 pnpm verify:ci 呼叫）
+#
+# 對應的 pnpm 指令見 README。verify 的 MySQL 獨立成一個服務而非共用上面那個，
+# 因為兩者對資料的要求相反：開發要 named volume 重啟保留，驗證要 tmpfs 每次乾淨。
+# 它掛在 profile 底下，平常的 `up` 不會啟動它。
+#
+# 對外埠一律避開預設的 3306 / 6379——多數開發機已經有一組資料庫在跑。
+# 可用 repo 根目錄 .env 的 DEV_DB_PORT / DEV_REDIS_PORT / DEV_DB_PASSWORD 覆寫。
+# =============================================================================
+name: nexus-nest-backend
+
+# api 與 web 共用映像與掛載設定，抽出來避免兩邊漂移
+x-app-base: &app-base
+  build:
+    context: .
+    target: dev
+  volumes:
+    # 原始碼掛進容器，改檔即時生效
+    - .:/app
+    # node_modules 用具名 volume 蓋掉 bind mount。
+    # pnpm 的各 workspace node_modules 是指向根目錄 .pnpm store 的 symlink，
+    # **五個位置都要蓋**——漏任何一個，容器就會沿用 host 的 macOS/arm64 產物，
+    # 症狀是 bcrypt 或 Prisma 引擎載入失敗（invalid ELF header）。
+    #
+    # 用具名而非匿名：匿名 volume 在 Docker Desktop 的清單裡只有隨機 hash，
+    # 十個混在一起無從辨識、也不知道能不能刪。api 與 web 共用同一組——
+    # 同一個映像、同樣的內容，沒必要各存一份（各存一份就是兩份近 1 GB）。
+    - node-modules-root:/app/node_modules
+    - node-modules-api:/app/apps/api/node_modules
+    - node-modules-web:/app/apps/web/node_modules
+    - node-modules-api-client:/app/packages/api-client/node_modules
+    - node-modules-eslint-config:/app/packages/eslint-config/node_modules
+    # 遮蔽 host 的 apps/api/.env：bind mount 會把它一併帶進來，而 dotenv 不覆寫
+    # 既有的 process.env，等於「compose 沒設的都由開發者本機的 .env 補」。
+    # 其中連線類變數會直接打壞容器——REDIS_URL 指向 host 的 localhost:6379，
+    # 容器裡連不到，Redis 會重試到放棄然後降級運行。
+    # 遮掉之後設定只有兩個來源：本檔的 environment，與 envSchema 的預設值。
+    - ./docker/api.container.env:/app/apps/api/.env:ro
+  init: true
+  restart: unless-stopped
+
+services:
+  api:
+    <<: *app-base
+    # nest start --watch 在容器內編譯得了、卻換不掉行程：它重啟時舊行程還在跑
+    # enableShutdownHooks 的優雅關閉（Prisma pool + Redis quit），新行程搶埠失敗直接死，
+    # 症狀是「改了 code 但 API 還是舊行為」——最難察覺的那種壞法。
+    # 拆成兩段，各自用對的 watch 機制：
+    #   nest build --watch  看 host 改動 → bind mount 不傳 inotify，靠 TSC_WATCHFILE 輪詢
+    #   node --watch        看容器自己寫的 dist → 容器內部的寫入事件是通的
+    # 另用 nest-cli.docker.json 關掉 deleteOutDir：每次 rebuild 清空 dist 會讓
+    # node --watch 在空窗期重啟並 MODULE_NOT_FOUND 後放棄。
+    # 先 db:generate 再進 watch：本 command 直接呼叫 concurrently，繞過了 dev script
+    # 的 predev，Prisma client 不會被產生，症狀是 Cannot find module '.prisma/client/default'
+    command: >
+      sh -c "pnpm --filter @app/api db:generate &&
+      pnpm --filter @app/api exec concurrently -n build,run -c blue,green
+      \"nest build --watch --config nest-cli.docker.json\"
+      \"sh -c 'until [ -f dist/main.js ]; do sleep 1; done; exec node --watch --enable-source-maps dist/main'\""
+    ports:
+      - '127.0.0.1:${APP_API_PORT:-3000}:3000'
+    environment:
+      NODE_ENV: development
+      # 連線指向 service 名稱，不是 localhost
+      DB_HOST: mysql
+      DB_PORT: '3306'
+      DB_USERNAME: root
+      DB_PASSWORD: ${DEV_DB_PASSWORD:-devsecret}
+      DB_DATABASE: hexagonal_express_db
+      DB_TEST_DATABASE: hexagonal_express_test
+      REDIS_HOST: redis
+      REDIS_PORT: '6379'
+      # 開發用假值，長度須滿足 envSchema 的 min(32)。正式環境一律由部署平台注入
+      ACCESS_SECRET: dev-only-access-secret-min-32-chars!!
+      REFRESH_SECRET: dev-only-refresh-secret-min-32-chars!
+      COOKIE_SECRET: dev-only-cookie-secret-min-32-chars!!
+      # 即使 STORAGE_DRIVER=local 也必填（envSchema 要求），local 時不會真的用到
+      AWS_MEDIA_LIBRARY_ROOT: local
+      STORAGE_DRIVER: local
+      APP_TIMEZONE: Asia/Taipei
+      CORS_ORIGIN: http://localhost:${APP_WEB_PORT:-5173}
+      # macOS 的 bind mount 不傳遞 inotify 事件，tsc watch 必須改輪詢才看得到改動
+      TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
+    depends_on:
+      mysql: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  web:
+    <<: *app-base
+    command: pnpm --filter @app/web dev
+    ports:
+      - '127.0.0.1:${APP_WEB_PORT:-5173}:5173'
+    environment:
+      # 容器內 localhost 是 web 自己，proxy 必須指向 api service
+      VITE_API_PROXY_TARGET: http://api:3000
+      VITE_USE_POLLING: 'true'
+    depends_on:
+      - api
+
+  mysql:
+    image: mysql:9
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DEV_DB_PASSWORD:-devsecret}
+      MYSQL_DATABASE: ${DEV_DB_DATABASE:-hexagonal_express_db}
+      MYSQL_ROOT_HOST: '%'
+    healthcheck:
+      # 不帶 -p：mysqladmin ping 在認證失敗時仍會回應，對「MySQL 起來了沒」已足夠，
+      # 而帶密碼會讓它在容器內 ps 可見，並持續刷 "password on the command line" 警告
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    ports:
+      # 綁 127.0.0.1：只給本機用，不曝露到區網
+      - '127.0.0.1:${DEV_DB_PORT:-3316}:3306'
+    volumes:
+      - mysql-data:/var/lib/mysql
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    # 開 AOF：重啟不掉 token 黑名單與快取，省得每次重登
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    ports:
+      - '127.0.0.1:${DEV_REDIS_PORT:-6389}:6379'
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  # 只在 `--profile verify` 時啟動；由 pnpm verify:ci 呼叫，跑完即 down -v。
+  # 與上面的 mysql 分開而不共用，是因為對資料的要求相反：
+  # 這裡要 tmpfs 跑在記憶體——快，而且測試庫本來就該每次拋棄。
+  # 與 GitLab CI 的差異刻意保留：GitLab 的 services 不支援 compose 的 healthcheck 語法，
+  # CI 端沿用手動等待迴圈，兩邊的 MySQL 版本則一致。
+  mysql-verify:
+    profiles: [verify]
+    image: mysql:9
+    environment:
+      MYSQL_ROOT_PASSWORD: verify-secret
+      MYSQL_DATABASE: hexagonal_verify_test
+      MYSQL_ROOT_HOST: '%'
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1']
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    tmpfs:
+      - /var/lib/mysql
+    ports:
+      - '127.0.0.1:13306:3306'
+
+volumes:
+  mysql-data:
+  redis-data:
+  # node_modules 的具名 volume。**改了依賴後這些不會自動更新**——
+  # volume 只在第一次建立時從映像複製內容，之後即使重建映像也沿用舊的。
+  # 改 package.json / lockfile 後要 `pnpm docker:reset` 再 `pnpm docker:up`。
+  node-modules-root:
+  node-modules-api:
+  node-modules-web:
+  node-modules-api-client:
+  node-modules-eslint-config:

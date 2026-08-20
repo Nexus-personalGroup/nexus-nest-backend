@@ -1,0 +1,38 @@
+{
+  "name": "@app/api-client",
+  "version": "0.0.0",
+  "description": "Type-safe API client generated from OpenAPI bundle",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "pregenerate": "pnpm --filter @app/api swagger:bundle",
+    "generate": "openapi-typescript ../../apps/api/docs/swagger/admin/openapi.bundle.yaml -o src/schema.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "openapi-fetch": "^0.15.0"
+  },
+  "peerDependencies": {
+    "@tanstack/react-query": "^5.0.0",
+    "react": "^19.0.0"
+  },
+  "devDependencies": {
+    "@tanstack/react-query": "^5.100.10",
+    "@types/react": "^19.2.14",
+    "openapi-typescript": "^7.10.0",
+    "openapi-typescript-helpers": "^0.1.0",
+    "react": "^19.2.6",
+    "typescript": "~6.0.2"
+  }
+}

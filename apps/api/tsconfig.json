@@ -1,0 +1,36 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // path alias：@app/* → src/*。深層相對路徑（4 層以上）一律改走 alias。
+    // nest build 的 tsc builder 會原生改寫成相對路徑，dist 內不留 @app/，
+    // 故不需要 tsc-alias（也就沒有 dev 兩個 watch 賽跑的問題）。
+    "baseUrl": ".",
+    "paths": { "@app/*": ["src/*"] },
+    "module": "commonjs",
+    "moduleResolution": "node",
+    // node10 於 TS 7.0 移除；真解 nodenext 會與 NestJS 裝飾器 metadata 衝突（124 個 TS1272），
+    // 待生態支援前用 TS 官方機制消音（見 tasks/todo.md 技術債）
+    "ignoreDeprecations": "6.0",
+    "declaration": true,
+    "removeComments": true,
+    "emitDecoratorMetadata": true,
+    "experimentalDecorators": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    // TS 6 起要求明示 rootDir（涵蓋 src/scripts/seeds/test/prisma.config.ts 的共同根）；
+    // 實際 build 走 tsconfig.build.json 的 rootDir: src，此處僅供 typecheck / ts-jest
+    "rootDir": ".",
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
+    "preserveWatchOutput": true,
+    "types": ["jest", "node"]
+  },
+  "include": [
+    "src/**/*",
+    "scripts/**/*",
+    "seeds/**/*",
+    "test/**/*",
+    "prisma.config.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

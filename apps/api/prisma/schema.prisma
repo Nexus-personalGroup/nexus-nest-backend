@@ -1,0 +1,175 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model SystemLogRecord {
+  id           String   @id @default(uuid())
+  memberId     String?  @map("member_id")
+  action       String
+  ipAddress    String?  @map("ip_address")
+  method       String?
+  url          String?
+  request      String?  @db.Text
+  response     String?  @db.Text
+  statusCode   Int?     @map("status_code")
+  execTime     Float?   @map("exec_time")
+  requestTime  DateTime @map("request_time")
+  responseTime DateTime @map("response_time")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // 保留排程以 createdAt 為條件批次刪除，沒有索引會全表掃描；
+  // memberId 複合索引供日後查「某帳號的操作紀錄」
+  @@index([createdAt], map: "idx_system_logs_created")
+  @@index([memberId, createdAt], map: "idx_system_logs_member_created")
+  @@map("system_logs")
+}
+
+model Role {
+  id          String           @id @default(uuid())
+  name        String           @unique @db.VarChar(100)
+  status      Boolean          @default(true)
+  roleCode    String?          @map("role_code") @db.VarChar(50)
+  isDefault   Boolean          @default(false) @map("is_default")
+  createdBy   String?          @map("created_by") @db.VarChar(36)
+  updatedBy   String?          @map("updated_by") @db.VarChar(36)
+  members     MemberRecord[]
+  permissions RolePermission[]
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  deletedAt   DateTime?        @map("deleted_at")
+
+  @@map("roles")
+}
+
+model Permission {
+  id             String           @id @default(uuid())
+  permissionCode String           @unique @map("permission_code")
+  name           String
+  platform       String // "FRONTEND" | "BACKEND"
+  module         String
+  subModule      String?          @map("sub_module")
+  action         String // "VIEW" | "EDIT" | "ACCESS"
+  status         Boolean          @default(true)
+  roles          RolePermission[]
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId       String     @map("role_id")
+  permissionId String     @map("permission_id")
+  role         Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission   Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+  createdAt    DateTime   @default(now()) @map("created_at")
+
+  @@id([roleId, permissionId])
+  @@map("role_permissions")
+}
+
+// ORM Record — 只存在於 adapter/out/persistence 層，與 Domain Member 完全分離
+model MemberRecord {
+  id                 String    @id @default(uuid())
+  member             String    @db.VarChar(100)
+  password           String    @db.VarChar(255)
+  email              String    @unique @db.VarChar(255)
+  roleId             String    @map("role_id")
+  role               Role      @relation(fields: [roleId], references: [id])
+  status             Boolean   @default(true)
+  isDefault          Boolean   @default(false) @map("is_default")
+  failedLoginCount   Int       @default(0) @map("failed_login_count")
+  tokenVersion       Int       @default(0) @map("token_version")
+  lockedAt           DateTime? @map("locked_at")
+  lastPasswordChange DateTime? @map("last_password_change")
+  createdBy          String?   @map("created_by") @db.VarChar(36)
+  updatedBy          String?   @map("updated_by") @db.VarChar(36)
+  lastLoginAt        DateTime? @map("last_login_at")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+  deletedAt          DateTime? @map("deleted_at")
+
+  @@map("members")
+}
+
+model AuthLogRecord {
+  id        String   @id @default(uuid())
+  memberId  String?  @map("member_id")
+  email     String
+  action    String // LOGIN_SUCCESS | LOGIN_FAILURE | LOGOUT | PASSWORD_RESET | REFRESH
+  ipAddress String?  @map("ip_address")
+  userAgent String?  @map("user_agent")
+  detail    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // email 複合索引供「某帳號的登入失敗紀錄」這類稽核查詢
+  @@index([createdAt], map: "idx_auth_logs_created")
+  @@index([email, createdAt], map: "idx_auth_logs_email_created")
+  @@index([memberId, createdAt], map: "idx_auth_logs_member_created")
+  @@map("auth_logs")
+}
+
+model IpWhitelistRecord {
+  id          String   @id @default(uuid())
+  ipAddress   String   @unique @map("ip_address")
+  description String?
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("ip_whitelist")
+}
+
+model IpBlacklistRecord {
+  id          String   @id @default(uuid())
+  ipAddress   String   @unique @map("ip_address")
+  reason      String?
+  isAutoBlock Boolean  @default(false) @map("is_auto_block")
+  createdBy   String?  @map("created_by")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  @@map("ip_blacklist")
+}
+
+model PasswordResetTokenRecord {
+  id        String    @id @default(uuid())
+  memberId  String    @map("member_id")
+  token     String    @unique
+  expiresAt DateTime  @map("expires_at")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  // 供「重設密碼時作廢該使用者其他 token」與過期 token 清理
+  @@index([memberId], map: "idx_password_reset_member")
+  @@index([expiresAt], map: "idx_password_reset_expires")
+  @@map("password_reset_tokens")
+}
+
+model AttachmentRecord {
+  id           String   @id @default(uuid())
+  /// 檔案名稱（存入前須先做 latin1→UTF-8 轉換）
+  fileName     String   @map("file_name") @db.VarChar(255)
+  fileUrl      String   @map("file_url") @db.VarChar(500)
+  fileType     String   @map("file_type") @db.VarChar(50)
+  fileSize     Int      @map("file_size")
+  relatedTable String   @map("related_table") @db.VarChar(50)
+  relatedId    String   @map("related_id") @db.VarChar(36)
+  uploadedBy   String?  @map("uploaded_by") @db.VarChar(36)
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  @@index([relatedTable, relatedId], map: "idx_related")
+  @@index([uploadedBy], map: "idx_uploaded_by")
+  @@map("attachments")
+}
+
+model SeedHistoryRecord {
+  id         Int      @id @default(autoincrement())
+  seedName   String   @unique @map("seed_name") @db.VarChar(255)
+  executedAt DateTime @default(now()) @map("executed_at")
+
+  @@index([seedName], map: "idx_seed_name")
+  @@map("seed_history")
+}

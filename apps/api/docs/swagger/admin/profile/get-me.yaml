@@ -1,0 +1,97 @@
+tags: [Profile]
+summary: 查詢個人帳號資料
+description: |
+  取得目前登入帳號的個人資料。
+  無需任何額外 permission，持有有效 JWT 即可呼叫。
+
+security:
+  - bearerAuth: []
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              description: 帳號詳細
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: 帳號 ID
+                email:
+                  type: string
+                  format: email
+                  description: Email
+                member:
+                  type: string
+                  description: 名稱
+                roleId:
+                  type: string
+                  format: uuid
+                  description: 所屬角色 ID
+                roleName:
+                  type: string
+                  description: 角色名稱
+                roleCode:
+                  type: string
+                  nullable: true
+                  description: 角色代碼（如 SUPERADMIN），給前端 sidebar 粗粒度 role gate 用；context 取不到時為 null
+                  example: SUPERADMIN
+                status:
+                  type: boolean
+                  description: 啟用狀態
+                isDefault:
+                  type: boolean
+                  description: 預設帳號旗標
+                lastLoginAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: 最後登入時間（UTC，可 null）
+                createdAt:
+                  type: string
+                  format: date-time
+                  description: 建立時間（UTC）
+                updatedAt:
+                  type: string
+                  format: date-time
+                  description: 更新時間（UTC）
+                permissionCodes:
+                  type: array
+                  items:
+                    type: string
+                  description: 該帳號目前持有的權限代碼（即時查 DB，非 JWT 快取）
+                  example: ['BACKEND:ACCOUNT:VIEW', 'BACKEND:ACCOUNT:EDIT']
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            id: '11111111-1111-4111-8111-111111111111'
+            email: user@example.com
+            member: 王小明
+            roleId: '22222222-2222-4222-8222-222222222222'
+            roleName: 管理者
+            roleCode: SUPERADMIN
+            status: true
+            isDefault: false
+            lastLoginAt: '2026-04-30T10:00:00.000Z'
+            createdAt: '2026-01-01T00:00:00.000Z'
+            updatedAt: '2026-04-30T10:00:00.000Z'
+            permissionCodes: ['BACKEND:ACCOUNT:VIEW', 'BACKEND:ACCOUNT:EDIT']
+          timestamp: '2026-04-30T10:00:00.000Z'
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

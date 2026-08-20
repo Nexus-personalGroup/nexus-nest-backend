@@ -1,0 +1,138 @@
+tags: [Members]
+summary: 帳號列表
+description: |
+  分頁取得帳號列表，支援 name / email 模糊搜尋與 status 啟用狀態過濾。
+  需要 `BACKEND:ACCOUNT:VIEW` 權限。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: query
+    name: page
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 頁碼
+  - in: query
+    name: limit
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 200
+    description: 每頁筆數（未指定用 env DEFAULT_PAGE_LIMIT）
+  - in: query
+    name: name
+    required: false
+    schema:
+      type: string
+    description: 以名稱模糊搜尋
+  - in: query
+    name: email
+    required: false
+    schema:
+      type: string
+    description: 以 Email 模糊搜尋
+  - in: query
+    name: status
+    required: false
+    schema:
+      type: boolean
+    description: 啟用狀態過濾；省略則不過濾（同時回啟用 + 停用）
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  description: 帳號清單
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: 帳號 ID
+                      email:
+                        type: string
+                        format: email
+                        description: Email
+                        example: user@example.com
+                      member:
+                        type: string
+                        description: 名稱
+                        example: 王小明
+                      roleId:
+                        type: string
+                        format: uuid
+                        description: 所屬角色 ID
+                      roleName:
+                        type: string
+                        description: 角色名稱
+                        example: 管理者
+                      status:
+                        type: boolean
+                        description: 啟用狀態
+                        example: true
+                      isDefault:
+                        type: boolean
+                        description: 預設帳號旗標（true 時不可刪除）
+                        example: false
+                      createdAt:
+                        type: string
+                        format: date-time
+                        description: 建立時間（UTC）
+                      updatedAt:
+                        type: string
+                        format: date-time
+                        description: 最後更新時間（UTC）
+                      lastLoginAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: 最後登入時間（UTC，可 null）
+                meta:
+                  type: object
+                  description: 分頁資訊
+                  properties:
+                    page:
+                      type: integer
+                      description: 目前頁碼
+                      example: 1
+                    limit:
+                      type: integer
+                      description: 每頁筆數
+                      example: 10
+                    total:
+                      type: integer
+                      description: 總筆數
+                      example: 42
+                    totalPages:
+                      type: integer
+                      description: 總頁數
+                      example: 5
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

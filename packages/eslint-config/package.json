@@ -1,0 +1,14 @@
+{
+  "name": "@app/eslint-config",
+  "version": "0.0.1",
+  "description": "Monorepo 共用 ESLint 扁平設定基底",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1"
+  }
+}

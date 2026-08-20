@@ -1,0 +1,30 @@
+tags: [Security]
+summary: 移除 IP 白名單
+description: |
+  將指定紀錄從白名單移除（硬刪除）。記錄不存在時靜默通過（仍回 204）。
+  需要 `SUPERADMIN` 角色。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+    description: 要移除的紀錄 id
+
+responses:
+  '204':
+    description: 移除成功（無回應內容）；記錄不存在時亦回 204
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

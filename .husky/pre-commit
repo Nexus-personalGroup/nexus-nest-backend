@@ -1,0 +1,9 @@
+#!/usr/bin/env sh
+
+# nvm 用戶在某些 git / 終端組合下 PATH 不含 nvm 路徑，找不到 pnpm
+# 若 pnpm 不在 PATH，主動載入 nvm.sh 補上
+if ! command -v pnpm >/dev/null 2>&1; then
+  [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+fi
+
+pnpm lint-staged

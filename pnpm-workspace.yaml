@@ -1,0 +1,23 @@
+packages:
+  - 'apps/*'
+  - 'packages/*'
+allowBuilds:
+  '@firebase/util': true
+  '@fission-ai/openspec': true
+  '@nestjs/core': true
+  '@prisma/engines': true
+  '@scarf/scarf': false
+  bcrypt: true
+  msw: false
+  prisma: true
+  protobufjs: true
+
+# 傳遞依賴版本覆寫（修補漏洞用）。
+# pnpm 10+ 起這些設定從 package.json 的 pnpm 欄位搬到本檔——寫在 package.json 會被
+# 靜默忽略（不會有任何警告），改動後務必以 pnpm why / node_modules/.pnpm 驗證實際版本。
+overrides:
+  picomatch: ^4.0.4
+  '@tootallnate/once': 3.0.1
+  # 用 ^ 而非 >=：>= 沒有上界，pnpm 會直接拉到 2.x major（實測會跳到 2.1.0），
+  # 可能與上游 prisma 期望的 1.x API 不相容；此處只要 1.x 內的安全修補
+  '@hono/node-server': ^1.19.15

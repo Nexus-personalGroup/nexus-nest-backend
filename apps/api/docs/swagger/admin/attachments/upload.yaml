@@ -1,0 +1,59 @@
+tags: [Attachments]
+summary: 上傳附件
+description: |
+  multipart/form-data 上傳單一檔案。驗證 MIME 白名單 / 大小上限 / folder 白名單；
+  副檔名一律由驗過的 MIME 推導（不取原始檔名，擋 stored XSS）。回傳附件 id 與可存取 URL。
+requestBody:
+  required: true
+  content:
+    multipart/form-data:
+      schema:
+        type: object
+        required: [file, folder, relatedTable, relatedId]
+        properties:
+          file:
+            type: string
+            format: binary
+            description: 上傳檔案（欄位名固定為 file）
+          folder:
+            type: string
+            enum: [avatars, attachments]
+            description: 上傳資料夾（白名單）
+          relatedTable:
+            type: string
+            description: 附屬的資料表（如 members）
+            example: members
+          relatedId:
+            type: string
+            description: 附屬的紀錄 id
+responses:
+  '201':
+    description: 上傳成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              required: [id, url]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                url:
+                  type: string
+                  description: 可存取的檔案 URL（local 為 static、s3 為公開/預簽 URL）
+            timestamp:
+              type: string
+              format: date-time
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'

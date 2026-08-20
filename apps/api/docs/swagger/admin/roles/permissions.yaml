@@ -1,0 +1,51 @@
+tags: [Roles]
+summary: 可用 Permission 清單
+description: |
+  取得系統中所有啟用的 permission（status=true），供角色建立/編輯 Modal 使用。
+  需要 `BACKEND:ROLE:VIEW` 權限。
+
+security:
+  - bearerAuth: []
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: array
+              items:
+                type: object
+                properties:
+                  permissionCode:
+                    type: string
+                    example: BACKEND:ACCOUNT:VIEW
+                  name:
+                    type: string
+                    example: 帳號檢視
+                  platform:
+                    type: string
+                    example: BACKEND
+                  module:
+                    type: string
+                    example: ACCOUNT
+                  action:
+                    type: string
+                    example: VIEW
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

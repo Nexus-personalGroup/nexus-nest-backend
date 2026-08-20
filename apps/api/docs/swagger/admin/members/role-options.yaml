@@ -1,0 +1,95 @@
+tags: [Members]
+summary: 角色下拉選項（分頁）
+description: |
+  帳號建立/編輯 Modal 的「角色」Combobox 用，分頁回傳啟用中的角色（status=true 且未軟刪除）。
+  支援名稱模糊搜尋；每筆含 isDefault 旗標（前端顯示但 disabled，不可由一般帳號指派）。
+  需要 `BACKEND:ACCOUNT:VIEW` 權限。
+  需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: query
+    name: page
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+    description: 頁碼，預設 1
+  - in: query
+    name: limit
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+      default: 20
+    description: 每頁筆數，預設 20、上限 100
+  - in: query
+    name: search
+    required: false
+    schema:
+      type: string
+    description: 名稱模糊搜尋；trim 後為空字串視為未提供
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  description: 啟用中的角色清單
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                        description: 角色 ID
+                      name:
+                        type: string
+                        description: 角色名稱（顯示用）
+                        example: 一般使用者
+                      isAssignable:
+                        type: boolean
+                        description: 是否可被一般帳號指派。false 時前端 select 仍顯示但 disabled（由後端依角色屬性判斷）
+                        example: true
+                meta:
+                  type: object
+                  properties:
+                    page:
+                      type: integer
+                      example: 1
+                    limit:
+                      type: integer
+                      example: 20
+                    total:
+                      type: integer
+                      example: 35
+                    totalPages:
+                      type: integer
+                      example: 2
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

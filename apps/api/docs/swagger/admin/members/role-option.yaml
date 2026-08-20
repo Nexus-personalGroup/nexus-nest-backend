@@ -1,0 +1,65 @@
+tags: [Members]
+summary: 單筆角色選項（fallback）
+description: |
+  帳號編輯 Modal 的「角色」Combobox 在「現有 roleId 不在分頁第一頁」時 fallback 取用。
+  與 `GET /api/roles/:id` 區隔：本 endpoint 給「會員」場景，只回 `{ id, name, isDefault }`，
+  且只需要 `BACKEND:ACCOUNT:VIEW` 權限，方便沒有 `BACKEND:ROLE:VIEW` 的會員管理者使用。
+  軟刪除或 status=false 的角色一律回 404。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                  example: 一般使用者
+                isAssignable:
+                  type: boolean
+                  description: 是否可被一般帳號指派；false 時前端 select 仍顯示但 disabled（由後端依角色屬性判斷）
+                  example: true
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 找不到角色或角色已停用
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 角色不存在
+          code: ROLE_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

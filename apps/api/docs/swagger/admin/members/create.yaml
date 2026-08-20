@@ -1,0 +1,98 @@
+tags: [Members]
+summary: 建立帳號
+description: |
+  後台建立新帳號。Email 不可重複，roleId 須存在於 roles 表。
+  需要 `BACKEND:ACCOUNT:EDIT` 權限。
+  需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [email, member, password, roleId]
+        properties:
+          email:
+            type: string
+            format: email
+            maxLength: 255
+            description: Email（最多 255 字元，不可重複）
+            example: user@example.com
+          member:
+            type: string
+            minLength: 1
+            maxLength: 100
+            description: 名稱（最多 100 字元）
+            example: 王小明
+          password:
+            type: string
+            minLength: 8
+            maxLength: 30
+            description: 密碼（8-30 字元，英數字混合）
+            example: Passw0rd!
+          roleId:
+            type: string
+            format: uuid
+            description: 指派角色 ID
+          status:
+            type: boolean
+            default: true
+            description: 初始啟用狀態（預設：true）
+
+responses:
+  '201':
+    description: 建立成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: 新建帳號 ID
+            timestamp:
+              type: string
+              format: date-time
+
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: roleId 不存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 角色不存在
+          code: ROLE_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '409':
+    description: Email 已被使用
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: Email 已被註冊
+          code: EMAIL_ALREADY_EXISTS
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

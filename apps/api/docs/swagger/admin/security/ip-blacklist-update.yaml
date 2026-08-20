@@ -1,0 +1,57 @@
+tags: [Security]
+summary: 更新 IP 黑名單
+description: |
+  更新指定 IP 黑名單記錄的可變欄位（目前僅 reason）。
+  ipAddress / isAutoBlock 不可變。
+  需要 `SUPERADMIN` 角色。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          reason:
+            type: string
+            description: 封鎖原因；省略表示不變
+            example: 持續嘗試暴力破解
+
+responses:
+  '204':
+    description: 更新成功（無 body）
+
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+
+  '404':
+    description: 找不到 IP 名單紀錄
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到該 IP 名單紀錄
+          code: IP_LIST_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

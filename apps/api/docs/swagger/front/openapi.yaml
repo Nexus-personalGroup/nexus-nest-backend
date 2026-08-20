@@ -1,0 +1,17 @@
+openapi: 3.0.0
+
+info:
+  title: Hexagonal NestJS 前台 (Front) API
+  version: 1.0.0
+  description: |
+    前台（公開）API 文件。目前僅骨架示範端點 /ping。
+    實際前台端點以 `gen:module <name> --front` 產生後補進本文件。
+
+servers:
+  - url: http://localhost:3000/api/front
+    description: 本地開發環境（前台 API）
+
+paths:
+  /ping:
+    get:
+      $ref: './ping.yaml'

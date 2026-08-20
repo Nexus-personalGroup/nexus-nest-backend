@@ -1,0 +1,33 @@
+tags: [Front]
+summary: 前台健康探測（骨架示範）
+description: |
+  公開端點，回傳前台 API 存活訊息，用於驗證 /api/front 路由與前台 swagger 骨架。
+  無需認證。實際前台功能以 gen:module --front 產生。
+
+responses:
+  '200':
+    description: 前台 API 存活
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                  example: 前台 API 運作中
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            message: 前台 API 運作中
+          timestamp: '2024-01-01T00:00:00.000Z'

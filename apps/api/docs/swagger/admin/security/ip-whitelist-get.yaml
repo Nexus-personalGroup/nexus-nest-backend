@@ -1,0 +1,71 @@
+tags: [Security]
+summary: 查詢單筆 IP 白名單
+description: |
+  取單筆 IP 白名單記錄，給編輯 dialog 帶初值用。
+  需要 `SUPERADMIN` 角色。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                ipAddress:
+                  type: string
+                description:
+                  type: string
+                  nullable: true
+                createdBy:
+                  type: string
+                  format: uuid
+                  nullable: true
+                createdAt:
+                  type: string
+                  format: date-time
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+
+  '404':
+    description: 找不到 IP 名單紀錄
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到該 IP 名單紀錄
+          code: IP_LIST_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

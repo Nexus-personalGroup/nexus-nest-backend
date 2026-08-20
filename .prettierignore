@@ -1,0 +1,17 @@
+# 相依 / 建置產物 / lockfile
+node_modules/
+**/dist/
+**/coverage/
+*.tsbuildinfo
+pnpm-lock.yaml
+
+# 工具生成檔（重生時會整份覆蓋，格式化無意義）
+packages/api-client/src/schema.ts
+apps/api/docs/swagger/openapi.bundle.yaml
+apps/api/prisma/migrations/
+
+# 手寫文件（繁中，不交 prettier reflow；README / CLAUDE / openspec / tasks 等）
+**/*.md
+
+# 程式碼審查報告
+pr/

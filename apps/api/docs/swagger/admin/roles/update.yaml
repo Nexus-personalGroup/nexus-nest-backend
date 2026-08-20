@@ -1,0 +1,91 @@
+tags: [Roles]
+summary: 更新角色
+description: |
+  更新角色名稱、permissions 或啟用狀態。三者均為選填（省略表示不變更）。
+  permissionCodes 傳空陣列 `[]` 表示清空所有權限。預設角色不可編輯。
+  需要 `BACKEND:ROLE:EDIT` 權限。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          name:
+            type: string
+            minLength: 1
+            maxLength: 100
+          permissionCodes:
+            type: array
+            items:
+              type: string
+              pattern: '^[A-Z_]+:[A-Z_]+:(VIEW|EDIT)$'
+            description: 省略表示不變更；傳空陣列表示清空所有權限
+          status:
+            type: boolean
+            description: 省略表示不變更；傳 true/false 切換角色啟用狀態
+
+responses:
+  '204':
+    description: 更新成功（無 body）
+  '400':
+    description: 參數錯誤、預設角色不可編輯或 permission 組合不合法
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        examples:
+          defaultRoleNotEditable:
+            summary: 預設角色不可編輯
+            value:
+              success: false
+              message: 預設角色不可編輯
+              code: DEFAULT_ROLE_NOT_EDITABLE
+              timestamp: '2024-01-01T00:00:00.000Z'
+          invalidCode:
+            summary: Permission code 不存在
+            value:
+              success: false
+              message: 'Permission code 不存在：BACKEND:XXX:VIEW'
+              code: INVALID_PERMISSION_CODE
+              timestamp: '2024-01-01T00:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 找不到角色
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 角色不存在
+          code: ROLE_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '409':
+    description: 角色名稱已存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: '角色名稱已存在：審核人員'
+          code: DUPLICATE_ROLE_NAME
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

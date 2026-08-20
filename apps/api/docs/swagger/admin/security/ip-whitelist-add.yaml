@@ -1,0 +1,66 @@
+tags: [Security]
+summary: 新增 IP 至白名單
+description: |
+  將指定 IP 加入白名單。IP 已存在時會 upsert 更新 description / createdBy。
+  需要 `SUPERADMIN` 角色。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [ip]
+        properties:
+          ip:
+            type: string
+            description: IP 位址
+            example: 192.168.1.1
+          description:
+            type: string
+            description: 備註說明
+            example: 辦公室 IP
+
+responses:
+  '201':
+    description: 新增成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              required: [id]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                  description: 新建（或既有）IP 紀錄的 uuid
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

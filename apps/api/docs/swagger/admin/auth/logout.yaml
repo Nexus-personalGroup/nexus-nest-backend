@@ -1,0 +1,30 @@
+tags: [Auth]
+summary: 登出
+description: |
+  登出並將 Access Token 加入黑名單。
+  若同時傳入 Refresh Token，也會一併加入黑名單。
+
+security:
+  - bearerAuth: []
+
+requestBody:
+  required: false
+  content:
+    application/json:
+      schema:
+        type: object
+        properties:
+          refreshToken:
+            type: string
+            description: Refresh Token（選填，一併廢棄）
+            example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+responses:
+  '204':
+    description: 登出成功（無回應內容）
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

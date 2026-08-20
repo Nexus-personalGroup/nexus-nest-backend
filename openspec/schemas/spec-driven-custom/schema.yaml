@@ -1,0 +1,201 @@
+name: spec-driven-custom
+version: 1
+description: >-
+  本專案的 spec-driven 流程（proposal → specs → design → tasks）。
+  相對於內建 schema，額外規範能力命名分類、API spec 的請求/回應形狀、以及可獨立驗證的任務分塊。
+artifacts:
+  - id: proposal
+    generates: proposal.md
+    description: Initial proposal document outlining the change
+    template: proposal.md
+    instruction: |
+      建立 proposal，交代這個 change 為什麼要做（WHY），不寫怎麼做（HOW 在 design.md）。
+
+      章節：
+      - **Why**：1-2 句講問題或機會。解決什麼問題？為什麼是現在？
+      - **What Changes**：條列改動。破壞性變更標 **BREAKING**。
+      - **Capabilities**：列出會新增或修改哪些 spec。
+      - **Impact**：受影響的程式碼、API、相依套件。
+
+      ## 能力（capability）命名規則
+
+      能力名稱是 kebab-case，並**必須**帶下列三種前綴之一，前綴決定 spec 的寫法：
+
+      | 前綴 | 用途 | 範例 |
+      | --- | --- | --- |
+      | `api-` | 後端 endpoint 契約 | `api-member-management` |
+      | `ui-` | 前端畫面行為 | `ui-member-management` |
+      | `platform-` | 跨切面契約與工程規則，不屬於單一功能 | `platform-api-error-response` |
+
+      補充規則：
+      - `api-` 預設指後台（`/api/admin/*`）。前台（`/api/front/*`）的能力用 `api-front-` 開頭。
+      - 前端目前只有一支 admin SPA，`ui-` 不標側。
+      - 同一功能的後端與前端**分成兩支 spec**（`api-member-management` 與 `ui-member-management`），
+        因為兩者的驗收方式不同（e2e 打 HTTP vs 元件行為）。
+      - 不要為單一 endpoint 開一支新能力。它屬於哪個功能就併進哪支既有 spec。
+
+      寫 Capabilities 前先看 `openspec/specs/` 現有名單，能改既有的就不要新增。
+      - **New Capabilities**：新增的能力，各自產生一份 `specs/<name>/spec.md`。
+      - **Modified Capabilities**：既有能力的**需求**有變才列（純實作調整不算），各需一份 delta spec。
+
+      保持精簡（1-2 頁）。
+    requires: []
+  - id: specs
+    generates: specs/**/*.md
+    description: Detailed specifications for the change
+    template: spec.md
+    instruction: |
+      建立 spec，定義系統**該做什麼**（WHAT），不寫怎麼實作。
+      proposal 的 Capabilities 每列一項就開一份 `specs/<capability>/spec.md`。
+      修改既有能力時，資料夾名稱沿用 `openspec/specs/<capability>/` 的現有名稱。
+
+      ## Delta 操作（用 `##` 標題）
+
+      - `## ADDED Requirements`：新增的需求
+      - `## MODIFIED Requirements`：行為改變——**必須貼完整的更新後內容**
+      - `## REMOVED Requirements`：移除——**必須**含 **Reason** 與 **Migration**
+      - `## RENAMED Requirements`：僅改名，用 FROM:/TO: 格式
+
+      MODIFIED 的正確做法：到 `openspec/specs/<capability>/spec.md` 找到該需求，
+      **整塊複製**（從 `### Requirement:` 到它所有 scenario），貼到 `## MODIFIED Requirements`
+      底下再改。只貼片段會在 archive 時把其餘內容弄丟。
+      若只是加新面向、沒改既有行為，用 ADDED 不要用 MODIFIED。
+
+      ## 格式硬性規定
+
+      - 需求標題：`### Requirement: <名稱>`
+      - 情境標題：`#### Scenario: <名稱>`，**剛好四個井號**。用三個或用條列會靜默失效。
+      - 每個需求**至少**要有一個 scenario，且失敗情境也要寫。
+      - 規範性語句用 SHALL / MUST / MUST NOT，不要用 should / may。
+      - 一律繁體中文。
+
+      ## `api-` 能力：每個需求必須寫請求與回應
+
+      `api-` 開頭的能力，每個 `### Requirement:` 在敘述之後、scenario 之前，
+      **必須**依序寫這三段（沒有請求主體的 GET 可省略 Request 的 body 部分，但不可省 Success / Failure）：
+
+      **Request**（query / body / path）：參數名、型別、預設值、是否必填。
+
+      **Success Response** `<status>`：實際 JSON。本專案的統一 wrapper 是：
+
+      ```json
+      { "success": true, "data": { }, "timestamp": "2026-08-16T06:00:00.000Z" }
+      ```
+
+      分頁清單的 `data` 形狀固定為：
+
+      ```json
+      { "success": true,
+        "data": { "list": [], "meta": { "page": 1, "limit": 10, "total": 42, "totalPages": 5 } },
+        "timestamp": "2026-08-16T06:00:00.000Z" }
+      ```
+
+      **回傳 null / undefined 時（如刪除成功），`data` 這個 key 整個不存在**，
+      不是 `"data": null`。刪除類的成功回應要寫成 `{ "success": true, "timestamp": "..." }`。
+
+      **Failure Responses**：逐條列出 `<status>`、`code: "<CODE>"`、觸發條件。錯誤 wrapper 是：
+
+      ```json
+      { "success": false, "message": "帳號或密碼錯誤", "code": "UNAUTHORIZED",
+        "timestamp": "2026-08-16T06:00:00.000Z" }
+      ```
+
+      `code` 兩個來源不要混淆：業務錯誤來自 `shared/constants/response-codes.ts` 的 `ResponseCodes`
+      常數（如 `MEMBER_NOT_FOUND`）；框架層 `HttpException` 則是 class 名轉大寫蛇形
+      （`UnauthorizedException` → `UNAUTHORIZED`）。
+      需要新錯誤碼時，spec 裡就要把碼名定下來，實作階段才知道要往兩份常數檔加什麼。
+
+      欄位命名依專案慣例（見 `openspec/project.md` 的「命名規範」），不要臆測。
+
+      ## `ui-` / `platform-` 能力
+
+      不寫 Request / Response JSON。`ui-` 描述版面、互動、依權限的顯示差異、確認框文案；
+      `platform-` 描述工程約束以及**它靠什麼強制**（型別、lint、架構守則測試、CI）。
+
+      spec 要可驗證——每個 scenario 都是一個潛在的測試案例。
+    requires:
+      - proposal
+  - id: design
+    generates: design.md
+    description: Technical design document with implementation details
+    template: design.md
+    instruction: |
+      建立 design，說明**怎麼實作**（HOW）。
+
+      符合下列任一才需要 design.md，否則不必產出：
+      - 跨模組 / 跨層的改動，或引入新的架構模式
+      - 新的外部相依、或資料模型有明顯變動
+      - 牽涉安全性、效能、資料遷移
+      - 有需要先定案的技術取捨
+
+      章節：
+      - **Context**：背景、現狀、限制
+      - **Goals / Non-Goals**：這次要達成什麼、明確不做什麼
+      - **Decisions**：關鍵技術選擇與理由（為什麼選 X 不選 Y），含考慮過的替代方案
+      - **Risks / Trade-offs**：已知限制與可能出錯的地方，格式 `[風險] → 緩解`
+      - **Migration Plan**：部署步驟、回滾策略（如適用）
+      - **Open Questions**：待決事項
+
+      本專案的既有架構決策（六角分層、前後台切分、錯誤碼雙檔、DTO 由 Zod 推導、
+      value object 的 `of()` / `trusted()` 雙入口等）寫在 `openspec/project.md`，
+      design.md 不要重述，只寫這次 change 特有的決策。若這次要**推翻**既有決策，
+      要在 Decisions 明確寫出推翻哪一條與理由。
+
+      寫架構與取捨，不要寫逐行實作。
+    requires:
+      - proposal
+  - id: tasks
+    generates: tasks.md
+    description: Implementation checklist with trackable tasks
+    template: tasks.md
+    instruction: |
+      建立實作任務清單。
+
+      **格式是硬性的**：apply 階段靠解析核取方塊追蹤進度，
+      不是 `- [ ] X.Y 描述` 的行不會被追蹤。用 `##` 編號標題分塊。
+
+      ## 分塊的標準
+
+      切塊的唯一標準是「**能不能獨立通過驗證鏈**」，不是概念上像不像一組。
+      有鏈式依賴的必須綁進同一塊——例如砍一個欄位會同時打到 service 與 seed，
+      拆開就會留下一個編譯不過的中間狀態。
+
+      檔頭要用引言區塊（`>`）寫出：
+      1. 這個 change 的驗證鏈實際指令（依改動範圍決定要不要加 e2e / build / swagger 同步）
+      2. 每塊綠燈後給 commit 指令、由使用者手動執行、再進下一塊
+      3. 塊與塊的依賴關係：哪幾塊互相獨立可先做、哪一塊是動 production code 前的安全網不可跳過
+
+      後端功能模組的預設塊順序（沒動到的階段直接刪掉）：
+      Schema/Migration → Domain/Port → Exceptions → Services(TDD) → Out Adapter
+      → Controller/DTO → Facade + Module → Swagger → 單元測試 → E2E → 驗證 → 收尾
+
+      ## 必要的任務類型
+
+      - 動到既有 production code 前，先補 **characterization test** 釘住現行行為，自成一塊且不可跳過。
+      - 每個寫測試的塊，最後放一項 **反向驗證**：刻意改壞對應的 production code，
+        逐一確認測試真的變紅，再改回來並確認 `git diff` 乾淨。改不紅的是假測試，重寫。
+      - 收尾塊要有：跑完整驗證鏈並**貼出實際輸出**、更新 `tasks/todo.md`、
+        以及列出需要使用者手動執行的動作（跑 migration、改 `.env`、觀察首次 CI）。
+
+      ## 實作過程中的維護方式
+
+      任務清單是活的，實作中發現的事直接寫在對應項目上，不要另開文件：
+
+      - **取消的項目**：保留編號，用刪除線 + 粗體結論 + 理由，例如
+        `- [x] 2.4 ~~前台 Controller 同步接上~~ —— **不需要**：Front 版繼承且未覆寫，改一處即兩側生效`
+      - **中途插入的塊**：用 `5b` 這種編號插在相關塊後面，並在塊標題下用一段話
+        交代它為什麼被併進來（在哪一塊收尾時查出、經誰確認）
+      - **判斷錯的項目**：直接把錯誤寫進該項目，這是後續寫 `tasks/lessons.md` 的素材
+
+      參考 spec 決定要建什麼、參考 design 決定怎麼建。每項任務都要能驗證——做完你知道它是綠的。
+    requires:
+      - specs
+      - design
+apply:
+  requires:
+    - tasks
+  tracks: tasks.md
+  instruction: |
+    讀 context 檔案，逐塊實作，完成一項就把 `- [ ]` 改成 `- [x]`。
+    每塊做完跑該塊的驗證鏈，綠燈後給使用者 commit 指令（繁體中文 conventional commits），
+    等使用者執行完再進下一塊。遇到阻塞或需要釐清就停下來問，不要猜。

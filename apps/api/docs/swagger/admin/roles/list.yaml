@@ -1,0 +1,98 @@
+tags: [Roles]
+summary: 角色列表
+description: |
+  分頁取得角色列表，支援名稱模糊搜尋與 status 啟用狀態過濾。
+  需要 `BACKEND:ROLE:VIEW` 權限。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: query
+    name: page
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - in: query
+    name: limit
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 200
+  - in: query
+    name: name
+    required: false
+    schema:
+      type: string
+    description: 以名稱模糊搜尋
+  - in: query
+    name: status
+    required: false
+    schema:
+      type: boolean
+    description: 啟用狀態過濾；省略則不過濾（同時回啟用 + 停用）
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      name:
+                        type: string
+                        example: 管理者
+                      status:
+                        type: boolean
+                      isDefault:
+                        type: boolean
+                        description: 預設角色（true 時不可刪除/編輯）
+                      memberCount:
+                        type: integer
+                        description: 使用此角色的帳號數
+                      createdAt:
+                        type: string
+                        format: date-time
+                      updatedAt:
+                        type: string
+                        format: date-time
+                meta:
+                  type: object
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

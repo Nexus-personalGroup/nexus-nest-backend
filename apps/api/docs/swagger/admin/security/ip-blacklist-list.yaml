@@ -1,0 +1,92 @@
+tags: [Security]
+summary: 查詢 IP 黑名單
+description: |
+  分頁取得 IP 黑名單記錄；支援 IP 模糊搜尋。
+  需要 `SUPERADMIN` 角色。需要 JWT Bearer Token 認證。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: query
+    name: page
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      default: 1
+  - in: query
+    name: limit
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 200
+  - in: query
+    name: search
+    required: false
+    schema:
+      type: string
+    description: IP 模糊搜尋（contains）
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      ipAddress:
+                        type: string
+                      reason:
+                        type: string
+                        nullable: true
+                      isAutoBlock:
+                        type: boolean
+                      createdBy:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+                meta:
+                  type: object
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

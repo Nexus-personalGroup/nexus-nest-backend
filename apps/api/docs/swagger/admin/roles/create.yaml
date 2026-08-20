@@ -1,0 +1,89 @@
+tags: [Roles]
+summary: 建立角色
+description: |
+  建立新角色並指派 permissions。名稱不可重複，permissionCodes 須存在於 DB。
+  EDIT permission 必須搭配對應 VIEW。需要 `BACKEND:ROLE:EDIT` 權限。
+
+security:
+  - bearerAuth: []
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [name]
+        properties:
+          name:
+            type: string
+            minLength: 1
+            maxLength: 100
+            example: 審核人員
+          permissionCodes:
+            type: array
+            items:
+              type: string
+              pattern: '^[A-Z_]+:[A-Z_]+:(VIEW|EDIT)$'
+            default: []
+            example: ['BACKEND:ACCOUNT:VIEW']
+
+responses:
+  '201':
+    description: 建立成功
+    content:
+      application/json:
+        schema:
+          type: object
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+            timestamp:
+              type: string
+              format: date-time
+
+  '400':
+    description: 參數錯誤或 permission code 格式/組合不合法
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        examples:
+          invalidCode:
+            summary: Permission code 不存在
+            value:
+              success: false
+              message: 'Permission code 不存在：BACKEND:XXX:VIEW'
+              code: INVALID_PERMISSION_CODE
+              timestamp: '2024-01-01T00:00:00.000Z'
+          invalidCombination:
+            summary: EDIT 未搭配 VIEW
+            value:
+              success: false
+              message: '設定 BACKEND:ACCOUNT:EDIT 時必須同時設定 BACKEND:ACCOUNT:VIEW'
+              code: INVALID_PERMISSION_COMBINATION
+              timestamp: '2024-01-01T00:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '409':
+    description: 角色名稱已存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: '角色名稱已存在：審核人員'
+          code: DUPLICATE_ROLE_NAME
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

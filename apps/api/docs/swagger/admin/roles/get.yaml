@@ -1,0 +1,72 @@
+tags: [Roles]
+summary: 角色詳情
+description: |
+  取得單一角色詳情，包含已指派的 permissionCodes。需要 `BACKEND:ROLE:VIEW` 權限。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                name:
+                  type: string
+                status:
+                  type: boolean
+                isDefault:
+                  type: boolean
+                permissionCodes:
+                  type: array
+                  items:
+                    type: string
+                  example: ['BACKEND:ROLE:VIEW', 'BACKEND:ROLE:EDIT']
+                createdAt:
+                  type: string
+                  format: date-time
+                updatedAt:
+                  type: string
+                  format: date-time
+            timestamp:
+              type: string
+              format: date-time
+
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 找不到角色
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 角色不存在
+          code: ROLE_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

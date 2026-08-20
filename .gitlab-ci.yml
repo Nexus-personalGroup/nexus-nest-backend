@@ -1,0 +1,341 @@
+# GitLab CI/CD — 模版骨架
+#
+# 提供「裝依賴 → 建置 → 清理 → PR 自動審查」的可共用 pipeline 骨架。
+# 部署相關 job（推 image 至 registry、SSH 部署 dev/prod）綁定各專案的 Docker repo、
+# registry 與部署主機，無法通用，已整段註解於檔案下方當「部署範本」；
+# 接上自己的部署環境後，填妥 variables 佔位值、設好 CI/CD 變數、補上 build/deploy stage 再取消註解。
+
+image: docker:latest
+
+workflow:
+  rules:
+    - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop" || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+    - if: $CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "master"
+
+default:
+  tags:
+    - docker
+    - amd64
+
+variables:
+  # ─── 部署專屬（接部署環境時填寫；目前僅被下方註解的部署範本使用） ───
+  # GitLab 專案群組名稱
+  PROJECT_GROUP: '<your-gitlab-group>'
+  # 放 Dockerfile / compose 的 Docker 專案目錄名稱
+  DOCKER_PROJECT_DIR: 'docker-<your-project>'
+  # Docker 專案 Git URL
+  DOCKER_PROJECT_GIT: 'git@gitlab.example.com:${PROJECT_GROUP}/${DOCKER_PROJECT_DIR}.git'
+  # 內部 Container Registry
+  DEVELOPMENT_CONTAINER_REGISTRY: 'docker-registry.example.com:5000'
+  # 測試環境 image 名稱
+  DEVELOPMENT_DOCKER_IMAGE: '${DEVELOPMENT_CONTAINER_REGISTRY}/${PROJECT_GROUP}/<your-project>'
+  # 測試環境部署主機（建議用 Group 層級 CI/CD 變數帶入）
+  DEVELOPMENT_DEPLOY_HOST: '${DEV_SERVER_USER}@${DEV_SERVER_HOST}'
+  # 正式環境（待設定）
+  PRODUCTION_DOCKER_IMAGE: ''
+  PRODUCTION_DEPLOY_HOST: ''
+  # ─── 通用 ───
+  NODE_VERSION: 22
+  NODE_DOCKER_IMAGE: node:${NODE_VERSION}
+
+# 套件管理器快取（pnpm monorepo：root + 各 workspace 的 node_modules）
+.package_cache: &package_cache
+  key: package-cache
+  paths:
+    - node_modules/
+    - apps/api/node_modules/
+    - apps/web/node_modules/
+    - packages/*/node_modules/
+  policy: pull-push
+
+# TypeScript 建置輸出 + Prisma client，cache 給後續 stage 使用
+.build_artifacts_cache: &build_artifacts_cache
+  key: artifacts-${CI_PIPELINE_IID}
+  paths:
+    - node_modules/
+    - apps/api/node_modules/
+    - apps/web/node_modules/
+    - packages/*/node_modules/
+    - apps/api/dist/
+    - apps/web/dist/
+  policy: pull-push
+
+# 複製對應環境的 .env 檔案（master→production、其餘→develop）
+.copy_env_script: &copy_env_script
+  - |
+    if [ "${CI_COMMIT_BRANCH}" == "master" ] || [ "${CI_MERGE_REQUEST_TARGET_BRANCH_NAME}" == "master" ]; then
+      echo "Setting up production environment"
+      if [ -f apps/api/.env.production ]; then
+        cp apps/api/.env.production apps/api/.env
+      else
+        echo "Warning: apps/api/.env.production not found, using default environment"
+        touch apps/api/.env
+      fi
+    else
+      echo "Setting up development environment"
+      if [ -f apps/api/.env.develop ]; then
+        cp apps/api/.env.develop apps/api/.env
+      else
+        echo "Warning: apps/api/.env.develop not found, using default environment"
+        touch apps/api/.env
+      fi
+    fi
+
+# 等待 MySQL service 就緒：GitLab Runner 只確保 container 啟動，
+# MySQL 初始化期間 port 可能已開但尚不接受連線。
+#
+# 為何不用 healthcheck：GitLab CI 的 services 不支援 docker compose 的
+# `healthcheck` / `depends_on: condition: service_healthy` 語法，只能手動等。
+# 本機驗證環境（compose.yml 的 mysql-verify）則使用 healthcheck——兩邊的 MySQL 版本
+# 與初始化參數保持一致，差別僅在等待機制。
+.wait_for_mysql_script: &wait_for_mysql_script
+  - |
+    node -e "
+    const net = require('net');
+    const attempt = (left) => new Promise((resolve, reject) => {
+      const socket = net.connect(Number(process.env.DB_PORT), process.env.DB_HOST);
+      socket.on('connect', () => { socket.end(); resolve(); });
+      socket.on('error', () => {
+        if (left <= 0) return reject(new Error('MySQL 在時限內未就緒'));
+        setTimeout(() => attempt(left - 1).then(resolve, reject), 2000);
+      });
+    });
+    attempt(30).then(
+      () => console.log('MySQL 就緒'),
+      (err) => { console.error(err.message); process.exit(1); },
+    );
+    "
+
+# 品質關卡與建置共用的 rules：MR 與 develop / master 推送都要跑。
+# 刻意不沿用 prepare-production 只認 \$CI_COMMIT_BRANCH 的寫法——那會讓 MR 階段幾乎不檢查。
+.quality_rules: &quality_rules
+  - if: $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "develop" || $CI_MERGE_REQUEST_TARGET_BRANCH_NAME == "master"
+  - if: $CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "master"
+
+stages:
+  - prepare
+  - quality
+  - optimize
+  - cleanup
+  - pr_agent
+
+# 安裝依賴套件（pnpm monorepo）
+npm-install:
+  stage: prepare
+  image: ${NODE_DOCKER_IMAGE}
+  variables:
+    HUSKY: '0'
+  cache:
+    - *package_cache
+    - *build_artifacts_cache
+  before_script:
+    - npm i -g pnpm@11.0.8
+  script:
+    - pnpm install --frozen-lockfile
+
+# 品質關卡：型別 / lint / 單元測試 + 20 條架構守則。
+# 不需外部服務，多數問題在此於數十秒內回報，開發者不必等 e2e 的 MySQL 起來。
+quality-check:
+  stage: quality
+  image: ${NODE_DOCKER_IMAGE}
+  variables:
+    HUSKY: '0'
+  cache:
+    - *package_cache
+    - *build_artifacts_cache
+  before_script:
+    - npm i -g pnpm@11.0.8
+    # typecheck / lint 的 pre script 會跑 db:generate，需 .env 組 DATABASE_URL
+    #（generate 不連線，空 .env 亦可）
+    - *copy_env_script
+  script:
+    - pnpm typecheck
+    - pnpm lint
+    # test:cov = 單元測試 + 覆蓋率門檻 + 架構守則（兩個 workspace 皆有門檻，
+    # 用 test 會讓門檻靜默不執行）
+    - pnpm test:cov
+  needs:
+    - npm-install
+  rules: *quality_rules
+
+# E2E：對真實 MySQL 跑完整 API 流程（Redis 於測試中 mock）。
+# 連線設定走 job variables——applyE2EDbEnv 以 dotenv 載入 .env，而 dotenv 不覆寫
+# 既有 process.env，故此處供應即可，不需在 CI 偽造一份 .env。
+e2e-test:
+  stage: quality
+  image: ${NODE_DOCKER_IMAGE}
+  services:
+    - name: mysql:9
+      alias: mysql
+  variables:
+    HUSKY: '0'
+    MYSQL_ROOT_PASSWORD: 'ci-e2e-root'
+    DB_HOST: 'mysql'
+    DB_PORT: '3306'
+    DB_USERNAME: 'root'
+    DB_PASSWORD: 'ci-e2e-root'
+    DB_DATABASE: 'hexagonal_e2e_test'
+    # 庫名必須含 "test"，否則 e2e 的 globalSetup 守門會中止（防誤連 dev / prod）
+    DB_TEST_DATABASE: 'hexagonal_e2e_test'
+  cache:
+    - *package_cache
+    - *build_artifacts_cache
+  before_script:
+    - npm i -g pnpm@11.0.8
+    - *wait_for_mysql_script
+  script:
+    # pnpm install 的 postinstall 只建 symlink,client 仍需自行 generate
+    - pnpm --filter @app/api db:generate
+    - pnpm --filter @app/api test:e2e
+  needs:
+    - npm-install
+  rules: *quality_rules
+
+# 建置 TypeScript + Prisma generate（pnpm 一併 build api + web）
+prepare-production:
+  stage: optimize
+  image: ${NODE_DOCKER_IMAGE}
+  variables:
+    HUSKY: '0'
+  cache:
+    - *package_cache
+    - *build_artifacts_cache
+  before_script:
+    - npm i -g pnpm@11.0.8
+    - *copy_env_script
+  script:
+    # db:generate 會讀 apps/api/.env 組 DATABASE_URL（generate 不連線）
+    - pnpm --filter @app/api db:generate
+    # root build：先 build api（含 prisma generate）再 build web，產出 apps/api/dist 與 apps/web/dist
+    - pnpm build
+  needs:
+    # 品質未過就不浪費資源建置；e2e 不列入 needs，避免較慢的 e2e 阻塞產出
+    #（e2e 失敗仍會使整體 pipeline 失敗）
+    - npm-install
+    - quality-check
+  rules:
+    - if: $CI_COMMIT_BRANCH == "develop" || $CI_COMMIT_BRANCH == "master"
+
+# 清除 artifacts cache
+cleanup:
+  stage: cleanup
+  cache:
+    - *build_artifacts_cache
+  script:
+    - rm -rf node_modules
+    - rm -rf dist
+  allow_failure: true
+  rules:
+    - when: always
+
+# PR Agent 自動審查（預設 when: never；需要時改 rules 觸發，並設好下列 CI/CD 變數）
+pr_agent_job:
+  stage: pr_agent
+  image:
+    name: codiumai/pr-agent:latest
+    entrypoint: ['']
+  script:
+    - cd /app
+    - echo "Running PR Agent action step"
+    - export MR_URL="$CI_MERGE_REQUEST_PROJECT_URL/merge_requests/$CI_MERGE_REQUEST_IID"
+    - echo "MR_URL=$MR_URL"
+    - export gitlab__url=$CI_SERVER_PROTOCOL://$CI_SERVER_FQDN
+    - export gitlab__PERSONAL_ACCESS_TOKEN=$PR_AGENT_GITLAB_PERSONAL_ACCESS_TOKEN
+    - export config__git_provider="gitlab"
+    - export config__model="$GLOBAL_PR_AGENT_MODEL"
+    - export config__fallback_models="$GLOBAL_PR_AGENT_MODEL"
+    - export aws__AWS_ACCESS_KEY_ID="$PR_AGENT_AWS_ACCESS_KEY_ID"
+    - export aws__AWS_SECRET_ACCESS_KEY="$PR_AGENT_AWS_SECRET_ACCESS_KEY"
+    - export aws__AWS_REGION_NAME="$GLOBAL_PR_AGENT_AWS_REGION_NAME"
+    - export config__response_language="zh-TW"
+    - python -m pr_agent.cli --pr_url="$MR_URL" describe
+    - python -m pr_agent.cli --pr_url="$MR_URL" review
+    - python -m pr_agent.cli --pr_url="$MR_URL" improve
+  rules:
+    - when: never
+  tags:
+    - docker
+    - amd64
+
+# ════════════════════════════════════════════════════════════════════════
+# 部署範本（參考用，預設停用）
+# 綁定外部 Docker 專案、內部 registry、部署主機與其上的 helper script
+# （compose-up-env / clear-docker-with-filter），無法通用。
+# 啟用步驟：
+#   1. stages 加入 build、deploy
+#   2. 填妥上方 variables 的佔位值（registry / image / host）
+#   3. 設定 CI/CD 變數：GITLAB_SSH_PRIVATE_KEY_BASE64、部署用 SSH key 等
+#   4. 取消下方註解
+# ════════════════════════════════════════════════════════════════════════
+#
+# # GitLab SSH 設定（部署用獨立 key，避免與部署主機 SSH key 衝突）
+# .gitlab_ssh_setting_script: &gitlab_ssh_setting_script
+#   - mkdir -p ~/.ssh
+#   - echo $GITLAB_SSH_PRIVATE_KEY_BASE64 | base64 -d > ~/.ssh/gitlab_deploy_key
+#   - chmod 0600 ~/.ssh/gitlab_deploy_key
+#   - |
+#     cat >> ~/.ssh/config <<EOF
+#     Host gitlab.example.com
+#         HostName gitlab.example.com
+#         User git
+#         IdentityFile ~/.ssh/gitlab_deploy_key
+#         IdentitiesOnly yes
+#         StrictHostKeyChecking no
+#     EOF
+#   - ssh-keyscan -t rsa gitlab.example.com >> ~/.ssh/known_hosts
+#
+# # 建置 Docker image 並推送至 Registry（測試環境）
+# tcr-application-push:
+#   stage: build
+#   image: docker:git
+#   cache:
+#     <<: *build_artifacts_cache
+#     policy: pull
+#   services:
+#     - name: docker:dind
+#       command: ['--insecure-registry=docker-registry.example.com:5000']
+#   variables:
+#     DOCKER_HOST: tcp://docker:2375
+#     DOCKER_TLS_CERTDIR: ''
+#     IMAGE_TAGS: >-
+#       --tag ${DEVELOPMENT_DOCKER_IMAGE}:${CI_COMMIT_BRANCH}
+#       --tag ${DEVELOPMENT_DOCKER_IMAGE}:${CI_COMMIT_BRANCH}-${CI_PIPELINE_IID}
+#       --tag ${DEVELOPMENT_DOCKER_IMAGE}:${CI_COMMIT_BRANCH}-${CI_COMMIT_SHORT_SHA}
+#   before_script:
+#     - *gitlab_ssh_setting_script
+#     - *copy_env_script
+#     # Dockerfile 放在獨立 Docker 專案，clone 後複製過來
+#     - git clone $DOCKER_PROJECT_GIT
+#     - cp -p $DOCKER_PROJECT_DIR/Dockerfile .
+#   script:
+#     - docker build $IMAGE_TAGS .
+#     - docker push --all-tags ${DEVELOPMENT_DOCKER_IMAGE}
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == "develop"
+#
+# # 部署至測試環境
+# develop-deploy:
+#   stage: deploy
+#   image: docker:git
+#   before_script:
+#     - *gitlab_ssh_setting_script
+#     - eval $(ssh-agent -s)
+#     - chmod 400 "$DEPLOY_SSH_PRIVATE_KEY"
+#     - ssh-add "$DEPLOY_SSH_PRIVATE_KEY"
+#     - mkdir -p ~/.ssh
+#     - echo -e "Host *\n\tStrictHostKeyChecking no" >> ~/.ssh/config
+#   script:
+#     # 停舊容器 → SCP Docker 專案 → 起新容器 → migrate → health check → 清理
+#     - ssh $DEVELOPMENT_DEPLOY_HOST "cd /opt/docker-develop && if [ -d $DOCKER_PROJECT_DIR ]; then cd $DOCKER_PROJECT_DIR && docker compose down && cd .. && rm -rf $DOCKER_PROJECT_DIR; fi"
+#     - git clone $DOCKER_PROJECT_GIT
+#     - scp -r ./${DOCKER_PROJECT_DIR}/. $DEVELOPMENT_DEPLOY_HOST:/opt/docker-develop/${DOCKER_PROJECT_DIR}
+#     - ssh $DEVELOPMENT_DEPLOY_HOST "cd /opt/docker-develop/$DOCKER_PROJECT_DIR && ./compose-up-env ${CI_COMMIT_BRANCH} ${CI_PIPELINE_IID}"
+#     - sleep 15
+#     # migration：schema 在 apps/api，需切到該目錄讀 prisma.config.ts + .env
+#     - ssh $DEVELOPMENT_DEPLOY_HOST "cd /opt/docker-develop/$DOCKER_PROJECT_DIR && docker compose exec -T nodejs-app sh -c 'cd /var/www/apps/api && npx prisma migrate deploy'"
+#     - ssh $DEVELOPMENT_DEPLOY_HOST "cd /opt/docker-develop/$DOCKER_PROJECT_DIR && docker compose exec -T nodejs-app wget -qO- http://localhost:3000/api/health || echo 'Health check failed'"
+#   rules:
+#     - if: $CI_COMMIT_BRANCH == "develop"
+#
+# # production-application-push / production-deploy：比照上方 develop 版本，
+# # 換成 PRODUCTION_DOCKER_IMAGE / PRODUCTION_DEPLOY_HOST 與 master 分支 rules。

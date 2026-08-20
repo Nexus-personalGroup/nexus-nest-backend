@@ -1,0 +1,108 @@
+tags: [Auth]
+summary: 登入
+description: |
+  使用 Email 與密碼登入，成功後取得 JWT Access Token 與 Refresh Token。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [email, password]
+        properties:
+          email:
+            type: string
+            format: email
+            description: 電子郵件
+            example: test@example.com
+          password:
+            type: string
+            format: password
+            description: 密碼
+            example: mypassword123
+
+responses:
+  '200':
+    description: 登入成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+              example: true
+            data:
+              type: object
+              description: 登入結果
+              required:
+                - accessToken
+                - refreshToken
+                - accessTokenExpiresIn
+                - refreshTokenExpiresIn
+                - member
+              properties:
+                accessToken:
+                  type: string
+                  description: Access Token
+                refreshToken:
+                  type: string
+                  description: Refresh Token
+                accessTokenExpiresIn:
+                  type: integer
+                  description: Access Token 絕對有效期（秒）
+                refreshTokenExpiresIn:
+                  type: integer
+                  description: Refresh Token 絕對有效期（秒）
+                member:
+                  type: object
+                  description: 帳號摘要
+                  required: [id, email, member, roleName]
+                  properties:
+                    id:
+                      type: string
+                      format: uuid
+                      description: 帳號 ID
+                    email:
+                      type: string
+                      format: email
+                      description: Email
+                    member:
+                      type: string
+                      description: 名稱
+                    roleName:
+                      type: string
+                      description: 所屬角色名稱
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            accessToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            refreshToken: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+            accessTokenExpiresIn: 900
+            refreshTokenExpiresIn: 604800
+            member:
+              id: a1b2c3d4-e5f6-7890-abcd-ef1234567890
+              email: test@example.com
+              member: Alan
+              roleName: ADMIN
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '401':
+    description: 帳號或密碼錯誤
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 帳號或密碼錯誤
+          code: UNAUTHORIZED
+          timestamp: '2024-01-01T00:00:00.000Z'
+
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

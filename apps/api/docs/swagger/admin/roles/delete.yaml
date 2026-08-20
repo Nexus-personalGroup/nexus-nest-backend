@@ -1,0 +1,59 @@
+tags: [Roles]
+summary: 刪除角色
+description: |
+  軟刪除角色（name 加 suffix 釋放唯一約束）。預設角色不可刪除；仍有帳號使用時不可刪除。
+  需要 `BACKEND:ROLE:EDIT` 權限。
+
+security:
+  - bearerAuth: []
+
+parameters:
+  - in: path
+    name: id
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 刪除成功（無 body）
+  '400':
+    description: 預設角色不可刪除
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 預設角色不可刪除
+          code: DEFAULT_ROLE_NOT_DELETABLE
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 找不到角色
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 角色不存在
+          code: ROLE_NOT_FOUND
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '409':
+    description: 角色仍有帳號使用
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 該角色仍有 3 個帳號使用，無法刪除
+          code: ROLE_HAS_MEMBERS
+          timestamp: '2024-01-01T00:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

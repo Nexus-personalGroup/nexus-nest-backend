@@ -1,0 +1,293 @@
+openapi: 3.0.0
+
+info:
+  title: Hexagonal NestJS 後台 (Admin) API
+  version: 1.0.0
+  description: |
+    Hexagonal Architecture NestJS + Express API 文件
+
+servers:
+  - url: http://localhost:3000/api/admin
+    description: 本地開發環境（後台 API）
+
+security:
+  - bearerAuth: []
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        使用 Access Token 進行身份驗證
+
+        格式: Bearer {accessToken}
+
+  schemas:
+    # ===== 通用回應格式 =====
+    SuccessResponse:
+      type: object
+      description: 通用成功回應格式
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: 操作是否成功
+          example: true
+        data:
+          type: object
+          description: 回應資料
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+          description: 回應時間
+          example: '2024-01-01T00:00:00.000Z'
+
+    ErrorResponse:
+      type: object
+      description: 通用錯誤回應格式
+      required:
+        - success
+        - timestamp
+      properties:
+        success:
+          type: boolean
+          description: 操作是否成功
+          example: false
+        message:
+          type: string
+          description: 錯誤訊息
+          example: 發生錯誤
+        code:
+          type: string
+          description: 錯誤代碼
+          example: ERROR_CODE
+        timestamp:
+          type: string
+          format: date-time
+          description: 回應時間
+          example: '2024-01-01T00:00:00.000Z'
+
+  responses:
+    # 400 Bad Request
+    BadRequest:
+      description: 請求參數錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 請求參數錯誤
+            code: BAD_REQUEST
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 401 Unauthorized
+    NoToken:
+      description: 缺少授權憑證
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 缺少授權憑證，請先登入
+            code: NO_TOKEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    TokenRevoked:
+      description: Token 已登出或失效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 已登出或失效
+            code: TOKEN_REVOKED
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    TokenExpired:
+      description: Token 已過期
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 已過期
+            code: TOKEN_EXPIRED
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    InvalidToken:
+      description: Token 無效
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: Token 無效
+            code: INVALID_TOKEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 403 Forbidden
+    Forbidden:
+      description: 權限不足
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 權限不足
+            code: FORBIDDEN
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 404 Not Found
+    NotFound:
+      description: 資源不存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 資源不存在
+            code: NOT_FOUND
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 409 Conflict
+    Conflict:
+      description: 資源已存在
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 資源已存在
+            code: CONFLICT
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+    # 500 Internal Server Error
+    InternalServerError:
+      description: 伺服器內部錯誤
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+          example:
+            success: false
+            message: 伺服器發生未預期錯誤
+            code: INTERNAL_SERVER_ERROR
+            timestamp: '2024-01-01T00:00:00.000Z'
+
+paths:
+  /auth/login:
+    post:
+      $ref: './auth/login.yaml'
+
+  /auth/logout:
+    post:
+      $ref: './auth/logout.yaml'
+
+  /auth/refresh:
+    post:
+      $ref: './auth/refresh.yaml'
+
+  /auth/forgot-password:
+    post:
+      $ref: './auth/forgot-password.yaml'
+
+  /auth/reset-password:
+    post:
+      $ref: './auth/reset-password.yaml'
+
+  /roles:
+    get:
+      $ref: './roles/list.yaml'
+    post:
+      $ref: './roles/create.yaml'
+
+  /roles/permissions:
+    get:
+      $ref: './roles/permissions.yaml'
+
+  /roles/{id}:
+    get:
+      $ref: './roles/get.yaml'
+    patch:
+      $ref: './roles/update.yaml'
+    delete:
+      $ref: './roles/delete.yaml'
+
+  /me:
+    get:
+      $ref: './profile/get-me.yaml'
+
+  /members:
+    get:
+      $ref: './members/list.yaml'
+    post:
+      $ref: './members/create.yaml'
+
+  /members/role/options:
+    get:
+      $ref: './members/role-options.yaml'
+
+  /members/role/options/{id}:
+    get:
+      $ref: './members/role-option.yaml'
+
+  /members/{id}:
+    get:
+      $ref: './members/get.yaml'
+    patch:
+      $ref: './members/update.yaml'
+    delete:
+      $ref: './members/delete.yaml'
+
+  /security/ip-whitelist:
+    get:
+      $ref: './security/ip-whitelist-list.yaml'
+    post:
+      $ref: './security/ip-whitelist-add.yaml'
+
+  /security/ip-whitelist/{id}:
+    get:
+      $ref: './security/ip-whitelist-get.yaml'
+    patch:
+      $ref: './security/ip-whitelist-update.yaml'
+    delete:
+      $ref: './security/ip-whitelist-delete.yaml'
+
+  /security/ip-blacklist:
+    get:
+      $ref: './security/ip-blacklist-list.yaml'
+    post:
+      $ref: './security/ip-blacklist-add.yaml'
+
+  /security/ip-blacklist/{id}:
+    get:
+      $ref: './security/ip-blacklist-get.yaml'
+    patch:
+      $ref: './security/ip-blacklist-update.yaml'
+    delete:
+      $ref: './security/ip-blacklist-delete.yaml'
+
+  /security/unlock-account:
+    post:
+      $ref: './security/unlock-account.yaml'
+
+  /attachments:
+    post:
+      $ref: './attachments/upload.yaml'
+
+  /attachments/{id}:
+    delete:
+      $ref: './attachments/delete.yaml'
