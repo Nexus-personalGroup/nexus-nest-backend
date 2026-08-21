@@ -26,6 +26,8 @@ export const SERVER_EVENTS = {
   ROOM_SYNCED: 'roomSynced',
   /** 某成員的已讀位置前進，送給房間其他成員 */
   ROOM_READ: 'roomRead',
+  /** 訊息被撤回，送給房間所有成員；payload 不含內容 */
+  MESSAGE_RETRACTED: 'messageRetracted',
 } as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];

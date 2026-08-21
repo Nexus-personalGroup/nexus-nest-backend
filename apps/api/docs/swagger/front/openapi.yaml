@@ -208,6 +208,10 @@ paths:
     get:
       $ref: './chat-rooms/messages.yaml'
 
+  /chat-rooms/{roomId}/messages/{messageId}:
+    delete:
+      $ref: './chat-rooms/retract.yaml'
+
   /chat-rooms/{roomId}/read:
     patch:
       $ref: './chat-rooms/read.yaml'

@@ -4,9 +4,20 @@ export interface ChatMessage {
   messageId: string;
   roomId: string;
   senderId: string;
+  /** 已撤回時為空字串——遮蔽發生在 repository 的投影函式，呼叫端拿不到原內容 */
   content: string;
   seq: number;
+  /** 撤回時間；null 代表未撤回 */
+  retractedAt: Date | null;
   createdAt: Date;
+}
+
+/** 撤回的授權與時限判斷所需的最小資訊，不含內容 */
+export interface MessageOwnership {
+  messageId: string;
+  senderId: string;
+  createdAt: Date;
+  retractedAt: Date | null;
 }
 
 export interface AppendMessageInput {
@@ -47,4 +58,22 @@ export interface ChatMessageRepositoryPort {
     beforeSeq: number | undefined,
     limit: number,
   ): Promise<ChatMessage[]>;
+
+  /**
+   * 取撤回判斷所需的最小資訊；訊息不存在或不屬於該房間時回 null。
+   *
+   * 刻意不回傳完整訊息：這條路徑只需要「誰發的、何時發的、是否已撤回」，
+   * 多回傳內容等於在授權判斷之前就把它取出來。
+   */
+  findOwnership(
+    roomId: string,
+    messageId: string,
+  ): Promise<MessageOwnership | null>;
+
+  /**
+   * 標記撤回。**不刪除該列**——刪了 seq 會出現洞。
+   *
+   * @returns 撤回時間；該則已撤回時回傳原本的時間（冪等）
+   */
+  retract(messageId: string, retractedBy: string): Promise<Date>;
 }

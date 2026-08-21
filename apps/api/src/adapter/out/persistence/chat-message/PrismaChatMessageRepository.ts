@@ -7,6 +7,7 @@ import {
   CHAT_MESSAGE_REPOSITORY_PORT,
   ChatMessage,
   ChatMessageRepositoryPort,
+  MessageOwnership,
 } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
 
 export { CHAT_MESSAGE_REPOSITORY_PORT };
@@ -18,6 +19,7 @@ type MessageRow = {
   senderId: string;
   content: string;
   seq: number;
+  retractedAt: Date | null;
   createdAt: Date;
 };
 
@@ -105,22 +107,76 @@ export class PrismaChatMessageRepository implements ChatMessageRepositoryPort {
     return rows.map((row) => this.toMessage(row));
   }
 
+  async findOwnership(
+    roomId: string,
+    messageId: string,
+  ): Promise<MessageOwnership | null> {
+    // 用 findFirst 帶 roomId 條件而非 findUnique(id)：訊息不屬於該房間時必須
+    // 回 null，否則拿別的房間的 messageId 就能繞過房間層級的成員資格判斷
+    const row = await this.prisma.chatMessageRecord.findFirst({
+      where: { id: messageId, roomId },
+      select: {
+        id: true,
+        senderId: true,
+        createdAt: true,
+        retractedAt: true,
+      },
+    });
+    if (!row) return null;
+    return {
+      messageId: row.id,
+      senderId: row.senderId,
+      createdAt: row.createdAt,
+      retractedAt: row.retractedAt,
+    };
+  }
+
+  async retract(messageId: string, retractedBy: string): Promise<Date> {
+    const now = new Date();
+    // updateMany + retractedAt: null 條件讓「尚未撤回時才寫入」在單一 SQL 內完成，
+    // 因此重複撤回不會覆寫原本的時間；受影響列數為 0 就代表早已撤回
+    const { count } = await this.prisma.chatMessageRecord.updateMany({
+      where: { id: messageId, retractedAt: null },
+      data: { retractedAt: now, retractedBy },
+    });
+    if (count > 0) return now;
+
+    const existing = await this.prisma.chatMessageRecord.findUniqueOrThrow({
+      where: { id: messageId },
+      select: { retractedAt: true },
+    });
+    // 走到這裡代表 count 為 0，也就是 retractedAt 必定有值
+    return existing.retractedAt ?? now;
+  }
+
   private readonly messageSelect = {
     id: true,
     roomId: true,
     senderId: true,
     content: true,
     seq: true,
+    retractedAt: true,
     createdAt: true,
   } as const;
 
+  /**
+   * 資料列 → 對外物件的**唯一投影點**。
+   *
+   * 內容遮蔽只寫在這裡：被撤回的訊息內容保留在資料庫供 M3 的檢舉調查，
+   * 但任何前台路徑都不得回傳它。讀取路徑有三條（歷史查詢、斷線補齊、即時廣播），
+   * 在各個 service 各自遮蔽的話，漏掉一條就是洩漏，而且不會有徵兆。
+   *
+   * 空字串而非 null：`content` 的型別是 string，改成可空會讓所有客戶端多一個
+   * null 檢查，而它們本來就要看 `retractedAt` 才知道要顯示「訊息已收回」。
+   */
   private toMessage(row: MessageRow): ChatMessage {
     return {
       messageId: row.id,
       roomId: row.roomId,
       senderId: row.senderId,
-      content: row.content,
+      content: row.retractedAt ? '' : row.content,
       seq: row.seq,
+      retractedAt: row.retractedAt,
       createdAt: row.createdAt,
     };
   }

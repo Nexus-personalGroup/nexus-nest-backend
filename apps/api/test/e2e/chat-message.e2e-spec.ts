@@ -246,4 +246,137 @@ describe('ChatMessage E2E', () => {
       expect(res.status).toBe(400);
     });
   });
+
+  describe('撤回訊息', () => {
+    const retract = (messageId: string, token = tokenA) =>
+      request(app.getHttpServer())
+        .delete(`/api/front/chat-rooms/${roomId}/messages/${messageId}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    /** 由 A 送出一則訊息並回傳它的 id；createdAt 可覆寫以測試時限 */
+    const seedOwnMessage = async (createdAt?: Date): Promise<string> => {
+      const message = await prisma.chatMessageRecord.create({
+        data: {
+          roomId,
+          senderId: idA,
+          content: '這則會被撤回',
+          seq: 1,
+          clientMessageId: 'own-1',
+          ...(createdAt ? { createdAt } : {}),
+        },
+      });
+      await prisma.chatRoomRecord.update({
+        where: { id: roomId },
+        data: { lastSeq: 1 },
+      });
+      return message.id;
+    };
+
+    it('發送者在時限內撤回 → 204 且標記為已撤回', async () => {
+      const messageId = await seedOwnMessage();
+
+      const res = await retract(messageId);
+
+      expect(res.status).toBe(204);
+      const row = await prisma.chatMessageRecord.findUniqueOrThrow({
+        where: { id: messageId },
+      });
+      expect(row.retractedAt).not.toBeNull();
+      expect(row.retractedBy).toBe(idA);
+    });
+
+    // 內容保留供 M3 的檢舉調查——騷擾者送完立即撤回是最典型的行為
+    it('撤回後內容仍保留在資料庫', async () => {
+      const messageId = await seedOwnMessage();
+
+      await retract(messageId);
+
+      const row = await prisma.chatMessageRecord.findUniqueOrThrow({
+        where: { id: messageId },
+      });
+      expect(row.content).toBe('這則會被撤回');
+    });
+
+    // 讀取路徑之一：漏掉這條就是內容洩漏
+    it('撤回後歷史查詢看不到內容，但該則仍在且 seq 保留', async () => {
+      const messageId = await seedOwnMessage();
+      await retract(messageId);
+
+      const res = await request(app.getHttpServer())
+        .get(`/api/front/chat-rooms/${roomId}/messages`)
+        .set('Authorization', `Bearer ${tokenA}`);
+
+      const rows = (
+        res.body as {
+          data: {
+            list: {
+              messageId: string;
+              seq: number;
+              content: string;
+              retractedAt: string | null;
+            }[];
+          };
+        }
+      ).data.list;
+      expect(rows).toHaveLength(1);
+      expect(rows[0].seq).toBe(1);
+      expect(rows[0].content).toBe('');
+      expect(rows[0].retractedAt).not.toBeNull();
+    });
+
+    // 撤回是收斂到某個狀態，不是遞增操作
+    it('重複撤回 → 204，且撤回時間不被覆寫', async () => {
+      const messageId = await seedOwnMessage();
+      await retract(messageId);
+      const first = await prisma.chatMessageRecord.findUniqueOrThrow({
+        where: { id: messageId },
+      });
+
+      const res = await retract(messageId);
+
+      expect(res.status).toBe(204);
+      const second = await prisma.chatMessageRecord.findUniqueOrThrow({
+        where: { id: messageId },
+      });
+      expect(second.retractedAt).toEqual(first.retractedAt);
+    });
+
+    it('撤回他人的訊息 → 404 CHAT_MESSAGE_NOT_FOUND', async () => {
+      const other = await prisma.chatMessageRecord.create({
+        data: {
+          roomId,
+          senderId: idB,
+          content: 'B 發的',
+          seq: 1,
+          clientMessageId: 'other-1',
+        },
+      });
+
+      const res = await retract(other.id);
+
+      expectApiError(res, 404, ResponseCodes.CHAT_MESSAGE_NOT_FOUND);
+    });
+
+    it('訊息不存在 → 與「不是你的」同一個錯誤碼', async () => {
+      const res = await retract(MISSING_ID);
+      expectApiError(res, 404, ResponseCodes.CHAT_MESSAGE_NOT_FOUND);
+    });
+
+    // 時限預設 300 秒；建一則 10 分鐘前的訊息
+    it('超過時限 → 403 CHAT_MESSAGE_RETRACT_EXPIRED', async () => {
+      const messageId = await seedOwnMessage(new Date(Date.now() - 600_000));
+
+      const res = await retract(messageId);
+
+      expectApiError(res, 403, ResponseCodes.CHAT_MESSAGE_RETRACT_EXPIRED);
+    });
+
+    it('非成員撤回 → 404 CHAT_ROOM_NOT_FOUND', async () => {
+      const messageId = await seedOwnMessage();
+
+      const res = await retract(messageId, tokenC);
+
+      expectApiError(res, 404, ResponseCodes.CHAT_ROOM_NOT_FOUND);
+    });
+  });
 });

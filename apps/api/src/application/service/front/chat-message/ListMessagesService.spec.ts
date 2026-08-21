@@ -25,6 +25,7 @@ const messagesOf = (count: number): ChatMessage[] =>
     senderId: 'other',
     content: `第 ${i} 則`,
     seq: 100 - i,
+    retractedAt: null,
     createdAt: new Date(0),
   }));
 

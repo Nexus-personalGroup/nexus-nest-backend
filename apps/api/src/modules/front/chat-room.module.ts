@@ -13,8 +13,10 @@ import { ListMyRoomsService } from '../../application/service/front/chat-room/Li
 import { LeaveRoomService } from '../../application/service/front/chat-room/LeaveRoomService';
 import { LIST_MESSAGES_USE_CASE } from '../../application/port/in/front/chat-message/ListMessagesUseCase';
 import { MARK_ROOM_READ_USE_CASE } from '../../application/port/in/front/chat-message/MarkRoomReadUseCase';
+import { RETRACT_MESSAGE_USE_CASE } from '../../application/port/in/front/chat-message/RetractMessageUseCase';
 import { ListMessagesService } from '../../application/service/front/chat-message/ListMessagesService';
 import { MarkRoomReadService } from '../../application/service/front/chat-message/MarkRoomReadService';
+import { RetractMessageService } from '../../application/service/front/chat-message/RetractMessageService';
 import { PrismaChatRoomReadRepository } from '../../adapter/out/persistence/chat-message/PrismaChatRoomReadRepository';
 import { CHAT_ROOM_READ_REPOSITORY_PORT } from '../../application/port/out/chat-message/ChatRoomReadRepositoryPort';
 import { MemberPersistenceModule } from '../member-persistence.module';
@@ -37,6 +39,7 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
     { provide: LEAVE_ROOM_USE_CASE, useClass: LeaveRoomService },
     { provide: LIST_MESSAGES_USE_CASE, useClass: ListMessagesService },
     { provide: MARK_ROOM_READ_USE_CASE, useClass: MarkRoomReadService },
+    { provide: RETRACT_MESSAGE_USE_CASE, useClass: RetractMessageService },
     PrismaChatRoomReadRepository,
     {
       provide: CHAT_ROOM_READ_REPOSITORY_PORT,

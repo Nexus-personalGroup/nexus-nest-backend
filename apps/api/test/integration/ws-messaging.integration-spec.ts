@@ -498,4 +498,78 @@ describe('WebSocket 訊息（整合）', () => {
       expect(payload.lastReadSeq).toBe(1);
     });
   });
+
+  /**
+   * 撤回的跨實例行為。
+   *
+   * 遮蔽只寫在 repository 的投影函式一處，但**讀取路徑有三條**——
+   * 補齊這條在單元測試之外還要真的跑一次，因為它經過的是完整的 WS 流程。
+   */
+  describe('撤回', () => {
+    it('撤回後，另一個實例上的成員收得到 messageRetracted', async () => {
+      const socketA = await connectA();
+      await joinRoom(socketA, roomId);
+      const socketB = await connectB();
+      await joinRoom(socketB, roomId);
+      const ack = await sendMessage(socketA, roomId, '這則會被撤回');
+
+      const retracted = waitForEvent<{ messageId: string; seq?: number }>(
+        socketB,
+        SERVER_EVENTS.MESSAGE_RETRACTED,
+      );
+      // 由實例 A 觸發，實例 B 上的連線要收得到
+      await instanceA.retractMessage.execute({
+        roomId,
+        messageId: ack.messageId,
+        memberId: idA,
+      });
+
+      expect((await retracted).messageId).toBe(ack.messageId);
+    });
+
+    // 撤回要移除的就是內容；推播帶著它等於撤了個寂寞
+    it('推播的 payload 不含 content', async () => {
+      const socketA = await connectA();
+      await joinRoom(socketA, roomId);
+      const ack = await sendMessage(socketA, roomId, '機密內容');
+
+      const retracted = waitForEvent<Record<string, unknown>>(
+        socketA,
+        SERVER_EVENTS.MESSAGE_RETRACTED,
+      );
+      await instanceA.retractMessage.execute({
+        roomId,
+        messageId: ack.messageId,
+        memberId: idA,
+      });
+
+      const payload = await retracted;
+      expect(payload).not.toHaveProperty('content');
+      expect(JSON.stringify(payload)).not.toContain('機密內容');
+    });
+
+    // 讀取路徑之三：補齊。濾掉的話 seq 會有洞，客戶端會反覆嘗試補同一段
+    it('斷線期間被撤回的訊息，補齊時仍在但無內容', async () => {
+      const socketA = await connectA();
+      const first = await sendMessage(socketA, roomId, '第一則');
+      const second = await sendMessage(socketA, roomId, '第二則機密');
+      await instanceA.retractMessage.execute({
+        roomId,
+        messageId: second.messageId,
+        memberId: idA,
+      });
+
+      const synced = waitForEvent<Synced>(socketA, SERVER_EVENTS.ROOM_SYNCED);
+      socketA.emit(CLIENT_EVENTS.SYNC_ROOM, { roomId, lastSeq: 0 });
+      const result = await synced;
+
+      expect(result.messages.map((m) => m.seq)).toEqual([
+        first.seq,
+        second.seq,
+      ]);
+      const retractedMessage = result.messages[1];
+      expect(retractedMessage.content).toBe('');
+      expect(JSON.stringify(result)).not.toContain('第二則機密');
+    });
+  });
 });

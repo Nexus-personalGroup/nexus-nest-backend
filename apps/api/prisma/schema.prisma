@@ -440,6 +440,10 @@ model ChatMessageRecord {
   senderId String @map("sender_id")
 
   /// 訊息內容。目前只有純文字；日後的附件訊息會加 messageType 欄位，本欄不需改為可空
+  ///
+  /// **撤回不會清空本欄**：內容保留供 M3 的檢舉調查（騷擾者送完立即撤回是最典型的
+  /// 行為，清掉等於提供一鍵銷毀證據），但任何前台路徑都不得回傳它。
+  /// 遮蔽只寫在 repository 的投影函式一處，並有守則限制訊息表只能有一個查詢入口
   content String @db.Text
 
   /// 房間內單調遞增的序號，由 chat_rooms.last_seq 配號而來
@@ -455,6 +459,16 @@ model ChatMessageRecord {
   /// 重試通常在數百毫秒內、且兩次請求可能落在不同實例上，症狀是聊天室裡偶爾出現
   /// 重複訊息，而且事後無法從伺服器端修復（兩列都是合法資料，分不出哪列是重送）
   clientMessageId String @map("client_message_id") @db.VarChar(64)
+
+  /// 撤回時間；null 代表未撤回
+  ///
+  /// **這一列永遠不會被刪除。** 刪掉會讓 seq 出現洞，而補齊的客戶端無法區分
+  /// 「這個號碼被撤回了」與「我漏收了」——後者會讓它反覆嘗試補齊同一段區間
+  retractedAt DateTime? @map("retracted_at") @db.Timestamptz(3)
+
+  /// 執行撤回的成員 ID。目前僅限發送者本人，欄位存在是為了 M3 的檢舉調查
+  /// （日後若開放後台管理員移除訊息，這裡才分得出是誰的動作）
+  retractedBy String? @map("retracted_by")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

@@ -10,6 +10,11 @@ import {
   MarkRoomReadCommand,
   MarkRoomReadUseCase,
 } from '@app/application/port/in/front/chat-message/MarkRoomReadUseCase';
+import {
+  RETRACT_MESSAGE_USE_CASE,
+  RetractMessageCommand,
+  RetractMessageUseCase,
+} from '@app/application/port/in/front/chat-message/RetractMessageUseCase';
 
 @Injectable()
 export class ChatMessageFacade {
@@ -18,6 +23,8 @@ export class ChatMessageFacade {
     private readonly listMessagesUseCase: ListMessagesUseCase,
     @Inject(MARK_ROOM_READ_USE_CASE)
     private readonly markRoomReadUseCase: MarkRoomReadUseCase,
+    @Inject(RETRACT_MESSAGE_USE_CASE)
+    private readonly retractMessageUseCase: RetractMessageUseCase,
   ) {}
 
   listMessages(query: ListMessagesQuery): Promise<ListMessagesResult> {
@@ -26,5 +33,9 @@ export class ChatMessageFacade {
 
   markRead(command: MarkRoomReadCommand): Promise<void> {
     return this.markRoomReadUseCase.execute(command);
+  }
+
+  retractMessage(command: RetractMessageCommand): Promise<void> {
+    return this.retractMessageUseCase.execute(command);
   }
 }
