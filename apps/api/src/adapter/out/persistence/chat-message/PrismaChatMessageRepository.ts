@@ -7,6 +7,7 @@ import {
   CHAT_MESSAGE_REPOSITORY_PORT,
   ChatMessage,
   ChatMessageRepositoryPort,
+  MessageForReport,
   MessageOwnership,
 } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
 
@@ -128,6 +129,23 @@ export class PrismaChatMessageRepository implements ChatMessageRepositoryPort {
       senderId: row.senderId,
       createdAt: row.createdAt,
       retractedAt: row.retractedAt,
+    };
+  }
+
+  async findForReport(messageId: string): Promise<MessageForReport | null> {
+    // 刻意不經過 toMessage()：檢舉需要的是**未遮蔽**的原始內容，
+    // 因為被撤回的訊息也必須能被檢舉，而檢舉的價值在於留下當下那句話。
+    // 這是唯一繞過遮蔽的路徑，範圍窄到只回傳檢舉會用到的四個欄位
+    const row = await this.prisma.chatMessageRecord.findUnique({
+      where: { id: messageId },
+      select: { id: true, roomId: true, senderId: true, content: true },
+    });
+    if (!row) return null;
+    return {
+      messageId: row.id,
+      roomId: row.roomId,
+      senderId: row.senderId,
+      rawContent: row.content,
     };
   }
 

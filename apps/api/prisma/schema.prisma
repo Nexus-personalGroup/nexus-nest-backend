@@ -509,6 +509,7 @@ enum ChatAuditAction {
   MESSAGE_RETRACTED
   MESSAGE_RETRACT_REJECTED
   MESSAGE_RATE_LIMITED
+  REPORT_SUBMITTED
 
   @@map("chat_audit_action")
 }
@@ -545,4 +546,74 @@ model ChatAuditLogRecord {
   @@index([memberId, createdAt], map: "idx_chat_audit_member_time")
   @@index([roomId, createdAt], map: "idx_chat_audit_room_time")
   @@map("chat_audit_logs")
+}
+
+/// 檢舉的理由分類
+enum ChatReportReason {
+  HARASSMENT
+  SPAM
+  INAPPROPRIATE
+  OTHER
+
+  @@map("chat_report_reason")
+}
+
+/// 檢舉的處理狀態
+///
+/// 目前恆為 PENDING——本階段沒有任何東西會改變它。刻意留著是因為後台佇列的
+/// 第一個查詢就是「給我所有 PENDING 的」，沒有這個欄位那個查詢要靠「有沒有處置紀錄」
+/// 反推，等於逼下一階段先做資料遷移
+enum ChatReportStatus {
+  PENDING
+  REVIEWED
+  DISMISSED
+
+  @@map("chat_report_status")
+}
+
+/// 訊息檢舉
+///
+/// 只能檢舉訊息，不能直接檢舉使用者或房間：訊息已帶著發送者與房間，
+/// 「被檢舉者是誰」推得出來；反過來推不回去。「這個人持續騷擾」要造多筆檢舉，
+/// 而多筆指向同一個人的檢舉本身就是訊號
+model ChatReportRecord {
+  id String @id @default(uuid())
+
+  /// 提出檢舉的成員 ID
+  reporterId String @map("reporter_id")
+
+  /// 被檢舉的訊息。不建外鍵：訊息日後若因保留期限被清理，檢舉仍須可審閱
+  targetMessageId String @map("target_message_id")
+
+  /// 被檢舉訊息的發送者。由訊息推導而來，存下來是為了「這個人被檢舉幾次」的查詢
+  targetMemberId String @map("target_member_id")
+
+  roomId String @map("room_id")
+
+  reason ChatReportReason
+
+  /// 檢舉人的補充說明，上限 500 字
+  description String? @db.VarChar(500)
+
+  /// 被檢舉訊息的內容快照
+  ///
+  /// **這裡刻意違反「稽核不複製內容」的原則。** 稽核紀錄是行為的索引、內容隨時可取；
+  /// 但檢舉指向「當下那句話」，而它在審閱前可能已被撤回或因保留期限被清理。
+  /// 沒有快照的話，管理員會看到一則空訊息，而檢舉人明明看到了東西——
+  /// 那會讓整個檢舉機制失去可信度。
+  ///
+  /// 代價是這是第二份內容副本，因此它**適用與訊息本體相同的「不外流」規則**：
+  /// 只給後台的 RBAC 路徑，任何前台端點都不得回傳它
+  contentSnapshot String @map("content_snapshot") @db.Text
+
+  status ChatReportStatus @default(PENDING)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  // 同一人對同一則訊息只能檢舉一次——冪等的唯一保證來源。
+  // 不同人檢舉同一則則各自一筆：「幾個人檢舉」本身是優先序訊號
+  @@unique([reporterId, targetMessageId], map: "uq_chat_reports_reporter_message")
+  @@index([status, createdAt], map: "idx_chat_reports_status_time")
+  @@index([targetMemberId], map: "idx_chat_reports_target_member")
+  @@map("chat_reports")
 }

@@ -216,6 +216,10 @@ paths:
     patch:
       $ref: './chat-rooms/read.yaml'
 
+  /chat-reports:
+    post:
+      $ref: './chat-reports/submit.yaml'
+
   /ping:
     get:
       $ref: './ping.yaml'
