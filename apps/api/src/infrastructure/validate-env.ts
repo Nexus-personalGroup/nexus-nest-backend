@@ -311,6 +311,22 @@ const envSchema = z.object({
    * 不看客戶端時間：那是個授權判斷，而客戶端的時鐘不可信。
    */
   CHAT_RETRACT_WINDOW_SEC: z.coerce.number().int().min(1).default(300),
+  /**
+   * 聊天行為稽核是否啟用。
+   *
+   * **刻意與 `APPLICATION_METRICS_ENABLED` 分開。** 兩者的失效模式不同：
+   * 指標關掉只是看不到趨勢，稽核關掉會讓日後的調查沒有依據。共用開關會讓
+   * 「暫時關掉指標降低負載」這個合理操作順手把稽核也關了，
+   * 而那要等到真的需要調查時才會發現。
+   *
+   * 用 `z.enum` 而非鄰近變數慣用的 `z.string()`：後者把任何非 `'true'` 的值
+   * 都當成 false，因此 `CHAT_AUDIT_ENABLED=TRUE`（大寫）會**靜默關閉稽核**。
+   * 對預設開啟的安全性開關，寧可在啟動時就失敗。
+   */
+  CHAT_AUDIT_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
 
   // ─── 排程（@nestjs/schedule，範例排程預設關閉） ───
   /** 範例排程是否啟用；正式排程依需求改寫 ExampleScheduler，測試環境保持關閉 */

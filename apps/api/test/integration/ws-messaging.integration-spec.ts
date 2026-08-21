@@ -572,4 +572,69 @@ describe('WebSocket 訊息（整合）', () => {
       expect(JSON.stringify(result)).not.toContain('第二則機密');
     });
   });
+
+  /**
+   * 行為稽核。
+   *
+   * 這裡驗的是**跨越完整 WS 流程**的埋點——單元測試只能證明 service 呼叫了 port，
+   * 證明不了「經過 gateway、通過驗證、走完整條路之後」真的有一筆落庫。
+   */
+  describe('行為稽核', () => {
+    const auditRows = () =>
+      prisma.chatAuditLogRecord.findMany({ orderBy: { createdAt: 'asc' } });
+
+    it('加入房間留下 ROOM_JOINED', async () => {
+      const socketA = await connectA();
+      await joinRoom(socketA, roomId);
+
+      const rows = await auditRows();
+      expect(rows.map((r) => r.action)).toEqual(['ROOM_JOINED']);
+      expect(rows[0].memberId).toBe(idA);
+      expect(rows[0].roomId).toBe(roomId);
+    });
+
+    // 判準是「證據會不會消失」——chat_messages 已經是訊息自己的紀錄
+    it('送出訊息不留下稽核紀錄', async () => {
+      const socketA = await connectA();
+      await sendMessage(socketA, roomId, '一則訊息');
+
+      expect(await auditRows()).toHaveLength(0);
+    });
+
+    // 被限流擋下不會留下任何其他痕跡，是洗版行為的唯一證據
+    it('被限流擋下留下稽核紀錄，且該訊息沒有落庫', async () => {
+      const socketA = await connectA();
+      for (let i = 0; i < 10; i += 1) {
+        await sendMessage(socketA, roomId, `第 ${i + 1} 則`);
+      }
+
+      const failure = waitForEvent<WsError>(socketA, SERVER_EVENTS.ERROR);
+      socketA.emit(CLIENT_EVENTS.SEND_MESSAGE, {
+        roomId,
+        clientMessageId: randomUUID(),
+        content: '被擋下的那則',
+      });
+      await failure;
+
+      const rows = await auditRows();
+      expect(rows.map((r) => r.action)).toEqual(['MESSAGE_RATE_LIMITED']);
+      expect(await prisma.chatMessageRecord.count({ where: { roomId } })).toBe(
+        10,
+      );
+    });
+
+    it('稽核紀錄不含訊息內容', async () => {
+      const socketA = await connectA();
+      await joinRoom(socketA, roomId);
+      const ack = await sendMessage(socketA, roomId, '機密的訊息內容');
+      await instanceA.retractMessage.execute({
+        roomId,
+        messageId: ack.messageId,
+        memberId: idA,
+      });
+
+      const rows = await auditRows();
+      expect(JSON.stringify(rows)).not.toContain('機密的訊息內容');
+    });
+  });
 });

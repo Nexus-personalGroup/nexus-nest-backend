@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   RETRACT_MESSAGE_USE_CASE,
   RetractMessageCommand,
@@ -18,6 +18,10 @@ import {
 } from '@app/application/port/out/EventPublisherPort';
 import { SERVER_EVENTS } from '@app/application/port/out/server-events';
 import { getEnv } from '@app/infrastructure/validate-env';
+import {
+  CHAT_AUDIT_PORT,
+  ChatAuditPort,
+} from '@app/application/port/out/ChatAuditPort';
 import { ChatMessageNotFoundException } from '@app/domain/exception/ChatMessageNotFoundException';
 import { ChatMessageRetractExpiredException } from '@app/domain/exception/ChatMessageRetractExpiredException';
 
@@ -32,7 +36,20 @@ export class RetractMessageService implements RetractMessageUseCase {
     private readonly messageRepo: ChatMessageRepositoryPort,
     @Inject(EVENT_PUBLISHER_PORT)
     private readonly eventPublisher: EventPublisherPort,
+    @Inject(CHAT_AUDIT_PORT)
+    private readonly audit: ChatAuditPort,
   ) {}
+
+  private readonly logger = new Logger(RetractMessageService.name);
+
+  /** 稽核是 best-effort：失敗只記錄，不讓業務動作失敗 */
+  private async audited(
+    event: Parameters<ChatAuditPort['record']>[0],
+  ): Promise<void> {
+    await this.audit
+      .record(event)
+      .catch((error: unknown) => this.logger.error('稽核寫入失敗', error));
+  }
 
   async execute(command: RetractMessageCommand): Promise<void> {
     const { roomId, messageId, memberId } = command;
@@ -41,6 +58,15 @@ export class RetractMessageService implements RetractMessageUseCase {
     const message = await this.messageRepo.findOwnership(roomId, messageId);
     // 「不存在」與「不是你發的」回同一個錯誤：分開等於提供探測任意訊息是否存在的工具
     if (!message || message.senderId !== memberId) {
+      // 「嘗試撤回別人的訊息」是可疑訊號，而它不會留下任何其他痕跡。
+      // 對象成員只在訊息確實存在時才記得出來
+      await this.audited({
+        memberId,
+        action: 'MESSAGE_RETRACT_REJECTED',
+        roomId,
+        targetMessageId: messageId,
+        ...(message ? { targetMemberId: message.senderId } : {}),
+      });
       throw new ChatMessageNotFoundException();
     }
 
@@ -53,10 +79,22 @@ export class RetractMessageService implements RetractMessageUseCase {
     // 測試以相對於現在的 createdAt 建 fixture 即可，不需要注入時鐘
     const windowMs = getEnv().CHAT_RETRACT_WINDOW_SEC * 1_000;
     if (Date.now() - message.createdAt.getTime() > windowMs) {
+      await this.audited({
+        memberId,
+        action: 'MESSAGE_RETRACT_REJECTED',
+        roomId,
+        targetMessageId: messageId,
+      });
       throw new ChatMessageRetractExpiredException();
     }
 
     const retractedAt = await this.messageRepo.retract(messageId, memberId);
+    await this.audited({
+      memberId,
+      action: 'MESSAGE_RETRACTED',
+      roomId,
+      targetMessageId: messageId,
+    });
 
     // 推播不含 content——那正是撤回要移除的東西
     this.eventPublisher.publishToRoom(roomId, SERVER_EVENTS.MESSAGE_RETRACTED, {

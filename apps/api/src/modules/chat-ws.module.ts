@@ -11,6 +11,7 @@ import { SendMessageService } from '@app/application/service/shared/SendMessageS
 import { SyncRoomService } from '@app/application/service/shared/SyncRoomService';
 import { MemberContextModule } from './member-context.module';
 import { ChatRoomCoreModule } from './chat-room-core.module';
+import { MetricsModule } from './metrics.module';
 
 /**
  * WebSocket 連線層
@@ -29,7 +30,7 @@ import { ChatRoomCoreModule } from './chat-room-core.module';
  * 該模組刻意不相依本模組，否則兩者會互相 import。
  */
 @Module({
-  imports: [MemberContextModule, ChatRoomCoreModule],
+  imports: [MemberContextModule, ChatRoomCoreModule, MetricsModule],
   providers: [
     instanceIdProvider,
     SocketIoEventPublisher,

@@ -22,6 +22,7 @@ import { CHAT_ROOM_READ_REPOSITORY_PORT } from '../../application/port/out/chat-
 import { MemberPersistenceModule } from '../member-persistence.module';
 import { ChatWsModule } from '../chat-ws.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
+import { MetricsModule } from '../metrics.module';
 
 /**
  * 前台聊天室模組（路由 `/api/front/chat-rooms`）。
@@ -30,7 +31,12 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
  * 那個切割是為了打斷循環相依（見該模組的說明）。
  */
 @Module({
-  imports: [MemberPersistenceModule, ChatWsModule, ChatRoomCoreModule],
+  imports: [
+    MemberPersistenceModule,
+    ChatWsModule,
+    ChatRoomCoreModule,
+    MetricsModule,
+  ],
   controllers: [ChatRoomController, ChatMessageController],
   providers: [
     { provide: CREATE_DIRECT_ROOM_USE_CASE, useClass: CreateDirectRoomService },

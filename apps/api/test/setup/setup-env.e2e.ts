@@ -31,3 +31,6 @@ process.env.LOCAL_MEDIA_ROOT = join(tmpdir(), 'nexus-media-e2e');
 // 日誌保留排程預設啟用，測試環境關掉：cron job 會留下 open handle，
 // 且 e2e 的 beforeEach 本來就會 resetDb，不需要也不該讓排程去動測試資料
 process.env.LOG_PURGE_ENABLED = 'false';
+// 指標在 e2e 開啟：/api/metrics 的內容是本次要驗的東西之一。
+// 稽核維持預設（開啟），關閉的情境由單一測試自行覆寫
+process.env.APPLICATION_METRICS_ENABLED = 'true';

@@ -7,6 +7,7 @@ import { getEnv } from '@app/infrastructure/validate-env';
 import type { EnsureRoomMembershipUseCase } from '@app/application/port/in/shared/EnsureRoomMembershipUseCase';
 import type { ChatMessageRepositoryPort } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
 import type { EventPublisherPort } from '@app/application/port/out/EventPublisherPort';
+import type { ChatAuditPort } from '@app/application/port/out/ChatAuditPort';
 
 jest.mock('@app/infrastructure/validate-env', () => ({ getEnv: jest.fn() }));
 
@@ -25,6 +26,9 @@ const mockPublisher = {
   publishToRoom: jest.fn(),
   publishToMember: jest.fn(),
 } as unknown as jest.Mocked<EventPublisherPort>;
+const mockAudit = {
+  record: jest.fn(),
+} as unknown as jest.Mocked<ChatAuditPort>;
 
 const WINDOW_SEC = 300;
 const command = { roomId: 'room-1', messageId: 'msg-1', memberId: 'me' };
@@ -47,6 +51,7 @@ describe('RetractMessageService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockAudit.record.mockResolvedValue(undefined);
     // clearAllMocks 不會還原 mockReturnValue，每支測試都要重設
     mockGetEnv.mockReturnValue({
       CHAT_RETRACT_WINDOW_SEC: WINDOW_SEC,
@@ -58,6 +63,7 @@ describe('RetractMessageService', () => {
       mockMembership,
       mockRepo,
       mockPublisher,
+      mockAudit,
     );
   });
 
