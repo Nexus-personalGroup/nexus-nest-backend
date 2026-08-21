@@ -303,6 +303,14 @@ const envSchema = z.object({
   WS_MESSAGE_RATE_LIMIT: z.coerce.number().int().min(1).default(20),
   /** 送訊息限流的視窗長度（秒） */
   WS_MESSAGE_RATE_WINDOW_SEC: z.coerce.number().int().min(1).default(10),
+  /**
+   * 訊息可撤回的時限（秒）。
+   *
+   * 撤回的用途是「剛剛傳錯了」，不是「抹除歷史」——不設時限等於讓對話紀錄
+   * 隨時可被單方面改寫，而對方早已讀過。時限以伺服器的 createdAt 為準，
+   * 不看客戶端時間：那是個授權判斷，而客戶端的時鐘不可信。
+   */
+  CHAT_RETRACT_WINDOW_SEC: z.coerce.number().int().min(1).default(300),
 
   // ─── 排程（@nestjs/schedule，範例排程預設關閉） ───
   /** 範例排程是否啟用；正式排程依需求改寫 ExampleScheduler，測試環境保持關閉 */

@@ -130,3 +130,11 @@ export const WS_RATE_LIMIT_EXEMPTIONS: Exemption[] = [
       '只做一次有索引的成員資格查詢、不寫入；重複加入同一個 socket room 是無操作，且單一成員的連線數已受 WS_MAX_CONNECTIONS_PER_MEMBER 約束',
   },
 ];
+
+/**
+ * 訊息表存取的豁免。
+ *
+ * 目前為空。M3 的檢舉調查會需要一條**看得到被撤回內容**的後台路徑——那筆豁免
+ * 必須註明「僅限後台、需 RBAC 授權、且必須留稽核紀錄」，而不是放寬規則本身。
+ */
+export const CHAT_MESSAGE_ACCESS_EXEMPTIONS: Exemption[] = [];

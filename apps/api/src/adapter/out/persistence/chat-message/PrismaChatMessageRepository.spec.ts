@@ -20,6 +20,7 @@ const row = {
   senderId: 'me',
   content: '午餐吃什麼',
   seq: 42,
+  retractedAt: null,
   createdAt: new Date(0),
 };
 
@@ -166,6 +167,124 @@ describe('PrismaChatMessageRepository', () => {
       expect(prisma.chatMessageRecord.findMany).toHaveBeenCalledWith(
         expect.objectContaining({ where: { roomId: 'room-1' } }),
       );
+    });
+  });
+
+  describe('撤回', () => {
+    let updateMany: jest.Mock;
+    let findFirst: jest.Mock;
+    let findUniqueOrThrow2: jest.Mock;
+
+    beforeEach(() => {
+      updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      findFirst = jest.fn();
+      findUniqueOrThrow2 = jest.fn();
+      prisma = {
+        chatMessageRecord: {
+          updateMany,
+          findFirst,
+          findUniqueOrThrow: findUniqueOrThrow2,
+        },
+      } as unknown as PrismaService;
+      repo = new PrismaChatMessageRepository(prisma);
+    });
+
+    // 拿別的房間的 messageId 就能繞過房間層級的成員資格判斷
+    it('findOwnership 以 roomId + id 查詢，不只看 id', async () => {
+      findFirst.mockResolvedValue(null);
+      await repo.findOwnership('room-1', 'msg-1');
+
+      expect(findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'msg-1', roomId: 'room-1' } }),
+      );
+    });
+
+    // 這條路徑只需要「誰發的、何時發的、是否已撤回」；
+    // 多取內容等於在授權判斷之前就把它撈出來
+    it('findOwnership 不取 content', async () => {
+      findFirst.mockResolvedValue(null);
+      await repo.findOwnership('room-1', 'msg-1');
+
+      const [args] = findFirst.mock.calls[0] as [{ select: object }];
+      expect(args.select).not.toHaveProperty('content');
+    });
+
+    // 刪除該列會讓 seq 出現洞，補齊的客戶端無法區分「被撤回」與「我漏收了」
+    it('retract 是標記而非刪除', async () => {
+      await repo.retract('msg-1', 'me');
+
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({ retractedBy: 'me' }),
+        }),
+      );
+    });
+
+    // 條件寫在 SQL 裡才是原子的；讀-比-寫會讓並發的兩次撤回互相覆寫時間
+    it('retract 只在尚未撤回時寫入', async () => {
+      await repo.retract('msg-1', 'me');
+
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'msg-1', retractedAt: null },
+        }),
+      );
+    });
+
+    it('已撤回時回傳原本的時間，不覆寫', async () => {
+      const original = new Date('2026-08-21T00:00:00.000Z');
+      updateMany.mockResolvedValue({ count: 0 });
+      findUniqueOrThrow2.mockResolvedValue({ retractedAt: original });
+
+      expect(await repo.retract('msg-1', 'me')).toEqual(original);
+    });
+  });
+
+  describe('內容遮蔽（唯一投影點）', () => {
+    const retractedRow = {
+      ...row,
+      content: '這段內容必須保留在資料庫但不得外流',
+      retractedAt: new Date('2026-08-21T00:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      prisma = {
+        chatMessageRecord: {
+          findMany: jest.fn().mockResolvedValue([retractedRow]),
+        },
+      } as unknown as PrismaService;
+      repo = new PrismaChatMessageRepository(prisma);
+    });
+
+    // 讀取路徑有三條，遮蔽只寫在投影函式一處；漏掉任何一條都是內容洩漏
+    it('findAfterSeq（斷線補齊）遮蔽已撤回的內容', async () => {
+      const [message] = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(message.content).toBe('');
+      expect(message.retractedAt).toEqual(retractedRow.retractedAt);
+    });
+
+    it('findBeforeSeq（歷史查詢）遮蔽已撤回的內容', async () => {
+      const [message] = await repo.findBeforeSeq('room-1', undefined, 10);
+
+      expect(message.content).toBe('');
+    });
+
+    // 濾掉的話 seq 會出現洞，客戶端無法區分「被撤回」與「我漏收了」
+    it('已撤回的訊息仍出現在結果中，seq 保留', async () => {
+      const messages = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].seq).toBe(retractedRow.seq);
+    });
+
+    it('未撤回的訊息內容原樣回傳', async () => {
+      (prisma.chatMessageRecord.findMany as jest.Mock).mockResolvedValue([row]);
+
+      const [message] = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(message.content).toBe(row.content);
+      expect(message.retractedAt).toBeNull();
     });
   });
 });

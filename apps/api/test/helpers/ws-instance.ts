@@ -25,6 +25,10 @@ import {
   MARK_ROOM_READ_USE_CASE,
   MarkRoomReadUseCase,
 } from '@app/application/port/in/front/chat-message/MarkRoomReadUseCase';
+import {
+  RETRACT_MESSAGE_USE_CASE,
+  RetractMessageUseCase,
+} from '@app/application/port/in/front/chat-message/RetractMessageUseCase';
 
 export interface WsInstance {
   app: NestExpressApplication;
@@ -38,6 +42,8 @@ export interface WsInstance {
   leaveRoom: LeaveRoomUseCase;
   /** 同上，用於已讀通知 */
   markRoomRead: MarkRoomReadUseCase;
+  /** 同上，用於撤回通知 */
+  retractMessage: RetractMessageUseCase;
   prisma: PrismaService;
   jwt: JwtService;
   /** 正常關閉：走 shutdown hooks，presence 會被清乾淨 */
@@ -77,6 +83,7 @@ export const startInstance = async (port: number): Promise<WsInstance> => {
     presence: app.get<PresencePort>(PRESENCE_PORT),
     leaveRoom: app.get<LeaveRoomUseCase>(LEAVE_ROOM_USE_CASE),
     markRoomRead: app.get<MarkRoomReadUseCase>(MARK_ROOM_READ_USE_CASE),
+    retractMessage: app.get<RetractMessageUseCase>(RETRACT_MESSAGE_USE_CASE),
     prisma: app.get(PrismaService),
     jwt: app.get(JwtService),
     close: async () => {

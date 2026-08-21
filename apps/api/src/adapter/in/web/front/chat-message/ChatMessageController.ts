@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -46,6 +47,27 @@ export class ChatMessageController {
       roomId,
       memberId: member.sub,
       ...query,
+    });
+  }
+
+  /**
+   * 撤回訊息。
+   *
+   * 走 REST 而非 WS：撤回改的是一則**已存在**的訊息，發起者拿到的是 204 而非
+   * 一份新資料，不存在「哪個先到」的競爭——而 REST 的重試安全與冪等是白拿的。
+   * 即時訊息流（sendMessage / syncRoom）才走 WS。
+   */
+  @Delete(':roomId/messages/:messageId')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async retractMessage(
+    @CurrentMember() member: MemberContext,
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+  ): Promise<void> {
+    await this.chatMessageFacade.retractMessage({
+      roomId,
+      messageId,
+      memberId: member.sub,
     });
   }
 

@@ -1,6 +1,6 @@
 # 訊息的共用結構；歷史查詢與 WS 推送用同一份欄位，客戶端只需一個型別
 type: object
-required: [messageId, roomId, senderId, content, seq, createdAt]
+required: [messageId, roomId, senderId, content, seq, retractedAt, createdAt]
 properties:
   messageId:
     type: string
@@ -18,6 +18,14 @@ properties:
     type: integer
     description: 房間內單調遞增的序號；訊息順序與斷線補齊的唯一依據
     example: 42
+  retractedAt:
+    type: string
+    format: date-time
+    nullable: true
+    description: |
+      撤回時間；null 代表未撤回。有值時 `content` 為空字串——
+      內容保留在資料庫供檢舉調查，但不會由前台路徑回傳。
+      **已撤回的訊息仍會出現在結果中**（seq 不可有洞），請顯示為「訊息已收回」。
   createdAt:
     type: string
     format: date-time

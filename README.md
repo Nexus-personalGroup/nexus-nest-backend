@@ -174,6 +174,7 @@ pnpm --filter @app/api ws:client -- --token <t> --clients 3 --room <roomId> --ur
 | `send <文字>` | 送訊息 |
 | `resend <文字>` | 用**固定的** `clientMessageId` 重送——驗證去重（不會產生第二則） |
 | `sync [seq]` | 從指定 seq 補齊；省略則用本機收到的最大 seq |
+| `retract <msgId>` | 撤回訊息（走 REST，用 `--api` 指定後端位址） |
 | `leave <roomId>` / `ping` / `drop` / `quit` | 離開 / 往返探測 / 主動斷線 / 結束 |
 
 `drop` 主動斷線但不重連，用來觀察 presence 的回收；配合 `sync` 可驗證斷線補齊。

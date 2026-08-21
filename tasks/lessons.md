@@ -416,3 +416,9 @@ export {};
 **踩到什麼**：該檔案內容是 `schema: spec-driven`（內建預設），而非本專案的 `spec-driven-custom`。它一出現就是錯的，且沒有徵兆——change 照樣建得起來、`openspec validate` 照樣過，只是本專案的格式規範全部不生效。
 
 **How to apply**：已改指向 custom 並補守則釘住（`openspec-schema.spec.ts`），所以這件事不需要記憶了。留下這條是因為**「工具自動產生的設定檔預設值與專案不符」這個形狀會再出現**——看到工具自己生出設定檔時，先確認它的預設值。
+
+### 2026-08-21 — `prisma migrate dev` 會立刻套用，附加 COMMENT ON 要在那之後重建 DB
+
+**踩到什麼**：`migrate dev` 產生並**同時套用**了 migration，我之後才把 `COMMENT ON` 附加到檔案裡——於是描述沒進 DB，且檔案的 checksum 與已套用紀錄不符，下一次 `migrate dev` 直接要求重置。
+
+**How to apply**：兩條路可選——(a) 用 `migrate dev --create-only` 產生但不套用，附加完 `COMMENT ON` 再 `migrate deploy`；(b) 照現在的流程做，但附加完**必須** `DROP SCHEMA public CASCADE` + `migrate deploy` 重建一次。本專案的 dev DB 平時是空的，(b) 成本很低，但務必**先確認沒有資料**再重建。

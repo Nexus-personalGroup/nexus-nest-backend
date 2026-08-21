@@ -33,6 +33,7 @@ const message: ChatMessage = {
   senderId: 'me',
   content: '午餐吃什麼',
   seq: 42,
+  retractedAt: null,
   createdAt: new Date(0),
 };
 

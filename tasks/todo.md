@@ -5,7 +5,7 @@
 
 ## 進行中
 
-（無。`add-chat-messaging` 已完成待合併，下一步是撤回／刪除訊息或附件訊息。）
+（無。`add-message-retraction` 已完成待合併，下一步是附件訊息或 M3 監控埋點。）
 
 ## 待辦
 
@@ -16,9 +16,7 @@
 
 - ~~**M2 聊天核心**~~：房間（`add-chat-rooms`）與訊息 + 已讀（`add-chat-messaging`）皆已完成。
   - 房間的成員資格判斷已有單一來源（`ENSURE_ROOM_MEMBERSHIP_USE_CASE`），送訊息直接複用，不要另寫一份。
-- **撤回／刪除訊息**（確定要做，不在 `add-chat-messaging` 內）：軟刪除訊息並推播讓所有人的畫面同步。
-  **必須是軟刪除**——那一列刪掉會讓 `seq` 出現洞，客戶端無法區分「被撤回」與「我漏收了」。
-  `add-chat-messaging` 的 design.md 已確認現有 schema 加一個 `deletedAt` 就能接上，不需改動既有欄位。
+- ~~**撤回／刪除訊息**~~：`add-message-retraction` 已完成。
 - **附件訊息**（確定要做，不在 `add-chat-messaging` 內）：訊息帶圖片／檔案。
   之後加 `messageType` 欄位（預設 `TEXT`）即可，`content` 維持 `TEXT NOT NULL` 不需改。
   真正要先想清楚的是**前台的上傳授權與容量限制**——既有 attachment 模組是後台側的，

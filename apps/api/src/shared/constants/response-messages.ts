@@ -62,6 +62,9 @@ export const ResponseMessages = {
   CHAT_ROOM_NOT_FOUND: '聊天室不存在或你不是成員',
   CHAT_ROOM_SELF_DIRECT: '無法與自己建立私聊',
   CHAT_MESSAGE_RATE_LIMITED: '訊息發送過於頻繁，請稍後再試',
+  // 「訊息不存在」與「不是你發的」刻意共用：分開會變成探測任意訊息是否存在的工具
+  CHAT_MESSAGE_NOT_FOUND: '訊息不存在或不是你發送的',
+  CHAT_MESSAGE_RETRACT_EXPIRED: '超過可撤回的時間',
 
   // 系統：刻意維持通用英文訊息，不洩漏內部實作細節
   INTERNAL_SERVER_ERROR: 'Internal server error',

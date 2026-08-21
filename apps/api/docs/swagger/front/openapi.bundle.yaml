@@ -536,6 +536,7 @@ paths:
                             - senderId
                             - content
                             - seq
+                            - retractedAt
                             - createdAt
                           properties:
                             messageId:
@@ -554,6 +555,14 @@ paths:
                               type: integer
                               description: 房間內單調遞增的序號；訊息順序與斷線補齊的唯一依據
                               example: 42
+                            retractedAt:
+                              type: string
+                              format: date-time
+                              nullable: true
+                              description: |
+                                撤回時間；null 代表未撤回。有值時 `content` 為空字串——
+                                內容保留在資料庫供檢舉調查，但不會由前台路徑回傳。
+                                **已撤回的訊息仍會出現在結果中**（seq 不可有洞），請顯示為「訊息已收回」。
                             createdAt:
                               type: string
                               format: date-time
@@ -588,6 +597,70 @@ paths:
                 message: 聊天室不存在或你不是成員
                 code: CHAT_ROOM_NOT_FOUND
                 timestamp: '2026-08-20T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/chat-rooms/{roomId}/messages/{messageId}':
+    delete:
+      tags:
+        - ChatRoom
+      summary: 撤回訊息
+      description: |
+        由**發送者本人**在時限內撤回自己的訊息（時限見 `CHAT_RETRACT_WINDOW_SEC`，預設 5 分鐘）。
+
+        撤回採**軟刪除**：該則與它的 `seq` 會保留，歷史查詢與斷線補齊仍會回傳它，
+        但 `content` 為空字串且帶 `retractedAt`。刪除該列會讓 `seq` 出現洞，
+        而補齊的客戶端無法區分「這個號碼被撤回了」與「我漏收了」。
+
+        **內容保留在資料庫但不會由任何前台路徑回傳**——保留是為了檢舉調查，
+        騷擾者送完立即撤回是最典型的行為。
+
+        **冪等**：重複撤回同一則回 `204`，不視為錯誤，也不會重複推播。
+
+        成功時房間成員會收到 `server:messageRetracted`（payload 不含內容）。
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: messageId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 已撤回（無回應內容）；重複撤回同樣回 204
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          description: 超過可撤回的時間
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 超過可撤回的時間
+                code: CHAT_MESSAGE_RETRACT_EXPIRED
+                timestamp: '2026-08-21T06:00:00.000Z'
+        '404':
+          description: |
+            房間不存在或非成員（`CHAT_ROOM_NOT_FOUND`）；
+            訊息不存在、不屬於該房間，或不是呼叫者發送的（`CHAT_MESSAGE_NOT_FOUND`）。
+
+            後三者共用同一個錯誤碼是刻意的——分開等於提供探測任意訊息是否存在的工具。
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 訊息不存在或不是你發送的
+                code: CHAT_MESSAGE_NOT_FOUND
+                timestamp: '2026-08-21T06:00:00.000Z'
         '500':
           $ref: '#/components/responses/InternalServerError'
   '/chat-rooms/{roomId}/read':

@@ -15,6 +15,7 @@
  *   send <文字>        送訊息到目前房間
  *   resend <文字>      用固定的 clientMessageId 重送——驗證去重
  *   sync [seq]         從指定 seq 補齊；省略則用本機收到的最大 seq
+ *   retract <msgId>    撤回訊息（走 REST，需要 --api 指定後端位址）
  *   leave <roomId>     離開房間
  *   ping               往返探測
  *   drop               主動斷線（不重連，用於觀察 presence 的回收）
@@ -31,6 +32,8 @@ interface Options {
   url: string;
   token: string;
   room?: string;
+  /** REST 端點位址，供 retract 使用；預設 http://localhost:3000 */
+  api?: string;
   clients: number;
 }
 
@@ -53,6 +56,7 @@ const parseArgs = (argv: string[]): Options => {
     url: get('url') ?? 'http://127.0.0.1:3000',
     token,
     room: get('room'),
+    api: get('api'),
     clients: Number(get('clients') ?? '1'),
   };
 };
@@ -155,6 +159,20 @@ const main = (): void => {
             content,
           }),
         );
+        break;
+      }
+      case 'retract': {
+        // 撤回走 REST 而非 WS：它改的是一則已存在的訊息，沒有「哪個先到」的競爭
+        const api = options.api ?? 'http://localhost:3000';
+        void fetch(
+          `${api}/api/front/chat-rooms/${activeRoom}/messages/${arg}`,
+          {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${options.token}` },
+          },
+        )
+          .then((res) => console.log(`撤回 ${arg} → HTTP ${res.status}`))
+          .catch((error: unknown) => console.error('撤回失敗', error));
         break;
       }
       case 'sync':
