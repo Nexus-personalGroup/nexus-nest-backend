@@ -21,9 +21,13 @@ import {
   ResolveMemberContextUseCase,
 } from '@app/application/port/in/shared/ResolveMemberContextUseCase';
 import {
-  ENSURE_ROOM_MEMBERSHIP_USE_CASE,
-  EnsureRoomMembershipUseCase,
-} from '@app/application/port/in/shared/EnsureRoomMembershipUseCase';
+  METRICS_PORT,
+  MetricsPort,
+} from '@app/application/port/out/MetricsPort';
+import {
+  JOIN_ROOM_USE_CASE,
+  JoinRoomUseCase,
+} from '@app/application/port/in/shared/JoinRoomUseCase';
 import {
   SEND_MESSAGE_USE_CASE,
   SendMessageUseCase,
@@ -100,14 +104,15 @@ export class ChatGateway
     @Inject(RESOLVE_MEMBER_CONTEXT_USE_CASE)
     private readonly resolveMemberContext: ResolveMemberContextUseCase,
     @Inject(PRESENCE_PORT) private readonly presence: PresencePort,
-    @Inject(ENSURE_ROOM_MEMBERSHIP_USE_CASE)
-    private readonly ensureRoomMembership: EnsureRoomMembershipUseCase,
+    @Inject(JOIN_ROOM_USE_CASE)
+    private readonly joinRoom: JoinRoomUseCase,
     @Inject(SEND_MESSAGE_USE_CASE)
     private readonly sendMessage: SendMessageUseCase,
     @Inject(SYNC_ROOM_USE_CASE)
     private readonly syncRoom: SyncRoomUseCase,
     private readonly eventPublisher: SocketIoEventPublisher,
     @Inject(INSTANCE_ID) private readonly instanceId: string,
+    @Inject(METRICS_PORT) private readonly metrics: MetricsPort,
   ) {}
 
   /**
@@ -141,6 +146,11 @@ export class ChatGateway
 
   /** 為本實例持有的所有連線續期。單條失敗不影響其他連線 */
   private async sendHeartbeats(): Promise<void> {
+    // 連線數在心跳時一併更新：ownedSockets 是本實例持有的連線，
+    // 而 Prometheus 依 scrape target 自動帶實例標籤——此處不要自己加 instanceId，
+    // 否則實例重啟會產生一條新的時間序列，舊的永遠停在最後一個值
+    this.metrics.setConnections(this.ownedSockets.size);
+
     for (const [socketId, memberId] of this.ownedSockets) {
       try {
         await this.presence.heartbeat(memberId, this.instanceId, socketId);
@@ -245,7 +255,9 @@ export class ChatGateway
     @MessageBody(new ZodValidationPipe(roomMembershipSchema))
     payload: RoomMembershipRequest,
   ): Promise<void> {
-    await this.ensureRoomMembership.execute(client.member.sub, payload.roomId);
+    // 用 JoinRoomUseCase 而非 EnsureRoomMembership：後者是唯讀判斷、送訊息與補齊
+    // 都會呼叫它，在那裡記稽核等於每則訊息都寫一筆
+    await this.joinRoom.execute(client.member.sub, payload.roomId);
     await client.join(payload.roomId);
     client.emit(SERVER_EVENTS.ROOM_JOINED, { roomId: payload.roomId });
   }

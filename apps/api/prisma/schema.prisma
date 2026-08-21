@@ -498,3 +498,51 @@ model ChatRoomReadRecord {
   @@id([roomId, memberId])
   @@map("chat_room_reads")
 }
+
+/// 聊天行為稽核的動作類型
+///
+/// 用 DB enum 而非字串欄位：typo 會產生一個沒有人發現的新類別，
+/// 而查詢時只會少一筆——沒有錯誤、沒有徵兆
+enum ChatAuditAction {
+  ROOM_JOINED
+  ROOM_LEFT
+  MESSAGE_RETRACTED
+  MESSAGE_RETRACT_REJECTED
+  MESSAGE_RATE_LIMITED
+
+  @@map("chat_audit_action")
+}
+
+/// 聊天行為稽核
+///
+/// **只記「證據會消失」的行為，不記每則訊息。** 判準不是「這件事重不重要」——
+/// 送出訊息已經記在 chat_messages（發送者、房間、時間、序號），再寫一筆稽核
+/// 只是把同一份中繼資料存兩次，代價是熱路徑多一次寫入與儲存翻倍。
+///
+/// 真正沒有紀錄的是：離開房間（成員關係列被直接刪除，因此「某人曾在某房間待到某時」
+/// 目前完全不可復原）、被限流擋下、撤回被拒——這些行為過去之後不留任何痕跡
+model ChatAuditLogRecord {
+  id String @id @default(uuid())
+
+  /// 執行動作的成員 ID。不建外鍵：稽核紀錄要能在帳號被刪除後仍然存在
+  memberId String @map("member_id")
+
+  action ChatAuditAction
+
+  /// 相關房間；與房間無關的動作為 null
+  roomId String? @map("room_id")
+
+  /// 動作的對象成員。檢舉調查要看的是「B 對 A 做過什麼」，
+  /// 沒有這個欄位的話之後要補就得回填歷史，而那補不回來
+  targetMemberId String? @map("target_member_id")
+
+  /// 動作的對象訊息，例如撤回或嘗試撤回的那一則
+  targetMessageId String? @map("target_message_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  // (member_id, created_at) 供「這個人的行為時間軸」——檢舉調查的主要查詢
+  @@index([memberId, createdAt], map: "idx_chat_audit_member_time")
+  @@index([roomId, createdAt], map: "idx_chat_audit_room_time")
+  @@map("chat_audit_logs")
+}

@@ -5,6 +5,10 @@ import { CHAT_ROOM_REPOSITORY_PORT } from '../application/port/out/chat-room/Cha
 import { CHAT_MESSAGE_REPOSITORY_PORT } from '../application/port/out/chat-message/ChatMessageRepositoryPort';
 import { ENSURE_ROOM_MEMBERSHIP_USE_CASE } from '../application/port/in/shared/EnsureRoomMembershipUseCase';
 import { EnsureRoomMembershipService } from '../application/service/shared/EnsureRoomMembershipService';
+import { JoinRoomService } from '../application/service/shared/JoinRoomService';
+import { JOIN_ROOM_USE_CASE } from '../application/port/in/shared/JoinRoomUseCase';
+import { PrismaChatAuditRepository } from '../adapter/out/persistence/chat-audit/PrismaChatAuditRepository';
+import { CHAT_AUDIT_PORT } from '../application/port/out/ChatAuditPort';
 
 /**
  * 房間的持久層與成員資格判斷。
@@ -28,6 +32,9 @@ import { EnsureRoomMembershipService } from '../application/service/shared/Ensur
       provide: ENSURE_ROOM_MEMBERSHIP_USE_CASE,
       useClass: EnsureRoomMembershipService,
     },
+    PrismaChatAuditRepository,
+    { provide: CHAT_AUDIT_PORT, useExisting: PrismaChatAuditRepository },
+    { provide: JOIN_ROOM_USE_CASE, useClass: JoinRoomService },
     PrismaChatMessageRepository,
     {
       provide: CHAT_MESSAGE_REPOSITORY_PORT,
@@ -37,7 +44,9 @@ import { EnsureRoomMembershipService } from '../application/service/shared/Ensur
   exports: [
     CHAT_ROOM_REPOSITORY_PORT,
     CHAT_MESSAGE_REPOSITORY_PORT,
+    CHAT_AUDIT_PORT,
     ENSURE_ROOM_MEMBERSHIP_USE_CASE,
+    JOIN_ROOM_USE_CASE,
   ],
 })
 export class ChatRoomCoreModule {}

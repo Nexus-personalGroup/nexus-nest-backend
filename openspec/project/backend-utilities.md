@@ -1,6 +1,6 @@
 # 後端工具與產生器
 
-> 日誌、資料脫敏、Zod 驗證、日期工具、檔案儲存、Seed、System Log、分頁，以及 gen:module 產生器。
+> 日誌、資料脫敏、Zod 驗證、日期工具、檔案儲存、Seed、System Log、分頁、可觀測性（指標與行為稽核），以及 gen:module 產生器。
 
 > 本檔為 `openspec/project.md` 的一部分，導覽見該檔。
 
@@ -236,3 +236,50 @@ docs/swagger/<side>/openapi.yaml                    # 自動註冊 paths
 > - `AuthLogModule` — `SAVE_AUTH_LOG_PORT`
 > - `SecurityModule` — `ACCOUNT_LOCK_PORT`、`IP_BLOCK_PORT`、`IP_LIST_PORT`
 > - `RecaptchaModule` — `RECAPTCHA_VERIFY_PORT`
+
+---
+
+### 可觀測性：指標與行為稽核
+
+兩者都經 out port 呼叫，業務層不碰實作細節。**各自獨立開關**——指標關掉只是看不到趨勢，
+稽核關掉會讓日後的調查沒有依據，綁在一起會讓「暫時關掉指標降低負載」順手把稽核也關了。
+
+| | 指標 | 行為稽核 |
+| --- | --- | --- |
+| Port | `MetricsPort` | `ChatAuditPort` |
+| 實作 | `adapter/out/metrics/` | `adapter/out/persistence/chat-audit/` |
+| 開關 | `APPLICATION_METRICS_ENABLED` | `CHAT_AUDIT_ENABLED` |
+| 關閉時 | 綁 no-op 實作（業務碼不需判斷） | 實作內直接返回 |
+
+#### 新增一個指標
+
+1. `MetricsPort` 加方法（**參數不得包含無界的值**，例如房間 ID——標籤基數爆炸會拖垮 Prometheus）
+2. `PrometheusMetricsAdapter` 實作、`METRIC_NAMES` 加名稱
+3. `metrics.module.ts` 的 provider 工廠加對應的 `makeCounterProvider` / `makeHistogramProvider` / `makeGaugeProvider`
+4. `NoopMetricsAdapter` 補上同名方法（`void 參數` 明示「知道它存在、就是不做事」）
+
+Gauge 類的指標**不要自己加 instanceId 標籤**：Prometheus 依 scrape target 自動帶，
+自己加會讓實例重啟產生一條新的時間序列，舊的永遠停在最後一個值。
+
+#### 新增一個稽核事件
+
+判準是「**這件事發生過的證據會不會消失**」，不是「這件事重不重要」。
+
+送出訊息**不記**——`chat_messages` 已經記了發送者、房間、時間、序號，再寫一筆稽核只是把
+同一份中繼資料存兩次。真正該記的是那些不會自己留下紀錄的行為：離開房間（成員關係列被直接刪除）、
+被限流擋下、撤回被拒。
+
+1. `ChatAuditPort` 的 `ChatAuditAction` 聯集加一個值（**不要用 string**，typo 會產生沒人發現的新類別）
+2. `schema.prisma` 的 `ChatAuditAction` enum 加同一個值 + migration
+3. 在對應的 service 呼叫，**必須 `catch` 並以 error 等級記錄**——稽核是 best-effort，
+   稽核表滿了不該讓使用者送不出訊息。有守則（`observability.spec.ts`）檢查每個呼叫點都有接住錯誤
+
+**稽核紀錄不得包含訊息內容。** 內容已在 `chat_messages`（撤回也保留），
+複製一份等於多一條洩漏路徑，而且兩份的遮蔽規則必須同步維護。
+
+#### 測試開關關閉的行為
+
+`getEnv()` 內部有快取，**執行期改 `process.env` 不會生效**。要驗「關閉時不寫入」
+只能在單元測試裡 `jest.mock('@app/infrastructure/validate-env')` 並 mock `getEnv`
+（見 `PrismaChatAuditRepository.spec.ts`）。e2e 改不動它。
+

@@ -422,3 +422,11 @@ export {};
 **踩到什麼**：`migrate dev` 產生並**同時套用**了 migration，我之後才把 `COMMENT ON` 附加到檔案裡——於是描述沒進 DB，且檔案的 checksum 與已套用紀錄不符，下一次 `migrate dev` 直接要求重置。
 
 **How to apply**：兩條路可選——(a) 用 `migrate dev --create-only` 產生但不套用，附加完 `COMMENT ON` 再 `migrate deploy`；(b) 照現在的流程做，但附加完**必須** `DROP SCHEMA public CASCADE` + `migrate deploy` 重建一次。本專案的 dev DB 平時是空的，(b) 成本很低，但務必**先確認沒有資料**再重建。
+
+### 2026-08-21 — `getEnv()` 有快取，執行期改 `process.env` 不會生效
+
+**踩到什麼**：稽核 adapter 每次呼叫都 `getEnv().CHAT_AUDIT_ENABLED`，我還寫了註解說「每次讀取，這樣測試覆寫才有效」。e2e 裡把 `process.env.CHAT_AUDIT_ENABLED` 設成 `'false'` 卻照樣寫入——因為 `getEnv()` 內部有 `_env` 快取，第一次解析後就固定了。
+
+**Why**：那對設定是**正確**的行為（環境變數不該在執行期變動），錯的是我的註解與測試策略。
+
+**How to apply**：要測「開關關閉」的行為，只能在單元測試裡 `jest.mock` 掉 `validate-env` 並 mock `getEnv`（`RedisMessageRateLimitAdapter.spec.ts` 就是這個作法）。e2e 改不動它。順帶一提：**寫註解斷言某個機制怎麼運作之前，先確認它真的那樣運作**——那句錯誤的註解會讓下一個人也走同一條死路。

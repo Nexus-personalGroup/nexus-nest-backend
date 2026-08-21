@@ -5,7 +5,7 @@
 
 ## 進行中
 
-（無。`add-message-retraction` 已完成待合併，下一步是附件訊息或 M3 監控埋點。）
+（無。`add-chat-observability` 已完成待合併。）
 
 ## 待辦
 
@@ -21,7 +21,12 @@
   之後加 `messageType` 欄位（預設 `TEXT`）即可，`content` 維持 `TEXT NOT NULL` 不需改。
   真正要先想清楚的是**前台的上傳授權與容量限制**——既有 attachment 模組是後台側的，
   那部分與訊息無關，所以它獨立成一個 change 是對的切法。
-- **M3 監控埋點**：Prometheus metrics + `chat_audit_log` + 管理員稽核表。**介面可以晚做，埋點不能晚做**——這類資料無法回溯補齊。
+- ~~**M3 監控埋點**~~：`add-chat-observability` 已完成（Prometheus 自訂指標 + `chat_audit_log`）。
+  - **檢舉入口（前台 API）**：使用者檢舉訊息／房間 → 待處理佇列。稽核紀錄目前沒有消費者，
+    這是它的第一個用途。要決定的：檢舉類型、重複檢舉的處理、被檢舉者能不能知道。
+  - **後台查詢端點**：查稽核紀錄與檢舉佇列。**這是「看得到被撤回內容」的那條路徑**——
+    需要 RBAC，且會是 `chat-message-single-entry` 守則的第一筆豁免（豁免要註明
+    「僅限後台、需 RBAC 授權、且必須留稽核紀錄」）。
 - **M4 後台介面**：SSE 即時儀表板、使用者 360 視圖、聊天室總覽、檢舉佇列與處置。
 
 ### 已知缺口（知情，非遺漏）
@@ -31,6 +36,14 @@
   逐 use case 的限流（`add-chat-messaging`），`ping` / `joinRoom` / `syncRoom` 都不受限。
   正確的防線是「每條連線每秒最多 N 個事件」的傳輸層限制，而非逐個 use case 接——
   後者只會給出覆蓋完整的錯覺。`ws-rate-limit.spec.ts` 的豁免清單記錄了目前的取捨。
+
+### 技術債（小，隨手可修）
+
+- **布林環境變數的解析不一致**：既有變數用 `z.string().default('false').transform(v => v === 'true')`，
+  它把任何非 `'true'` 的值都當成 false——`FOO=TRUE`（大寫）或 `FOO=1` 會**靜默失效**。
+  `CHAT_AUDIT_ENABLED` 改用 `z.enum(['true','false'])` 讓 typo 在啟動時就失敗。
+  其餘變數要不要一起換是獨立決定（換了會讓現有的 `.env` 若有大小寫問題直接啟動失敗，
+  那是好事但需要有人在場處理）。
 
 ### 需人工處理（AI 做不到）
 
@@ -47,7 +60,10 @@
 
 ### 觀察中
 
-- **e2e 有間歇性失敗**（繼承自模板）：模板期間發生 2 次，皆重跑後全綠、無法重現。共同點是「緊接在另一個會寫檔案的指令之後的第一次執行」——懷疑與 ts-jest 快取或檔案 mtime 有關，未證實。**下次務必用 `test:e2e > /tmp/x.log 2>&1` 保留完整輸出**——前兩次都因為用 grep 管線過濾而沒留下失敗的測試名稱，這是查不下去的主因。
+- **e2e 有間歇性失敗**（繼承自模板）：**已發生 3 次**（模板期 2 次、2026-08-21 `add-chat-observability` 期間 1 次），皆重跑後全綠、無法重現。共同點是「緊接在另一個會寫檔案的指令之後的第一次執行」——第 3 次是接在 `test:cov` 之後，符合這個模式。懷疑與 ts-jest 快取或檔案 mtime 有關，未證實。
+  **三次都沒留下失敗的測試名稱**，因為每次都用了 grep 管線過濾（第 3 次是明知有這則筆記還照犯）。
+  **下次的作法要改成：先 `pnpm --filter @app/api test:e2e > /tmp/e2e.log 2>&1`，再從檔案裡 grep。**
+  不要在同一條指令裡管線過濾——失敗只會出現一次，過濾掉就永遠查不到了。
 
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 
