@@ -14,6 +14,7 @@ import { MembersPage } from '@/routes/members/page';
 import { RolesPage } from '@/routes/roles/page';
 import { ReportsPage } from '@/routes/moderation/reports/page';
 import { ReportDetailPage } from '@/routes/moderation/report-detail/page';
+import { MemberProfilePage } from '@/routes/moderation/member-profile/page';
 import { IpWhitelistPage } from '@/routes/security/ip-whitelist/page';
 import { IpBlacklistPage } from '@/routes/security/ip-blacklist/page';
 import { queryClient } from '@/api/query-client';
@@ -44,6 +45,10 @@ export const App = () => {
                 <Route
                   path="/moderation/reports/:reportId"
                   element={<ReportDetailPage />}
+                />
+                <Route
+                  path="/moderation/members/:memberId"
+                  element={<MemberProfilePage />}
                 />
                 <Route
                   path="/security/ip-whitelist"

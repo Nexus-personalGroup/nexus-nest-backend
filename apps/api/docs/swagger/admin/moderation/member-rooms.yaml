@@ -1,14 +1,14 @@
 tags: [Moderation]
-summary: 查詢成員的行為時間軸
+summary: 查詢成員所在的聊天室
 description: |
   需 `BACKEND:MODERATION:VIEW` 權限。
 
-  端點以**成員**為主體，沒有泛用的「查全部稽核」——調查的問題永遠是
-  「這個人做了什麼」，而稽核表的索引就是為它建的。
-  泛用查詢會誘使人做無調查價值的全表瀏覽。
+  **與前台的「我的房間」是同一支查詢**，差別只在授權來源：
+  前台是「你只能查自己的」（memberId 來自 token），
+  這裡是「有權限就能查任何人的」（memberId 來自 path）。
 
-  **回應不含訊息內容**：稽核紀錄本來就不存內容（內容在 `chat_messages`，
-  撤回也保留）。因此本端點不需要另外留稽核。
+  `name` 為 null 代表私聊——顯示名稱由對方決定，不落庫。
+  `createdAt` 是**房間的建立時間**，不是該成員的加入時間。
 
 parameters:
   - name: memberId
@@ -50,37 +50,24 @@ responses:
                   type: array
                   items:
                     type: object
-                    required: [action, createdAt]
+                    required: [id, roomType, name, memberCount, createdAt]
                     properties:
-                      action:
-                        type: string
-                        enum:
-                          - ROOM_JOINED
-                          - ROOM_LEFT
-                          - MESSAGE_RETRACTED
-                          - MESSAGE_RETRACT_REJECTED
-                          - MESSAGE_RATE_LIMITED
-                          - REPORT_SUBMITTED
-                          - REPORT_VIEWED
-                          - MESSAGE_REMOVED
-                          - MESSAGE_RESTORED
-                          - MEMBER_SUSPENDED
-                          - MEMBER_REINSTATED
-                      roomId:
+                      id:
                         type: string
                         format: uuid
-                        nullable: true
-                      targetMemberId:
+                      roomType:
                         type: string
-                        format: uuid
-                        nullable: true
-                      targetMessageId:
+                        enum: [DIRECT, GROUP]
+                      name:
                         type: string
-                        format: uuid
                         nullable: true
+                        description: 群組名稱；私聊為 null
+                      memberCount:
+                        type: integer
                       createdAt:
                         type: string
                         format: date-time
+                        description: 房間的建立時間
                 meta:
                   type: object
                   required: [page, limit, total, totalPages]

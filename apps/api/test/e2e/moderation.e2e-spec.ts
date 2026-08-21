@@ -391,6 +391,249 @@ describe('Moderation E2E', () => {
     });
   });
 
+  describe('成員概覽', () => {
+    const profile = (id: string, token = tokenFull) =>
+      request(app.getHttpServer())
+        .get(`/api/admin/moderation/members/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    type ProfileBody = {
+      data: {
+        reportedCount: number;
+        submittedReportCount: number;
+        roomCount: number;
+        isOnline: boolean;
+        status: boolean;
+      };
+    };
+
+    it('回傳被檢舉與提出檢舉的次數', async () => {
+      const target = await profile(offenderId);
+      const reporter = await profile(adminId);
+
+      expect(target.status).toBe(200);
+      expect((target.body as ProfileBody).data.reportedCount).toBe(1);
+      expect((target.body as ProfileBody).data.submittedReportCount).toBe(0);
+      expect((reporter.body as ProfileBody).data.reportedCount).toBe(0);
+      expect((reporter.body as ProfileBody).data.submittedReportCount).toBe(1);
+    });
+
+    /**
+     * 用 `Object.keys().sort()` 而非 `objectContaining`。
+     *
+     * 後者抓不到「多回了角色」，而那正是這裡最該擋的事：本端點的授權是
+     * `BACKEND:MODERATION:VIEW`，帶出帳號管理的資料等於繞過
+     * `BACKEND:ACCOUNT:VIEW` 的邊界。而「反正都查回來了順手全回」
+     * 在 code review 時看起來只是「多回幾個欄位」。
+     */
+    it('⭐ 只回審閱需要的八個欄位，不含角色與權限', async () => {
+      const res = await profile(offenderId);
+
+      expect(Object.keys(res.body.data as object).sort()).toEqual([
+        'email',
+        'isOnline',
+        'joinedAt',
+        'memberId',
+        'reportedCount',
+        'roomCount',
+        'status',
+        'submittedReportCount',
+      ]);
+    });
+
+    it('反映停權狀態', async () => {
+      await prisma.memberRecord.update({
+        where: { id: offenderId },
+        data: { status: false },
+      });
+
+      const res = await profile(offenderId);
+
+      expect((res.body as ProfileBody).data.status).toBe(false);
+    });
+
+    it('計入所在的聊天室數', async () => {
+      const room = await prisma.chatRoomRecord.create({
+        data: {
+          roomType: 'GROUP',
+          name: '概覽測試房',
+          members: { create: [{ memberId: offenderId }] },
+        },
+      });
+
+      const res = await profile(offenderId);
+
+      expect((res.body as ProfileBody).data.roomCount).toBe(1);
+      expect(room.id).toBeTruthy();
+    });
+
+    // 回應不含任何訊息內容，記了會讓稽核量與「點了幾下」對齊
+    it('⭐ 查概覽不寫任何稽核', async () => {
+      await profile(offenderId);
+      await profile(adminId);
+
+      expect(await auditRows()).toHaveLength(0);
+    });
+
+    it('成員不存在 → 404', async () => {
+      const res = await profile(MISSING_ID);
+
+      expectApiError(res, 404, ResponseCodes.MEMBER_NOT_FOUND);
+    });
+
+    it('已軟刪除的成員 → 404', async () => {
+      await prisma.memberRecord.update({
+        where: { id: offenderId },
+        data: { deletedAt: new Date() },
+      });
+
+      const res = await profile(offenderId);
+
+      expectApiError(res, 404, ResponseCodes.MEMBER_NOT_FOUND);
+    });
+
+    // 只有帳號管理權限的人不該看得到審閱視角的資料
+    it('只有 ACCOUNT:VIEW → 403', async () => {
+      const res = await profile(offenderId, tokenNone);
+
+      expectForbidden(res);
+    });
+  });
+
+  describe('成員所在的聊天室', () => {
+    type RoomsBody = {
+      data: { list: { name: string | null; memberCount: number }[] };
+    };
+
+    const rooms = (id: string, token = tokenFull) =>
+      request(app.getHttpServer())
+        .get(`/api/admin/moderation/members/${id}/rooms`)
+        .set('Authorization', `Bearer ${token}`);
+
+    it('回傳該成員所在的房間', async () => {
+      await prisma.chatRoomRecord.create({
+        data: {
+          roomType: 'GROUP',
+          name: '午餐團',
+          members: { create: [{ memberId: offenderId }] },
+        },
+      });
+
+      const res = await rooms(offenderId);
+
+      expect(res.status).toBe(200);
+      const { list } = (res.body as RoomsBody).data;
+      expect(list).toHaveLength(1);
+      expect(list[0].name).toBe('午餐團');
+      expect(list[0].memberCount).toBe(1);
+    });
+
+    // 私聊的顯示名由對方決定、不落庫，因此後端回 null 由前端決定怎麼顯示
+    it('私聊的 name 為 null', async () => {
+      await prisma.chatRoomRecord.create({
+        data: {
+          roomType: 'DIRECT',
+          directKey: `${adminId}:${offenderId}`,
+          members: { create: [{ memberId: offenderId }] },
+        },
+      });
+
+      const res = await rooms(offenderId);
+
+      expect((res.body as RoomsBody).data.list[0].name).toBeNull();
+    });
+
+    it('不在任何房間 → 空列表', async () => {
+      const res = await rooms(offenderId);
+
+      expect(res.status).toBe(200);
+      expect((res.body as RoomsBody).data.list).toEqual([]);
+    });
+
+    it('只有 ACCOUNT:VIEW → 403', async () => {
+      const res = await rooms(offenderId, tokenNone);
+
+      expectForbidden(res);
+    });
+  });
+
+  describe('成員相關檢舉', () => {
+    type MemberReportsBody = {
+      data: {
+        list: { reportId: string; counterpartEmail: string | null }[];
+        meta: { total: number };
+      };
+    };
+
+    const memberReports = (id: string, role?: string, token = tokenFull) =>
+      request(app.getHttpServer())
+        .get(
+          `/api/admin/moderation/members/${id}/reports${
+            role ? `?role=${role}` : ''
+          }`,
+        )
+        .set('Authorization', `Bearer ${token}`);
+
+    it('預設回被檢舉的方向，對造是檢舉人', async () => {
+      const res = await memberReports(offenderId);
+
+      expect(res.status).toBe(200);
+      const { list } = (res.body as MemberReportsBody).data;
+      expect(list).toHaveLength(1);
+      expect(list[0].counterpartEmail).toBe('admin@test.com');
+    });
+
+    it('role=REPORTER 回提出的檢舉，對造是被檢舉人', async () => {
+      const res = await memberReports(adminId, 'REPORTER');
+
+      const { list } = (res.body as MemberReportsBody).data;
+      expect(list).toHaveLength(1);
+      expect(list[0].counterpartEmail).toBe('offender@test.com');
+    });
+
+    // 兩個方向必須分開：合併會讓「他被檢舉」與「他檢舉別人」的計數混在一起
+    it('⭐ 兩個方向各自只回對應的檢舉', async () => {
+      const asTarget = await memberReports(offenderId, 'TARGET');
+      const asReporter = await memberReports(offenderId, 'REPORTER');
+
+      expect((asTarget.body as MemberReportsBody).data.meta.total).toBe(1);
+      expect((asReporter.body as MemberReportsBody).data.meta.total).toBe(0);
+    });
+
+    // 刪被檢舉人而非檢舉人：檢舉人是本測試的呼叫者（admin），
+    // 軟刪除他會讓自己的 token 失效，失敗訊息會變成「data 是 undefined」而指不到原因
+    it('對造帳號已刪除 → counterpartEmail 為 null，該筆仍在列表中', async () => {
+      await prisma.memberRecord.update({
+        where: { id: offenderId },
+        data: { deletedAt: new Date() },
+      });
+
+      const res = await memberReports(adminId, 'REPORTER');
+
+      const { list } = (res.body as MemberReportsBody).data;
+      expect(list).toHaveLength(1);
+      expect(list[0].counterpartEmail).toBeNull();
+    });
+
+    it('⭐ 列表不含 contentSnapshot', async () => {
+      const res = await memberReports(offenderId);
+
+      expect(JSON.stringify(res.body)).not.toContain(SNAPSHOT);
+    });
+
+    it('非法的 role → 400', async () => {
+      const res = await memberReports(offenderId, 'WHATEVER');
+
+      expect(res.status).toBe(400);
+    });
+
+    it('只有 ACCOUNT:VIEW → 403', async () => {
+      const res = await memberReports(offenderId, undefined, tokenNone);
+
+      expectForbidden(res);
+    });
+  });
+
   describe('行為時間軸', () => {
     it('只回該成員的紀錄', async () => {
       await prisma.chatAuditLogRecord.createMany({

@@ -10,6 +10,9 @@ import {
   ChatReportStatus,
   ChatReportSummary,
   CreateReportInput,
+  ListMemberReportsPage,
+  ListMemberReportsParams,
+  MemberReportRole,
   ListReportsPage,
   ListReportsParams,
   UpdateReportStatusInput,
@@ -80,6 +83,57 @@ export class PrismaChatReportRepository implements ChatReportRepositoryPort {
     return { data: rows.map((row) => this.toListItem(row)), total };
   }
 
+  async countByMember(
+    memberId: string,
+    role: MemberReportRole,
+  ): Promise<number> {
+    return this.prisma.chatReportRecord.count({
+      where: this.memberWhere(memberId, role),
+    });
+  }
+
+  async listByMember(
+    params: ListMemberReportsParams,
+  ): Promise<ListMemberReportsPage> {
+    const where = this.memberWhere(params.memberId, params.role);
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.chatReportRecord.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        select: this.memberListSelect,
+      }),
+      this.prisma.chatReportRecord.count({ where }),
+    ]);
+
+    return {
+      data: rows.map((row) => ({
+        reportId: row.id,
+        // 對造是「另一邊」——查被檢舉時對造是檢舉人，查提出的時對造是被檢舉人
+        counterpartId:
+          params.role === 'TARGET' ? row.reporterId : row.targetMemberId,
+        roomId: row.roomId,
+        reason: row.reason,
+        status: row.status,
+        createdAt: row.createdAt,
+      })),
+      total,
+    };
+  }
+
+  /**
+   * 依方向組出查詢條件。
+   *
+   * 兩個方向各自走索引：`TARGET` 走 `idx_chat_reports_target_member`，
+   * `REPORTER` 走 `uq_chat_reports_reporter_message` 的前綴。
+   */
+  private memberWhere(memberId: string, role: MemberReportRole) {
+    return role === 'TARGET'
+      ? { targetMemberId: memberId }
+      : { reporterId: memberId };
+  }
+
   async findDetail(reportId: string): Promise<ChatReportDetail | null> {
     const row = await this.prisma.chatReportRecord.findUnique({
       where: { id: reportId },
@@ -119,6 +173,22 @@ export class PrismaChatReportRepository implements ChatReportRepositoryPort {
    * 而一旦選了它，列表就會在網路上帶著一整頁敏感內容——包含已被撤回的訊息。
    */
   private readonly listSelect = {
+    id: true,
+    reporterId: true,
+    targetMemberId: true,
+    roomId: true,
+    reason: true,
+    status: true,
+    createdAt: true,
+  } as const;
+
+  /**
+   * 成員相關檢舉的欄位。
+   *
+   * 同樣**刻意不含 `contentSnapshot`**：概覽頁不寫稽核，
+   * 因此它絕對不能看得到內容。兩邊的成員 id 都選出來，由呼叫端依方向挑對造。
+   */
+  private readonly memberListSelect = {
     id: true,
     reporterId: true,
     targetMemberId: true,

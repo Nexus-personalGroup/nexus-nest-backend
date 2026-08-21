@@ -116,13 +116,23 @@ export const ReportDetailPage = () => {
             </CardHeader>
             <CardContent className="grid gap-4 sm:grid-cols-2">
               <Field label="檢舉人">
-                {participantLabel(detail.reporterEmail, detail.reporterId)}
+                <Link
+                  to={`/moderation/members/${detail.reporterId}`}
+                  className="underline underline-offset-4"
+                >
+                  {participantLabel(detail.reporterEmail, detail.reporterId)}
+                </Link>
               </Field>
               <Field label="被檢舉人">
-                {participantLabel(
-                  detail.targetMemberEmail,
-                  detail.targetMemberId,
-                )}
+                <Link
+                  to={`/moderation/members/${detail.targetMemberId}`}
+                  className="underline underline-offset-4"
+                >
+                  {participantLabel(
+                    detail.targetMemberEmail,
+                    detail.targetMemberId,
+                  )}
+                </Link>
               </Field>
               <Field label="原因">{reasonLabel(detail.reason)}</Field>
               <Field label="檢舉時間">{detail.createdAt}</Field>

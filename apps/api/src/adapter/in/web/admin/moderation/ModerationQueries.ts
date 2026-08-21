@@ -23,3 +23,13 @@ export const reviewReportSchema = z.object({
 });
 
 export type ReviewReportRequest = z.infer<typeof reviewReportSchema>;
+
+export const memberReportsQuerySchema = z.object({
+  // 兩個方向分開查：合併回傳會讓「他被檢舉 10 次」與「他檢舉別人 10 次」
+  // 在同一個數字底下看起來一樣
+  role: z.enum(['TARGET', 'REPORTER']).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
+export type MemberReportsQuery = z.infer<typeof memberReportsQuerySchema>;

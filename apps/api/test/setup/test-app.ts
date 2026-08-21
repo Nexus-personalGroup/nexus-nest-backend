@@ -39,6 +39,9 @@ export const createMockRedis = () => ({
   getBlacklistReason: jest.fn().mockResolvedValue(null),
   throttleIncrement: jest.fn().mockResolvedValue(1),
   increment: jest.fn().mockResolvedValue(1),
+  // presence 走 hash：沒有這一支的話 isOnline() 會炸成 500，
+  // 而症狀是「查詢成員概覽回 500」，指不到 mock 少一支方法
+  hashGetAll: jest.fn().mockResolvedValue({}),
 });
 
 /** 每次呼叫回傳全新的 SaveSystemLog mock 實例 */

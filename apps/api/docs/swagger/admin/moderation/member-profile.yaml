@@ -1,0 +1,93 @@
+tags: [Moderation]
+summary: 查詢成員的審閱概覽
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  **只回審閱需要的欄位**——不含角色、權限、最後登入 IP 或任何密碼相關欄位。
+  那些回答的是「他能做什麼」，屬於 `BACKEND:ACCOUNT:VIEW` 圈起來的範圍。
+
+  **授權範圍是明示的**：具備 `BACKEND:MODERATION:VIEW` 者可查詢任何成員，
+  不要求該成員與檢舉相關。要求「必須先有檢舉」會讓「查一個剛被停權的人」
+  這種正當操作失敗，而它擋不住真正想濫用的人。
+
+  本端點**不寫稽核**：回應不含任何訊息內容。
+
+parameters:
+  - name: memberId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required:
+                [
+                  memberId,
+                  email,
+                  status,
+                  joinedAt,
+                  isOnline,
+                  reportedCount,
+                  submittedReportCount,
+                  roomCount,
+                ]
+              properties:
+                memberId:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+                status:
+                  type: boolean
+                  description: 帳號啟用狀態；false 代表已停權
+                joinedAt:
+                  type: string
+                  format: date-time
+                isOnline:
+                  type: boolean
+                  description: |
+                    **查詢當下**的在線狀態，不保證即時。
+                    畫面應標明這一點，否則使用者會以為它會自動更新。
+                reportedCount:
+                  type: integer
+                  description: 被檢舉的次數
+                submittedReportCount:
+                  type: integer
+                  description: 提出檢舉的次數
+                roomCount:
+                  type: integer
+                  description: 所在聊天室數量
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 成員不存在或已被刪除
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

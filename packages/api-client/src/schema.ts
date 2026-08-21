@@ -578,6 +578,287 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/moderation/members/{memberId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢成員的審閱概覽
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     **只回審閱需要的欄位**——不含角色、權限、最後登入 IP 或任何密碼相關欄位。
+         *     那些回答的是「他能做什麼」，屬於 `BACKEND:ACCOUNT:VIEW` 圈起來的範圍。
+         *
+         *     **授權範圍是明示的**：具備 `BACKEND:MODERATION:VIEW` 者可查詢任何成員，
+         *     不要求該成員與檢舉相關。要求「必須先有檢舉」會讓「查一個剛被停權的人」
+         *     這種正當操作失敗，而它擋不住真正想濫用的人。
+         *
+         *     本端點**不寫稽核**：回應不含任何訊息內容。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    memberId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                /** Format: uuid */
+                                memberId: string;
+                                /** Format: email */
+                                email: string;
+                                /** @description 帳號啟用狀態；false 代表已停權 */
+                                status: boolean;
+                                /** Format: date-time */
+                                joinedAt: string;
+                                /**
+                                 * @description **查詢當下**的在線狀態，不保證即時。
+                                 *     畫面應標明這一點，否則使用者會以為它會自動更新。
+                                 */
+                                isOnline: boolean;
+                                /** @description 被檢舉的次數 */
+                                reportedCount: number;
+                                /** @description 提出檢舉的次數 */
+                                submittedReportCount: number;
+                                /** @description 所在聊天室數量 */
+                                roomCount: number;
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                /** @description 成員不存在或已被刪除 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "找不到帳號",
+                         *       "code": "MEMBER_NOT_FOUND",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/members/{memberId}/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢與成員相關的檢舉
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     `role` 決定方向：`TARGET`（該成員被檢舉，預設）或 `REPORTER`（該成員提出的）。
+         *     **兩個方向分開查詢**——「他被檢舉 10 次」與「他檢舉別人 10 次」在同一個
+         *     「檢舉相關 10 筆」底下看起來一樣，而那是兩件意義相反的事。
+         *
+         *     回應**不含 `contentSnapshot`**，理由與檢舉佇列相同：本端點不寫稽核，
+         *     因此它不能看得到內容。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    role?: "TARGET" | "REPORTER";
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    memberId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                list: {
+                                    /** Format: uuid */
+                                    reportId: string;
+                                    /**
+                                     * Format: uuid
+                                     * @description 對造的成員 ID——查 `TARGET` 時是檢舉人，查 `REPORTER` 時是被檢舉人
+                                     */
+                                    counterpartId: string;
+                                    /**
+                                     * Format: email
+                                     * @description 對造的 email；該帳號已被刪除時為 null
+                                     */
+                                    counterpartEmail: string | null;
+                                    /** Format: uuid */
+                                    roomId: string;
+                                    /** @enum {string} */
+                                    reason: "HARASSMENT" | "SPAM" | "INAPPROPRIATE" | "OTHER";
+                                    /** @enum {string} */
+                                    status: "PENDING" | "REVIEWED" | "DISMISSED";
+                                    /** Format: date-time */
+                                    createdAt: string;
+                                }[];
+                                meta: {
+                                    page: number;
+                                    limit: number;
+                                    total: number;
+                                    totalPages: number;
+                                };
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                /** @description role 不是 TARGET 或 REPORTER */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "資料驗證失敗",
+                         *       "code": "VALIDATION_ERROR",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/members/{memberId}/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢成員所在的聊天室
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     **與前台的「我的房間」是同一支查詢**，差別只在授權來源：
+         *     前台是「你只能查自己的」（memberId 來自 token），
+         *     這裡是「有權限就能查任何人的」（memberId 來自 path）。
+         *
+         *     `name` 為 null 代表私聊——顯示名稱由對方決定，不落庫。
+         *     `createdAt` 是**房間的建立時間**，不是該成員的加入時間。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    memberId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                list: {
+                                    /** Format: uuid */
+                                    id: string;
+                                    /** @enum {string} */
+                                    roomType: "DIRECT" | "GROUP";
+                                    /** @description 群組名稱；私聊為 null */
+                                    name: string | null;
+                                    memberCount: number;
+                                    /**
+                                     * Format: date-time
+                                     * @description 房間的建立時間
+                                     */
+                                    createdAt: string;
+                                }[];
+                                meta: {
+                                    page: number;
+                                    limit: number;
+                                    total: number;
+                                    totalPages: number;
+                                };
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/moderation/members/{memberId}/timeline": {
         parameters: {
             query?: never;
@@ -621,7 +902,7 @@ export interface paths {
                             data: {
                                 list: {
                                     /** @enum {string} */
-                                    action: "ROOM_JOINED" | "ROOM_LEFT" | "MESSAGE_RETRACTED" | "MESSAGE_RETRACT_REJECTED" | "MESSAGE_RATE_LIMITED" | "REPORT_SUBMITTED" | "REPORT_VIEWED";
+                                    action: "ROOM_JOINED" | "ROOM_LEFT" | "MESSAGE_RETRACTED" | "MESSAGE_RETRACT_REJECTED" | "MESSAGE_RATE_LIMITED" | "REPORT_SUBMITTED" | "REPORT_VIEWED" | "MESSAGE_REMOVED" | "MESSAGE_RESTORED" | "MEMBER_SUSPENDED" | "MEMBER_REINSTATED";
                                     /** Format: uuid */
                                     roomId?: string | null;
                                     /** Format: uuid */

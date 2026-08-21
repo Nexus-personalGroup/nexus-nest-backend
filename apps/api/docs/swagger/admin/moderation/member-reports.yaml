@@ -1,0 +1,127 @@
+tags: [Moderation]
+summary: 查詢與成員相關的檢舉
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  `role` 決定方向：`TARGET`（該成員被檢舉，預設）或 `REPORTER`（該成員提出的）。
+  **兩個方向分開查詢**——「他被檢舉 10 次」與「他檢舉別人 10 次」在同一個
+  「檢舉相關 10 筆」底下看起來一樣，而那是兩件意義相反的事。
+
+  回應**不含 `contentSnapshot`**，理由與檢舉佇列相同：本端點不寫稽核，
+  因此它不能看得到內容。
+
+parameters:
+  - name: memberId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+  - name: role
+    in: query
+    required: false
+    schema:
+      type: string
+      enum: [TARGET, REPORTER]
+      default: TARGET
+  - name: page
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    required:
+                      [
+                        reportId,
+                        counterpartId,
+                        counterpartEmail,
+                        roomId,
+                        reason,
+                        status,
+                        createdAt,
+                      ]
+                    properties:
+                      reportId:
+                        type: string
+                        format: uuid
+                      counterpartId:
+                        type: string
+                        format: uuid
+                        description: |
+                          對造的成員 ID——查 `TARGET` 時是檢舉人，查 `REPORTER` 時是被檢舉人
+                      counterpartEmail:
+                        type: string
+                        format: email
+                        nullable: true
+                        description: 對造的 email；該帳號已被刪除時為 null
+                      roomId:
+                        type: string
+                        format: uuid
+                      reason:
+                        type: string
+                        enum: [HARASSMENT, SPAM, INAPPROPRIATE, OTHER]
+                      status:
+                        type: string
+                        enum: [PENDING, REVIEWED, DISMISSED]
+                      createdAt:
+                        type: string
+                        format: date-time
+                meta:
+                  type: object
+                  required: [page, limit, total, totalPages]
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+  '400':
+    description: role 不是 TARGET 或 REPORTER
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 資料驗證失敗
+          code: VALIDATION_ERROR
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
