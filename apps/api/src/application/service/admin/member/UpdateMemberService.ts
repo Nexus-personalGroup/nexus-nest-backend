@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import {
   UPDATE_MEMBER_USE_CASE,
@@ -29,6 +29,14 @@ import { RoleNotFoundException } from '@app/domain/exception/RoleNotFoundExcepti
 import { CannotDisableSelfException } from '@app/domain/exception/CannotDisableSelfException';
 import { DefaultMemberNotEditableException } from '@app/domain/exception/DefaultMemberNotEditableException';
 import { BCRYPT_ROUNDS } from './CreateMemberService';
+import {
+  REVOKE_MEMBER_SESSIONS_USE_CASE,
+  RevokeMemberSessionsUseCase,
+} from '@app/application/port/in/shared/RevokeMemberSessionsUseCase';
+import {
+  CHAT_AUDIT_PORT,
+  ChatAuditPort,
+} from '@app/application/port/out/ChatAuditPort';
 
 export { UPDATE_MEMBER_USE_CASE };
 
@@ -46,7 +54,13 @@ export class UpdateMemberService implements UpdateMemberUseCase {
     @Inject(BCRYPT_ROUNDS)
     private readonly bcryptRounds: number,
     private readonly passwordPolicy: PasswordPolicyService,
+    @Inject(REVOKE_MEMBER_SESSIONS_USE_CASE)
+    private readonly revokeSessions: RevokeMemberSessionsUseCase,
+    @Inject(CHAT_AUDIT_PORT)
+    private readonly audit: ChatAuditPort,
   ) {}
+
+  private readonly logger = new Logger(UpdateMemberService.name);
 
   async execute(command: UpdateMemberCommand): Promise<void> {
     if (command.id === command.actorId && command.status === false) {
@@ -98,6 +112,12 @@ export class UpdateMemberService implements UpdateMemberUseCase {
       );
     }
 
+    // 記下轉換的方向：只有「真的從啟用轉為停用」才需要撤銷連線與寫稽核，
+    // 對已停用的帳號重複送 status: false 不該重複做這些事
+    const wasActive = member.status;
+    const statusChanged =
+      command.status !== undefined && command.status !== wasActive;
+
     if (command.status !== undefined) {
       if (command.status) {
         member.activate();
@@ -113,5 +133,22 @@ export class UpdateMemberService implements UpdateMemberUseCase {
     }
 
     await this.clearMemberContext.clearMemberContext(command.id);
+
+    if (statusChanged) {
+      // 清快取只讓「下一次請求」被擋下，既有的 WebSocket 連線不受影響——
+      // 連線層的認證只在 handshake 執行一次。不主動撤銷的話，
+      // 被停用的人只要連線還開著就能繼續送訊息
+      if (command.status === false) {
+        await this.revokeSessions.execute(command.id);
+      }
+
+      await this.audit
+        .record({
+          memberId: command.actorId,
+          action: command.status ? 'MEMBER_REINSTATED' : 'MEMBER_SUSPENDED',
+          targetMemberId: command.id,
+        })
+        .catch((error: unknown) => this.logger.error('稽核寫入失敗', error));
+    }
   }
 }

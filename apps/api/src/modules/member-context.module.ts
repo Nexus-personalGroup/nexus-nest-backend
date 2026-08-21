@@ -2,7 +2,7 @@ import { Module } from '@nestjs/common';
 import { RESOLVE_MEMBER_CONTEXT_USE_CASE } from '@app/application/port/in/shared/ResolveMemberContextUseCase';
 import { ResolveMemberContextService } from '@app/application/service/shared/ResolveMemberContextService';
 import { JwtModule } from './jwt.module';
-import { MemberModule } from './admin/member.module';
+import { MemberPersistenceModule } from './member-persistence.module';
 
 /**
  * token → MemberContext 的判定，供所有進入點共用
@@ -13,10 +13,13 @@ import { MemberModule } from './admin/member.module';
  * module 提供，兩邊各自 import。
  *
  * 所需的三個 out port：`TOKEN_BLACKLIST_PORT` 與 `MEMBER_CONTEXT_CACHE_PORT` 由
- * `@Global()` 的 RedisModule 提供，`LOAD_MEMBER_CONTEXT_PORT` 需 import MemberModule。
+ * `@Global()` 的 RedisModule 提供，`LOAD_MEMBER_CONTEXT_PORT` 需 import MemberPersistenceModule。
+ *
+ * **不要改回 import MemberModule**：後者現在相依 ChatWsModule（停權要撤銷 WS 連線），
+ * 而 ChatWsModule 又 import 本模組——會形成循環。持久層模組是葉節點，指向它才安全。
  */
 @Module({
-  imports: [JwtModule, MemberModule],
+  imports: [JwtModule, MemberPersistenceModule],
   providers: [
     {
       provide: RESOLVE_MEMBER_CONTEXT_USE_CASE,

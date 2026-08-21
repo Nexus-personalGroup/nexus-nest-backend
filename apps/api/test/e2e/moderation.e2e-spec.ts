@@ -26,6 +26,8 @@ describe('Moderation E2E', () => {
   // 三種身分：全權限、只有 VIEW、完全沒有 moderation 權限
   let tokenFull = '';
   let tokenViewOnly = '';
+  /** 帳號管理側的權限——用來驗證兩個入口效果一致 */
+  let tokenAccount = '';
   let tokenNone = '';
   let adminId = '';
   let offenderId = '';
@@ -71,6 +73,12 @@ describe('Moderation E2E', () => {
       ],
     });
     await seedMember(prisma, {
+      email: 'accountadmin@test.com',
+      password: PASSWORD,
+      roleName: 'account-admin',
+      permissionCodes: [PermissionCode.BACKEND_ACCOUNT_EDIT],
+    });
+    await seedMember(prisma, {
       email: 'viewer@test.com',
       password: PASSWORD,
       roleName: 'viewer',
@@ -86,6 +94,7 @@ describe('Moderation E2E', () => {
     offenderId = offender.memberId;
     tokenFull = await login('admin@test.com');
     tokenViewOnly = await login('viewer@test.com');
+    tokenAccount = await login('accountadmin@test.com');
     tokenNone = await login('offender@test.com');
 
     const room = await prisma.chatRoomRecord.create({
@@ -455,6 +464,109 @@ describe('Moderation E2E', () => {
         expectForbidden(res);
         expect((await messageRow()).removedAt).not.toBeNull();
       });
+    });
+  });
+
+  /**
+   * 停權與解除（審閱側入口）。
+   *
+   * 與帳號管理的 `PATCH /api/admin/members/:id` 呼叫**同一個 use case**——
+   * 各自實作會讓斷線與稽核的行為分歧，而分歧的那一邊不會有人發現。
+   */
+  describe('停權', () => {
+    const suspend = (id = offenderId, token = tokenFull) =>
+      request(app.getHttpServer())
+        .post(`/api/admin/moderation/members/${id}/suspend`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const reinstate = (id = offenderId, token = tokenFull) =>
+      request(app.getHttpServer())
+        .post(`/api/admin/moderation/members/${id}/reinstate`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const memberRow = () =>
+      prisma.memberRecord.findUniqueOrThrow({ where: { id: offenderId } });
+
+    it('停權 → 204 且帳號停用', async () => {
+      const res = await suspend();
+
+      expect(res.status).toBe(204);
+      expect((await memberRow()).status).toBe(false);
+    });
+
+    it('停權留下 MEMBER_SUSPENDED 稽核', async () => {
+      await suspend();
+
+      const rows = await prisma.chatAuditLogRecord.findMany();
+      expect(rows.map((r) => r.action)).toEqual(['MEMBER_SUSPENDED']);
+      expect(rows[0].memberId).toBe(adminId);
+      expect(rows[0].targetMemberId).toBe(offenderId);
+    });
+
+    it('解除 → 204 且帳號恢復，留下 MEMBER_REINSTATED', async () => {
+      await suspend();
+      const res = await reinstate();
+
+      expect(res.status).toBe(204);
+      expect((await memberRow()).status).toBe(true);
+      const rows = await prisma.chatAuditLogRecord.findMany({
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(rows.map((r) => r.action)).toEqual([
+        'MEMBER_SUSPENDED',
+        'MEMBER_REINSTATED',
+      ]);
+    });
+
+    // 對已停用的帳號重複停權不該重複斷線或重複稽核
+    it('重複停權 → 204 且不重複稽核', async () => {
+      await suspend();
+      const res = await suspend();
+
+      expect(res.status).toBe(204);
+      expect(await prisma.chatAuditLogRecord.count()).toBe(1);
+    });
+
+    it('對未停用的帳號解除 → 204 且不寫稽核', async () => {
+      const res = await reinstate();
+
+      expect(res.status).toBe(204);
+      expect(await prisma.chatAuditLogRecord.count()).toBe(0);
+    });
+
+    it('只有 VIEW 權限 → 403', async () => {
+      const res = await suspend(offenderId, tokenViewOnly);
+
+      expectForbidden(res);
+      expect((await memberRow()).status).toBe(true);
+    });
+
+    // 沿用帳號管理既有的保護（既有的 CannotDisableSelfException 回 409）
+    it('停權自己 → 409', async () => {
+      const res = await suspend(adminId);
+
+      expect(res.status).toBe(409);
+      const admin = await prisma.memberRecord.findUniqueOrThrow({
+        where: { id: adminId },
+      });
+      expect(admin.status).toBe(true);
+    });
+
+    it('成員不存在 → 404', async () => {
+      const res = await suspend(MISSING_ID);
+      expect(res.status).toBe(404);
+    });
+
+    // 兩個入口效果一致：帳號管理側停用也會寫同一筆稽核
+    it('⭐ 帳號管理側停用產生相同的稽核', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/admin/members/${offenderId}`)
+        .set('Authorization', `Bearer ${tokenAccount}`)
+        .send({ status: false })
+        .expect(204);
+
+      const rows = await prisma.chatAuditLogRecord.findMany();
+      expect(rows.map((r) => r.action)).toEqual(['MEMBER_SUSPENDED']);
     });
   });
 });

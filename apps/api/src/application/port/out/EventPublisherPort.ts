@@ -27,4 +27,21 @@ export interface EventPublisherPort {
    * @param payload - 事件內容
    */
   publishToMember(memberId: string, event: string, payload: unknown): void;
+
+  /**
+   * 斷開某成員的所有連線（含其他實例上的）
+   *
+   * **必須在送出說明事件之後呼叫**——斷線後就沒有管道可以說明原因了。
+   *
+   * 這個方法存在的理由是一個「每一層都正確、但沒有人負責銜接」的缺口：
+   * 連線層的認證只在 handshake 執行一次，之後的事件只驗資源層級的授權。
+   * 帳號停用之後，既有的連線仍然可以繼續操作。
+   *
+   * **回傳 void 而非 Promise**：Socket.IO 的 `disconnectSockets()` 是同步的，
+   * 跨實例的部分經 adapter 廣播出去、沒有完成訊號可等。宣告成 Promise
+   * 會讓呼叫端以為 `await` 之後所有實例都斷乾淨了，而那不是事實。
+   *
+   * @param memberId - 成員 ID
+   */
+  disconnectMember(memberId: string): void;
 }

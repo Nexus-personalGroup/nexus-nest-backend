@@ -525,6 +525,8 @@ enum ChatAuditAction {
   REPORT_VIEWED
   MESSAGE_REMOVED
   MESSAGE_RESTORED
+  MEMBER_SUSPENDED
+  MEMBER_REINSTATED
 
   @@map("chat_audit_action")
 }

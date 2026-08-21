@@ -1,0 +1,57 @@
+tags: [Moderation]
+summary: 停權成員
+description: |
+  需 `BACKEND:MODERATION:EDIT` 權限。
+
+  與帳號管理的 `PATCH /api/admin/members/{id} { "status": false }` **效果完全相同**
+  ——兩者呼叫同一個 use case。刻意並存是因為角色不同：
+  「能管帳號的人」與「能做審閱處置的人」在真實團隊裡經常不是同一群
+  （客服能停權違規者，但不該改帳號的角色與密碼）。
+
+  停權會做三件事：帳號停用、context 快取清除、**既有的 WebSocket 連線被斷開**。
+
+  第三項是關鍵：連線層的認證只在 handshake 執行一次，之後的事件只驗資源層級的授權。
+  不主動撤銷的話，**被停權的人只要連線還開著就能繼續送訊息**。
+  被斷線的客戶端會先收到 `server:sessionRevoked`，據此停止自動重連。
+
+  **冪等**：對已停用的帳號再次停權回 `204`，不重複斷線也不重複稽核。
+
+parameters:
+  - name: memberId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 已停權（無回應內容）；已停用時同樣回 204
+  '400':
+    description: 嘗試停權自己
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 無法停用自己的帳號
+          code: SELF_DISABLE_FORBIDDEN
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 成員不存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

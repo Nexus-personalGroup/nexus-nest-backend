@@ -33,6 +33,10 @@ import {
   REMOVE_MESSAGE_USE_CASE,
   RemoveMessageUseCase,
 } from '@app/application/port/in/admin/moderation/MessageModerationUseCases';
+import {
+  UPDATE_MEMBER_USE_CASE,
+  UpdateMemberUseCase,
+} from '@app/application/port/in/admin/member/UpdateMemberUseCase';
 
 export interface WsInstance {
   app: NestExpressApplication;
@@ -50,6 +54,8 @@ export interface WsInstance {
   retractMessage: RetractMessageUseCase;
   /** 同上，用於管理員移除的通知 */
   removeMessage: RemoveMessageUseCase;
+  /** 停權：用來驗證既有連線會被跨實例斷開 */
+  updateMember: UpdateMemberUseCase;
   prisma: PrismaService;
   jwt: JwtService;
   /** 正常關閉：走 shutdown hooks，presence 會被清乾淨 */
@@ -91,6 +97,7 @@ export const startInstance = async (port: number): Promise<WsInstance> => {
     markRoomRead: app.get<MarkRoomReadUseCase>(MARK_ROOM_READ_USE_CASE),
     retractMessage: app.get<RetractMessageUseCase>(RETRACT_MESSAGE_USE_CASE),
     removeMessage: app.get<RemoveMessageUseCase>(REMOVE_MESSAGE_USE_CASE),
+    updateMember: app.get<UpdateMemberUseCase>(UPDATE_MEMBER_USE_CASE),
     prisma: app.get(PrismaService),
     jwt: app.get(JwtService),
     close: async () => {

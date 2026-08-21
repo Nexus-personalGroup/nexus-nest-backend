@@ -38,6 +38,15 @@ export const SERVER_EVENTS = {
   MESSAGE_REMOVED: 'messageRemoved',
   /** 被誤移除的訊息已還原；payload 帶還原後的撤回狀態 */
   MESSAGE_RESTORED: 'messageRestored',
+  /**
+   * 這條連線的認證已失效（帳號被停用），送出後連線隨即被斷開。
+   *
+   * **先送事件再斷線**，順序不可顛倒——斷線後就沒有管道可以說明原因了。
+   * 事件要讓客戶端知道「不要重連」：Socket.IO 預設會自動重連，
+   * 只斷線而不說原因會讓被停權者進入無盡的重連迴圈，
+   * 而使用者看到的是「一直在連線中」而不是「你的帳號已停用」。
+   */
+  SESSION_REVOKED: 'sessionRevoked',
 } as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];

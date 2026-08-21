@@ -15,7 +15,9 @@ export type ChatAuditAction =
   | 'REPORT_SUBMITTED'
   | 'REPORT_VIEWED'
   | 'MESSAGE_REMOVED'
-  | 'MESSAGE_RESTORED';
+  | 'MESSAGE_RESTORED'
+  | 'MEMBER_SUSPENDED'
+  | 'MEMBER_REINSTATED';
 
 export interface ChatAuditEvent {
   /** 執行動作的成員 */
