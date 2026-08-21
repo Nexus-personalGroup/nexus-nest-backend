@@ -283,3 +283,34 @@ Gauge 類的指標**不要自己加 instanceId 標籤**：Prometheus 依 scrape 
 只能在單元測試裡 `jest.mock('@app/infrastructure/validate-env')` 並 mock `getEnv`
 （見 `PrismaChatAuditRepository.spec.ts`）。e2e 改不動它。
 
+---
+
+### 資料保留策略
+
+兩支**獨立**的排程，各自有開關與保留天數：
+
+| 排程 | 清哪些表 | 開關 | 天數 |
+| --- | --- | --- | --- |
+| `LogRetentionScheduler` | `system_logs` / `auth_logs` | `LOG_PURGE_ENABLED` | `LOG_RETENTION_DAYS`（90） |
+| `ChatRetentionScheduler` | `chat_audit_logs` / `chat_reports` | `CHAT_RETENTION_ENABLED` | `CHAT_AUDIT_RETENTION_DAYS`（180）／`CHAT_REPORT_RETENTION_DAYS`（365） |
+
+**刻意不共用開關**：日誌關掉只是磁碟長大，稽核關掉會讓日後的調查沒有依據。
+共用會讓「調整日誌保留」這個低風險操作順手改到稽核。
+
+#### 新增一張要清理的表
+
+1. 在對應的 `Purgeable*Table` 聯集加表名（**型別鎖死，不接受任意字串**）
+2. port 加一個方法，用 `purgeInBatches` 分批刪
+3. **不要用 `deleteMany`**：它產生單一無界的 `DELETE`，在累積數百萬列的部署上
+   第一次執行會長時間持鎖、阻塞同表寫入——變成「防止資料庫爆掉的機制自己造成一次事故」
+4. PostgreSQL 的 `DELETE` **不支援 LIMIT**，分批靠 `ctid IN (SELECT ... LIMIT n)`
+
+#### 兩件不能忘的事
+
+**訊息（`chat_messages`）不清理，而且有守則擋著**（`retention-scope.spec.ts`）。
+清了會讓 `seq` 重新出現洞——補齊的客戶端無法區分「被清掉」與「我漏收了」，
+唯一合理的反應是反覆嘗試補同一段區間。要清訊息**必須先讓 `roomSynced`
+能表達「最舊的可用 seq」**。
+
+**檢舉按判定時間清，未判定的永不清**。按建立時間清會讓積壓的佇列
+靜默地把證據刪掉，而積壓正是最需要那些證據的時候。

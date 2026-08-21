@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
 import { ExampleScheduler } from '../adapter/in/scheduler/ExampleScheduler';
 import { LogRetentionScheduler } from '../adapter/in/scheduler/LogRetentionScheduler';
+import { ChatRetentionScheduler } from '../adapter/in/scheduler/ChatRetentionScheduler';
 import { PresenceSweepScheduler } from '../adapter/in/scheduler/PresenceSweepScheduler';
 import { PurgeLogsService } from '../application/service/shared/PurgeLogsService';
 import { PrismaLogPurgeRepository } from '../adapter/out/persistence/PrismaLogPurgeRepository';
 import { PURGE_LOGS_PORT } from '../application/port/out/shared/PurgeLogsPort';
+import { ChatRetentionService } from '../application/service/shared/ChatRetentionService';
+import { PrismaChatRetentionRepository } from '../adapter/out/persistence/PrismaChatRetentionRepository';
+import { CHAT_RETENTION_PORT } from '../application/port/out/shared/ChatRetentionPort';
 
 /**
  * 排程模組：集中宣告以 @nestjs/schedule 動態 cron 為基礎的排程器。
@@ -16,6 +20,8 @@ import { PURGE_LOGS_PORT } from '../application/port/out/shared/PurgeLogsPort';
   providers: [
     ExampleScheduler,
     LogRetentionScheduler,
+    // 與日誌保留分開的排程：兩者的保留期限、開關、失效後果都不同
+    ChatRetentionScheduler,
     // PRESENCE_PORT 由 @Global() 的 RedisModule 提供，此處不需 import
     PresenceSweepScheduler,
     PurgeLogsService,
@@ -23,6 +29,12 @@ import { PURGE_LOGS_PORT } from '../application/port/out/shared/PurgeLogsPort';
     {
       provide: PURGE_LOGS_PORT,
       useExisting: PrismaLogPurgeRepository,
+    },
+    ChatRetentionService,
+    PrismaChatRetentionRepository,
+    {
+      provide: CHAT_RETENTION_PORT,
+      useExisting: PrismaChatRetentionRepository,
     },
   ],
 })
