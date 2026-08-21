@@ -12,6 +12,24 @@ export interface ChatMessage {
   createdAt: Date;
 }
 
+/**
+ * 檢舉所需的訊息資訊，**含未遮蔽的原始內容**。
+ *
+ * 這是唯一會回傳被撤回訊息內容的取值路徑，而且刻意做得很窄：
+ * 只有「檢舉」這一個用途需要它——被撤回的訊息也必須能被檢舉，
+ * 而檢舉的價值在於留下當下那句話。
+ *
+ * **不要把它擴充成泛用的「取原始內容」方法。** 那會直接變成繞過遮蔽的洩漏管道，
+ * 而遮蔽只寫在 `toMessage()` 一處正是整個設計的前提。
+ */
+export interface MessageForReport {
+  messageId: string;
+  roomId: string;
+  senderId: string;
+  /** 未遮蔽的原始內容——即使該則已撤回 */
+  rawContent: string;
+}
+
 /** 撤回的授權與時限判斷所需的最小資訊，不含內容 */
 export interface MessageOwnership {
   messageId: string;
@@ -69,6 +87,14 @@ export interface ChatMessageRepositoryPort {
     roomId: string,
     messageId: string,
   ): Promise<MessageOwnership | null>;
+
+  /**
+   * 取檢舉所需的訊息資訊（含未遮蔽的原始內容）；不存在時回 null。
+   *
+   * **僅供檢舉使用。** 它是唯一繞過 `toMessage()` 遮蔽的路徑，
+   * 因此呼叫端只能有一個——多一個就多一條洩漏管道。
+   */
+  findForReport(messageId: string): Promise<MessageForReport | null>;
 
   /**
    * 標記撤回。**不刪除該列**——刪了 seq 會出現洞。

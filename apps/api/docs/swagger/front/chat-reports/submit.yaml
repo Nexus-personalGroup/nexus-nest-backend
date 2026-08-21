@@ -1,0 +1,103 @@
+tags: [ChatReport]
+summary: 檢舉訊息
+description: |
+  檢舉同房間中他人的一則訊息。
+
+  **只能檢舉訊息**，不能直接檢舉使用者或房間：訊息已帶著發送者與房間，
+  「被檢舉者是誰」推得出來；反過來推不回去。「這個人持續騷擾」要造多筆檢舉，
+  而多筆指向同一個人的檢舉本身就是訊號。
+
+  **同一人對同一則訊息只能檢舉一次**：重複送出回傳既有那筆並回 `200`
+  ——重複檢舉不是錯誤，使用者的意圖已經達成了。不同人檢舉同一則則各自一筆。
+
+  **已被撤回的訊息照常可以檢舉**：撤回不該讓行為變得無法檢舉。
+
+  被檢舉者**不會**得知自己被檢舉，也不會收到任何推播。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [messageId, reason]
+        properties:
+          messageId:
+            type: string
+            format: uuid
+          reason:
+            type: string
+            enum: [HARASSMENT, SPAM, INAPPROPRIATE, OTHER]
+          description:
+            type: string
+            maxLength: 500
+            description: 補充說明，可省略
+      example:
+        messageId: 1a2b3c4d-5e6f-4a7b-8c9d-0e1f2a3b4c5d
+        reason: HARASSMENT
+        description: 持續辱罵
+
+responses:
+  '200':
+    description: 檢舉已受理；重複檢舉回傳既有那筆
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [reportId, status, createdAt]
+              properties:
+                reportId:
+                  type: string
+                  format: uuid
+                status:
+                  type: string
+                  enum: [PENDING, REVIEWED, DISMISSED]
+                createdAt:
+                  type: string
+                  format: date-time
+            timestamp:
+              type: string
+              format: date-time
+        example:
+          success: true
+          data:
+            reportId: 550e8400-e29b-41d4-a716-446655440000
+            status: PENDING
+            createdAt: '2026-08-21T06:00:00.000Z'
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '400':
+    description: |
+      檢舉自己發送的訊息（`CHAT_REPORT_SELF`），或 payload 不符 schema（`BAD_REQUEST`）。
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 無法檢舉自己發送的訊息
+          code: CHAT_REPORT_SELF
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '404':
+    description: |
+      訊息不存在，**或檢舉人不是該訊息所屬房間的成員**。
+
+      兩者共用同一個錯誤碼是刻意的——分開等於提供探測任意訊息是否存在的工具。
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 訊息不存在或不是你發送的
+          code: CHAT_MESSAGE_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
