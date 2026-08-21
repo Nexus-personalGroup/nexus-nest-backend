@@ -22,6 +22,12 @@ export const PermissionCode = {
 
   // 後台 - 附件（上傳與刪除共用一個碼：兩者都是寫入操作，附件沒有「只能看」的場景）
   BACKEND_ATTACHMENT_EDIT: 'BACKEND:ATTACHMENT:EDIT',
+
+  // 後台 - 檢舉審閱。VIEW 與 EDIT 分開的理由與附件相反：兩者的風險不同——
+  // 查看會接觸到敏感內容（含被撤回的訊息快照），判定會改變狀態。
+  // 「能看的人」與「能判的人」在真實團隊裡經常不是同一群
+  BACKEND_MODERATION_VIEW: 'BACKEND:MODERATION:VIEW',
+  BACKEND_MODERATION_EDIT: 'BACKEND:MODERATION:EDIT',
 } as const;
 
 export type PermissionCode =

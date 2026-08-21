@@ -1,0 +1,74 @@
+tags: [Moderation]
+summary: 查詢檢舉佇列
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。預設只回傳 `PENDING`——
+  佇列的用途是「還有什麼要處理」，不是瀏覽歷史。
+
+  **回應不含 `contentSnapshot`**。列表不含內容有兩個作用：讓稽核量與
+  「實際看到敏感內容的次數」對齊（詳情端點才會寫稽核），
+  也讓管理員瀏覽時不會無意間看到一整頁敏感內容。
+
+  **本端點不會寫入稽核紀錄。**
+
+parameters:
+  - name: status
+    in: query
+    required: false
+    schema:
+      type: string
+      enum: [PENDING, REVIEWED, DISMISSED]
+      default: PENDING
+  - name: page
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: './_report-list-item.yaml'
+                meta:
+                  type: object
+                  required: [page, limit, total, totalPages]
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

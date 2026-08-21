@@ -1,0 +1,25 @@
+# 佇列列表的項目。**刻意不含 contentSnapshot**——列表看不到任何敏感內容
+type: object
+required: [reportId, reporterId, targetMemberId, roomId, reason, status, createdAt]
+properties:
+  reportId:
+    type: string
+    format: uuid
+  reporterId:
+    type: string
+    format: uuid
+  targetMemberId:
+    type: string
+    format: uuid
+  roomId:
+    type: string
+    format: uuid
+  reason:
+    type: string
+    enum: [HARASSMENT, SPAM, INAPPROPRIATE, OTHER]
+  status:
+    type: string
+    enum: [PENDING, REVIEWED, DISMISSED]
+  createdAt:
+    type: string
+    format: date-time

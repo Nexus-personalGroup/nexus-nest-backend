@@ -5,6 +5,8 @@ import {
   CHAT_AUDIT_PORT,
   ChatAuditEvent,
   ChatAuditPort,
+  ListAuditPage,
+  ListAuditParams,
 } from '@app/application/port/out/ChatAuditPort';
 
 export { CHAT_AUDIT_PORT };
@@ -31,5 +33,26 @@ export class PrismaChatAuditRepository implements ChatAuditPort {
       },
     });
     this.logger.debug(`稽核：${event.action} by ${event.memberId}`);
+  }
+
+  async listByMember(params: ListAuditParams): Promise<ListAuditPage> {
+    const where = { memberId: params.memberId };
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.chatAuditLogRecord.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        select: {
+          action: true,
+          roomId: true,
+          targetMemberId: true,
+          targetMessageId: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.chatAuditLogRecord.count({ where }),
+    ]);
+    return { data: rows, total };
   }
 }

@@ -12,7 +12,8 @@ export type ChatAuditAction =
   | 'MESSAGE_RETRACTED'
   | 'MESSAGE_RETRACT_REJECTED'
   | 'MESSAGE_RATE_LIMITED'
-  | 'REPORT_SUBMITTED';
+  | 'REPORT_SUBMITTED'
+  | 'REPORT_VIEWED';
 
 export interface ChatAuditEvent {
   /** 執行動作的成員 */
@@ -37,6 +38,35 @@ export interface ChatAuditEvent {
  * 實作是 **best-effort**：呼叫端必須接住錯誤——稽核表滿了不該讓使用者
  * 送不出訊息。有守則檢查每個呼叫點都有 catch。
  */
+/** 行為時間軸的一列；不含訊息內容——稽核表本來就不存 */
+export interface ChatAuditEntry {
+  action: ChatAuditAction;
+  roomId: string | null;
+  targetMemberId: string | null;
+  targetMessageId: string | null;
+  createdAt: Date;
+}
+
+export interface ListAuditParams {
+  memberId: string;
+  page: number;
+  limit: number;
+}
+
+export interface ListAuditPage {
+  data: ChatAuditEntry[];
+  total: number;
+}
+
 export interface ChatAuditPort {
   record(event: ChatAuditEvent): Promise<void>;
+
+  /**
+   * 某成員的行為時間軸。
+   *
+   * 以**成員**為主體而非泛用的「查全部稽核」：調查的問題永遠是
+   * 「這個人做了什麼」，`(memberId, createdAt)` 索引就是為它建的。
+   * 泛用查詢會誘使人做無調查價值的全表瀏覽。
+   */
+  listByMember(params: ListAuditParams): Promise<ListAuditPage>;
 }

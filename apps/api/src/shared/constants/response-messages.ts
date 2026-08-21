@@ -66,6 +66,8 @@ export const ResponseMessages = {
   CHAT_MESSAGE_NOT_FOUND: '訊息不存在或不是你發送的',
   CHAT_MESSAGE_RETRACT_EXPIRED: '超過可撤回的時間',
   CHAT_REPORT_SELF: '無法檢舉自己發送的訊息',
+  CHAT_REPORT_NOT_FOUND: '檢舉不存在',
+  CHAT_REPORT_INVALID_TRANSITION: '無法將檢舉改回待處理',
 
   // 系統：刻意維持通用英文訊息，不洩漏內部實作細節
   INTERNAL_SERVER_ERROR: 'Internal server error',

@@ -165,6 +165,422 @@ components:
             code: INTERNAL_SERVER_ERROR
             timestamp: '2024-01-01T00:00:00.000Z'
 paths:
+  /moderation/reports:
+    get:
+      tags:
+        - Moderation
+      summary: 查詢檢舉佇列
+      description: |
+        需 `BACKEND:MODERATION:VIEW` 權限。預設只回傳 `PENDING`——
+        佇列的用途是「還有什麼要處理」，不是瀏覽歷史。
+
+        **回應不含 `contentSnapshot`**。列表不含內容有兩個作用：讓稽核量與
+        「實際看到敏感內容的次數」對齊（詳情端點才會寫稽核），
+        也讓管理員瀏覽時不會無意間看到一整頁敏感內容。
+
+        **本端點不會寫入稽核紀錄。**
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - PENDING
+              - REVIEWED
+              - DISMISSED
+            default: PENDING
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - list
+                      - meta
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - reportId
+                            - reporterId
+                            - targetMemberId
+                            - roomId
+                            - reason
+                            - status
+                            - createdAt
+                          properties:
+                            reportId:
+                              type: string
+                              format: uuid
+                            reporterId:
+                              type: string
+                              format: uuid
+                            targetMemberId:
+                              type: string
+                              format: uuid
+                            roomId:
+                              type: string
+                              format: uuid
+                            reason:
+                              type: string
+                              enum:
+                                - HARASSMENT
+                                - SPAM
+                                - INAPPROPRIATE
+                                - OTHER
+                            status:
+                              type: string
+                              enum:
+                                - PENDING
+                                - REVIEWED
+                                - DISMISSED
+                            createdAt:
+                              type: string
+                              format: date-time
+                      meta:
+                        type: object
+                        required:
+                          - page
+                          - limit
+                          - total
+                          - totalPages
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/moderation/reports/{reportId}':
+    get:
+      tags:
+        - Moderation
+      summary: 查詢檢舉詳情
+      description: |
+        需 `BACKEND:MODERATION:VIEW` 權限。
+
+        **這是唯一能看到被撤回訊息內容的路徑**（透過檢舉當下的內容快照），
+        因此**每次呼叫都會寫入一筆 `REPORT_VIEWED` 稽核**。
+
+        查看不留痕跡的話，這條路徑與「任何人都看得到」在事後沒有實質區別——
+        差別只在誰有權限，而權限可能被誤配、被濫用、或在事後被質疑。
+
+        稽核寫入失敗不會讓查詢失敗（best-effort），但會以 error 等級記錄。
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - reportId
+                      - reporterId
+                      - targetMemberId
+                      - targetMessageId
+                      - roomId
+                      - reason
+                      - status
+                      - contentSnapshot
+                      - createdAt
+                    properties:
+                      reportId:
+                        type: string
+                        format: uuid
+                      reporterId:
+                        type: string
+                        format: uuid
+                      targetMemberId:
+                        type: string
+                        format: uuid
+                      targetMessageId:
+                        type: string
+                        format: uuid
+                      roomId:
+                        type: string
+                        format: uuid
+                      reason:
+                        type: string
+                        enum:
+                          - HARASSMENT
+                          - SPAM
+                          - INAPPROPRIATE
+                          - OTHER
+                      status:
+                        type: string
+                        enum:
+                          - PENDING
+                          - REVIEWED
+                          - DISMISSED
+                      description:
+                        type: string
+                        nullable: true
+                      contentSnapshot:
+                        type: string
+                        description: 檢舉當下的訊息內容；即使該訊息已被撤回也會回傳
+                      reviewedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      reviewedBy:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      reviewNote:
+                        type: string
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 檢舉不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 檢舉不存在
+                code: CHAT_REPORT_NOT_FOUND
+                timestamp: '2026-08-21T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+    patch:
+      tags:
+        - Moderation
+      summary: 判定檢舉
+      description: |
+        需 `BACKEND:MODERATION:EDIT` 權限（與 VIEW 分開：查看接觸敏感內容、
+        判定改變狀態，「能看的人」與「能判的人」經常不是同一群）。
+
+        **只做狀態流轉**，不移除訊息也不停用帳號——那些是獨立的行為，
+        各自需要自己的授權、稽核，以及對使用者的語意
+        （「因違規被移除」與「已收回」對客戶端是不同的東西）。
+
+        `REVIEWED` 與 `DISMISSED` 之間可以互轉（終態間的更正）；
+        **不可改回 `PENDING`**，那是「重新開啟」，語意不同。
+      parameters:
+        - name: reportId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - status
+              properties:
+                status:
+                  type: string
+                  enum:
+                    - REVIEWED
+                    - DISMISSED
+                reviewNote:
+                  type: string
+                  maxLength: 500
+            example:
+              status: REVIEWED
+              reviewNote: 已私下警告
+      responses:
+        '204':
+          description: 已判定（無回應內容）
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 檢舉不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 檢舉不存在
+                code: CHAT_REPORT_NOT_FOUND
+                timestamp: '2026-08-21T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/moderation/members/{memberId}/timeline':
+    get:
+      tags:
+        - Moderation
+      summary: 查詢成員的行為時間軸
+      description: |
+        需 `BACKEND:MODERATION:VIEW` 權限。
+
+        端點以**成員**為主體，沒有泛用的「查全部稽核」——調查的問題永遠是
+        「這個人做了什麼」，而稽核表的索引就是為它建的。
+        泛用查詢會誘使人做無調查價值的全表瀏覽。
+
+        **回應不含訊息內容**：稽核紀錄本來就不存內容（內容在 `chat_messages`，
+        撤回也保留）。因此本端點不需要另外留稽核。
+      parameters:
+        - name: memberId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - list
+                      - meta
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - action
+                            - createdAt
+                          properties:
+                            action:
+                              type: string
+                              enum:
+                                - ROOM_JOINED
+                                - ROOM_LEFT
+                                - MESSAGE_RETRACTED
+                                - MESSAGE_RETRACT_REJECTED
+                                - MESSAGE_RATE_LIMITED
+                                - REPORT_SUBMITTED
+                                - REPORT_VIEWED
+                            roomId:
+                              type: string
+                              format: uuid
+                              nullable: true
+                            targetMemberId:
+                              type: string
+                              format: uuid
+                              nullable: true
+                            targetMessageId:
+                              type: string
+                              format: uuid
+                              nullable: true
+                            createdAt:
+                              type: string
+                              format: date-time
+                      meta:
+                        type: object
+                        required:
+                          - page
+                          - limit
+                          - total
+                          - totalPages
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /auth/login:
     post:
       tags:

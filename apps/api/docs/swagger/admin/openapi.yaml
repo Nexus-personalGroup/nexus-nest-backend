@@ -188,6 +188,20 @@ components:
             timestamp: '2024-01-01T00:00:00.000Z'
 
 paths:
+  /moderation/reports:
+    get:
+      $ref: './moderation/list-reports.yaml'
+
+  /moderation/reports/{reportId}:
+    get:
+      $ref: './moderation/get-report.yaml'
+    patch:
+      $ref: './moderation/review-report.yaml'
+
+  /moderation/members/{memberId}/timeline:
+    get:
+      $ref: './moderation/member-timeline.yaml'
+
   /auth/login:
     post:
       $ref: './auth/login.yaml'

@@ -1,0 +1,111 @@
+tags: [Moderation]
+summary: 查詢檢舉詳情
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  **這是唯一能看到被撤回訊息內容的路徑**（透過檢舉當下的內容快照），
+  因此**每次呼叫都會寫入一筆 `REPORT_VIEWED` 稽核**。
+
+  查看不留痕跡的話，這條路徑與「任何人都看得到」在事後沒有實質區別——
+  差別只在誰有權限，而權限可能被誤配、被濫用、或在事後被質疑。
+
+  稽核寫入失敗不會讓查詢失敗（best-effort），但會以 error 等級記錄。
+
+parameters:
+  - name: reportId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            # 不用 allOf 合併 _report-list-item：openapi-typescript 會產出交集型別，
+            # 而 api-client 的 codegen 在那之後取 `.schema` 會失敗（typecheck 才會發現，
+            # swagger:check 只驗產物新舊）。明列欄位比較囉嗦但產得出可編譯的型別
+            data:
+              type: object
+              required:
+                [
+                  reportId,
+                  reporterId,
+                  targetMemberId,
+                  targetMessageId,
+                  roomId,
+                  reason,
+                  status,
+                  contentSnapshot,
+                  createdAt,
+                ]
+              properties:
+                reportId:
+                  type: string
+                  format: uuid
+                reporterId:
+                  type: string
+                  format: uuid
+                targetMemberId:
+                  type: string
+                  format: uuid
+                targetMessageId:
+                  type: string
+                  format: uuid
+                roomId:
+                  type: string
+                  format: uuid
+                reason:
+                  type: string
+                  enum: [HARASSMENT, SPAM, INAPPROPRIATE, OTHER]
+                status:
+                  type: string
+                  enum: [PENDING, REVIEWED, DISMISSED]
+                description:
+                  type: string
+                  nullable: true
+                contentSnapshot:
+                  type: string
+                  description: 檢舉當下的訊息內容；即使該訊息已被撤回也會回傳
+                reviewedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                reviewedBy:
+                  type: string
+                  format: uuid
+                  nullable: true
+                reviewNote:
+                  type: string
+                  nullable: true
+                createdAt:
+                  type: string
+                  format: date-time
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 檢舉不存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 檢舉不存在
+          code: CHAT_REPORT_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
