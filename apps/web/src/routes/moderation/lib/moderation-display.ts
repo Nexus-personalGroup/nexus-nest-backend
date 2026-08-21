@@ -110,3 +110,46 @@ export const actionLabel = (action: string): string =>
 export const messageActionFor = (
   removedAt: string | null | undefined,
 ): 'remove' | 'restore' => (removedAt ? 'restore' : 'remove');
+
+/**
+ * 在線狀態的顯示文案
+ *
+ * 刻意帶「查詢當下」四個字：這個值是送出回應那一刻的快照，畫面不輪詢也不訂閱更新。
+ * 不標明的話使用者會以為它即時，然後在它長時間不變時懷疑系統壞了。
+ *
+ * @param isOnline - 後端回的在線狀態
+ * @returns 可直接顯示的字串
+ */
+export const onlineLabel = (isOnline: boolean): string =>
+  isOnline ? '查詢當下：在線' : '查詢當下：離線';
+
+/**
+ * 聊天室的顯示名稱
+ *
+ * 私聊沒有名稱（顯示名由對方決定，不落庫），回傳固定字樣而非空白。
+ *
+ * @param name - 房間名稱；私聊為 null
+ * @returns 可直接顯示的字串
+ */
+export const roomLabel = (name: string | null | undefined): string =>
+  name && name.length > 0 ? name : '私聊';
+
+/** 相關檢舉的查詢方向 */
+export type MemberReportRole = 'TARGET' | 'REPORTER';
+
+/**
+ * 把 URL 的 role 參數轉成合法方向
+ *
+ * **預設看「被檢舉」**：那是審閱的主要問題。認不得的值也落回它——
+ * 使用者手改網址不該讓畫面壞掉。
+ *
+ * @param raw - URL query 中的原始值
+ * @returns 合法的查詢方向
+ */
+export const parseReportRole = (
+  raw: string | null | undefined,
+): MemberReportRole => (raw === 'REPORTER' ? 'REPORTER' : 'TARGET');
+
+/** 兩個方向各自的對造欄位標題——對造是「另一邊」，不是這個人自己 */
+export const counterpartHeader = (role: MemberReportRole): string =>
+  role === 'TARGET' ? '檢舉人' : '被檢舉人';

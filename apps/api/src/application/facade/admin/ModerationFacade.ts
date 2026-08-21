@@ -5,7 +5,18 @@ import {
   GetMemberTimelineQuery,
   GetMemberTimelineResult,
   GetMemberTimelineUseCase,
+  GetMemberProfileUseCase,
+  GET_MEMBER_PROFILE_USE_CASE,
   GetReportDetailQuery,
+  ListMemberReportsQuery,
+  ListMemberReportsResult,
+  ListMemberReportsUseCase,
+  LIST_MEMBER_REPORTS_USE_CASE,
+  ListMemberRoomsQuery,
+  ListMemberRoomsResult,
+  ListMemberRoomsUseCase,
+  LIST_MEMBER_ROOMS_USE_CASE,
+  MemberProfile,
   ReportDetailView,
   GetReportDetailUseCase,
   LIST_REPORTS_USE_CASE,
@@ -47,6 +58,12 @@ export class ModerationFacade {
     // 而分歧的那一邊不會有人發現
     @Inject(UPDATE_MEMBER_USE_CASE)
     private readonly updateMemberUseCase: UpdateMemberUseCase,
+    @Inject(GET_MEMBER_PROFILE_USE_CASE)
+    private readonly getMemberProfileUseCase: GetMemberProfileUseCase,
+    @Inject(LIST_MEMBER_REPORTS_USE_CASE)
+    private readonly listMemberReportsUseCase: ListMemberReportsUseCase,
+    @Inject(LIST_MEMBER_ROOMS_USE_CASE)
+    private readonly listMemberRoomsUseCase: ListMemberRoomsUseCase,
   ) {}
 
   listReports(query: ListReportsQuery): Promise<ListReportsResult> {
@@ -59,6 +76,20 @@ export class ModerationFacade {
 
   reviewReport(command: ReviewReportCommand): Promise<void> {
     return this.reviewReportUseCase.execute(command);
+  }
+
+  getMemberProfile(memberId: string): Promise<MemberProfile> {
+    return this.getMemberProfileUseCase.execute(memberId);
+  }
+
+  listMemberReports(
+    query: ListMemberReportsQuery,
+  ): Promise<ListMemberReportsResult> {
+    return this.listMemberReportsUseCase.execute(query);
+  }
+
+  listMemberRooms(query: ListMemberRoomsQuery): Promise<ListMemberRoomsResult> {
+    return this.listMemberRoomsUseCase.execute(query);
   }
 
   getMemberTimeline(

@@ -1,6 +1,11 @@
 import { ListReportsService } from './ListReportsService';
 import { GetReportDetailService } from './GetReportDetailService';
 import { GetMemberTimelineService } from './GetMemberTimelineService';
+import { GetMemberProfileService } from './GetMemberProfileService';
+import { ListMemberReportsService } from './ListMemberReportsService';
+import { MemberNotFoundException } from '@app/domain/exception/MemberNotFoundException';
+import type { ChatRoomRepositoryPort } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
+import type { PresencePort } from '@app/application/port/out/presence/PresencePort';
 import { ReviewReportService } from './ReviewReportService';
 import { ChatReportNotFoundException } from '@app/domain/exception/ChatReportNotFoundException';
 import { ChatReportInvalidTransitionException } from '@app/domain/exception/ChatReportInvalidTransitionException';
@@ -14,7 +19,17 @@ const mockReportRepo = {
   list: jest.fn(),
   findDetail: jest.fn(),
   updateStatus: jest.fn(),
+  countByMember: jest.fn(),
+  listByMember: jest.fn(),
 } as unknown as jest.Mocked<ChatReportRepositoryPort>;
+
+const mockRoomRepo = {
+  listByMember: jest.fn(),
+} as unknown as jest.Mocked<ChatRoomRepositoryPort>;
+
+const mockPresence = {
+  isOnline: jest.fn(),
+} as unknown as jest.Mocked<PresencePort>;
 
 const mockAudit = {
   record: jest.fn(),
@@ -387,5 +402,202 @@ describe('ReviewReportService', () => {
         reviewerId: 'admin',
       }),
     ).rejects.toThrow(ChatReportNotFoundException);
+  });
+});
+
+describe('GetMemberProfileService', () => {
+  let service: GetMemberProfileService;
+
+  const memberRow = {
+    id: 'member-1',
+    email: 'bob@example.com',
+    member: 'Bob',
+    roleId: 'role-1',
+    roleName: '一般成員',
+    status: true,
+    isDefault: false,
+    createdAt: new Date('2026-01-15T02:30:00.000Z'),
+    updatedAt: new Date(0),
+    lastLoginAt: new Date(0),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockMemberRepo.loadMemberById = jest.fn().mockResolvedValue(memberRow);
+    mockReportRepo.countByMember.mockResolvedValue(0);
+    mockRoomRepo.listByMember.mockResolvedValue({ data: [], total: 0 });
+    mockPresence.isOnline.mockResolvedValue(false);
+    service = new GetMemberProfileService(
+      mockMemberRepo,
+      mockReportRepo,
+      mockRoomRepo,
+      mockPresence,
+    );
+  });
+
+  it('回傳七個審閱欄位', async () => {
+    mockReportRepo.countByMember
+      .mockResolvedValueOnce(3)
+      .mockResolvedValueOnce(1);
+    mockRoomRepo.listByMember.mockResolvedValue({ data: [], total: 5 });
+    mockPresence.isOnline.mockResolvedValue(true);
+
+    const result = await service.execute('member-1');
+
+    expect(result).toEqual({
+      memberId: 'member-1',
+      email: 'bob@example.com',
+      status: true,
+      joinedAt: memberRow.createdAt,
+      isOnline: true,
+      reportedCount: 3,
+      submittedReportCount: 1,
+      roomCount: 5,
+    });
+  });
+
+  /**
+   * 「反正 `loadMemberById` 都查回來了，順手全回」是這裡最容易發生的越界。
+   *
+   * 角色與權限回答的是「他能做什麼」——那屬於 `BACKEND:ACCOUNT:VIEW` 圈起來的範圍，
+   * 而本端點的授權是 `BACKEND:MODERATION:VIEW`。用 `toEqual` 而非
+   * `objectContaining` 就是為了讓多回的欄位當場變紅。
+   */
+  it('⭐ 不回傳角色、名稱等帳號管理的資料', async () => {
+    const result = await service.execute('member-1');
+
+    expect(Object.keys(result).sort()).toEqual([
+      'email',
+      'isOnline',
+      'joinedAt',
+      'memberId',
+      'reportedCount',
+      'roomCount',
+      'status',
+      'submittedReportCount',
+    ]);
+  });
+
+  it('兩個方向的計數分開查', async () => {
+    await service.execute('member-1');
+
+    expect(mockReportRepo.countByMember).toHaveBeenCalledWith(
+      'member-1',
+      'TARGET',
+    );
+    expect(mockReportRepo.countByMember).toHaveBeenCalledWith(
+      'member-1',
+      'REPORTER',
+    );
+  });
+
+  // 被檢舉 500 次的帳號不該為了一個數字把 500 筆撈進記憶體
+  it('⭐ 計數用 count，不取回清單再算長度', async () => {
+    await service.execute('member-1');
+
+    expect(mockReportRepo.countByMember).toHaveBeenCalled();
+    expect(mockReportRepo.listByMember).not.toHaveBeenCalled();
+  });
+
+  it('沒有任何檢舉紀錄 → 兩個計數為 0', async () => {
+    const result = await service.execute('member-1');
+
+    expect(result.reportedCount).toBe(0);
+    expect(result.submittedReportCount).toBe(0);
+  });
+
+  it('成員不存在 → MemberNotFoundException', async () => {
+    mockMemberRepo.loadMemberById = jest.fn().mockResolvedValue(null);
+
+    await expect(service.execute('ghost')).rejects.toThrow(
+      MemberNotFoundException,
+    );
+  });
+
+  /**
+   * 概覽不寫稽核——由**相依關係**保證。
+   *
+   * 回應不含任何訊息內容，記了會讓稽核量與「點了幾下」對齊。
+   * 與 `ListReportsService` 同樣檢查注入的 token 而非建構子參數個數：
+   * 後者會在加入任何一個正當相依時變紅，而變紅的理由與它想守的事情無關。
+   */
+  it('沒有注入稽核 port（概覽不可能寫稽核）', () => {
+    const injected: unknown = Reflect.getMetadata(
+      'self:paramtypes',
+      GetMemberProfileService,
+    );
+    const tokens = Array.isArray(injected)
+      ? injected.map((dep: { param: unknown }) => dep.param)
+      : [];
+
+    expect(tokens).not.toContain(CHAT_AUDIT_PORT);
+  });
+});
+
+describe('ListMemberReportsService', () => {
+  let service: ListMemberReportsService;
+
+  const row = {
+    reportId: 'rep-1',
+    counterpartId: 'alice',
+    roomId: 'room-1',
+    reason: 'HARASSMENT' as const,
+    status: 'PENDING' as const,
+    createdAt: new Date(0),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockReportRepo.listByMember.mockResolvedValue({ data: [row], total: 1 });
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(new Map());
+    service = new ListMemberReportsService(mockReportRepo, mockMemberRepo);
+  });
+
+  it('預設查「被檢舉」的方向', async () => {
+    await service.execute({ memberId: 'bob' });
+
+    expect(mockReportRepo.listByMember).toHaveBeenCalledWith(
+      expect.objectContaining({ memberId: 'bob', role: 'TARGET' }),
+    );
+  });
+
+  it('可指定查「提出的」', async () => {
+    await service.execute({ memberId: 'bob', role: 'REPORTER' });
+
+    expect(mockReportRepo.listByMember).toHaveBeenCalledWith(
+      expect.objectContaining({ role: 'REPORTER' }),
+    );
+  });
+
+  it('補上對造的 email', async () => {
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+      new Map([['alice', 'alice@example.com']]),
+    );
+
+    const { list } = await service.execute({ memberId: 'bob' });
+
+    expect(list[0].counterpartEmail).toBe('alice@example.com');
+  });
+
+  it('對造帳號已刪除 → null，該列其餘照常', async () => {
+    const { list } = await service.execute({ memberId: 'bob' });
+
+    expect(list[0].counterpartEmail).toBeNull();
+    expect(list[0].reportId).toBe('rep-1');
+  });
+
+  it('⭐ 一頁只查一次 email', async () => {
+    mockReportRepo.listByMember.mockResolvedValue({
+      data: Array.from({ length: 15 }, (_, i) => ({
+        ...row,
+        reportId: `rep-${i}`,
+        counterpartId: `other-${i}`,
+      })),
+      total: 15,
+    });
+
+    await service.execute({ memberId: 'bob' });
+
+    expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
   });
 });

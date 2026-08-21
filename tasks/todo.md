@@ -23,9 +23,11 @@
   那部分與訊息無關，所以它獨立成一個 change 是對的切法。
 - ~~**M3 監控埋點**~~：`add-chat-observability` 已完成（Prometheus 自訂指標 + `chat_audit_log`）。
   - 檢舉入口與後台查詢已移到「進行中」。
-- **M4 後台介面**：~~檢舉佇列與處置~~（`add-admin-moderation-ui` 已完成）。
-  剩 SSE 即時儀表板、使用者 360 視圖、聊天室總覽——三者與審閱動線沒有共用元件，
-  各自獨立成 change。360 視圖可以直接複用審閱詳情頁的時間軸元件。
+- **M4 後台介面**：~~檢舉佇列與處置~~（`add-admin-moderation-ui`）、
+  ~~使用者 360 視圖~~（`add-admin-member-profile`）皆已完成。
+  剩 **SSE 即時儀表板**與**聊天室總覽**——兩者與審閱動線沒有共用元件，各自獨立成 change。
+  聊天室總覽會需要新的後端端點（房間列表、成員數、訊息量）；
+  儀表板要自己處理 SSE 連線管理、重連與更新頻率。
 
 ### 待辦（近期）
 
@@ -155,6 +157,23 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-22 — 成員審閱概覽（`add-admin-member-profile`）
+
+補上審閱動線的另一半：原本只能「從檢舉查到人」，現在能「從人查到他做過什麼」。
+新增三支端點（概覽、所在聊天室、相關檢舉）與 `/moderation/members/:memberId` 頁面。
+
+第三次面對同一個權限問題——審閱要看的成員資料在 `BACKEND:ACCOUNT:VIEW` 後面——
+答案同樣是「在審閱側提供它自己要的那份視圖」。概覽只回七個欄位，
+e2e 用 `Object.keys().sort()` 釘住（`objectContaining` 抓不到「多回了角色」）。
+
+**寫 spec 時漏掉一支端點**：ui spec 要求聊天室**清單**，api spec 只定義了 `roomCount`，
+實作到前端才發現 admin api-client 裡沒有房間列表（`/chat/rooms` 是前台的）。
+補了 `GET /moderation/members/:memberId/rooms`，複用前台「我的房間」的同一支 port 方法。
+
+**順手修掉一個既有的 swagger 漂移**：`member-timeline.yaml` 的 `action` enum
+少了後續 change 新增的四個動作（移除／還原／停權／解除），
+前端型別因此看不到它們——執行期正常，所以一直沒被發現。
 
 ### 2026-08-21 — 後台檢舉審閱介面（`add-admin-moderation-ui`）
 

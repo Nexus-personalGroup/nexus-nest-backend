@@ -2,8 +2,11 @@ import { Module } from '@nestjs/common';
 import { ModerationController } from '../../adapter/in/web/admin/moderation/ModerationController';
 import { ModerationFacade } from '../../application/facade/admin/ModerationFacade';
 import {
+  GET_MEMBER_PROFILE_USE_CASE,
   GET_MEMBER_TIMELINE_USE_CASE,
   GET_REPORT_DETAIL_USE_CASE,
+  LIST_MEMBER_REPORTS_USE_CASE,
+  LIST_MEMBER_ROOMS_USE_CASE,
   LIST_REPORTS_USE_CASE,
   REVIEW_REPORT_USE_CASE,
 } from '../../application/port/in/admin/moderation/ModerationUseCases';
@@ -11,6 +14,9 @@ import { ListReportsService } from '../../application/service/admin/moderation/L
 import { GetReportDetailService } from '../../application/service/admin/moderation/GetReportDetailService';
 import { ReviewReportService } from '../../application/service/admin/moderation/ReviewReportService';
 import { GetMemberTimelineService } from '../../application/service/admin/moderation/GetMemberTimelineService';
+import { GetMemberProfileService } from '../../application/service/admin/moderation/GetMemberProfileService';
+import { ListMemberReportsService } from '../../application/service/admin/moderation/ListMemberReportsService';
+import { ListMemberRoomsService } from '../../application/service/admin/moderation/ListMemberRoomsService';
 import { RemoveMessageService } from '../../application/service/admin/moderation/RemoveMessageService';
 import { RestoreMessageService } from '../../application/service/admin/moderation/RestoreMessageService';
 import {
@@ -48,6 +54,12 @@ import { MemberModule } from './member.module';
       provide: GET_MEMBER_TIMELINE_USE_CASE,
       useClass: GetMemberTimelineService,
     },
+    { provide: GET_MEMBER_PROFILE_USE_CASE, useClass: GetMemberProfileService },
+    {
+      provide: LIST_MEMBER_REPORTS_USE_CASE,
+      useClass: ListMemberReportsService,
+    },
+    { provide: LIST_MEMBER_ROOMS_USE_CASE, useClass: ListMemberRoomsService },
     { provide: REMOVE_MESSAGE_USE_CASE, useClass: RemoveMessageService },
     { provide: RESTORE_MESSAGE_USE_CASE, useClass: RestoreMessageService },
     ModerationFacade,

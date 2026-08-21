@@ -15,7 +15,10 @@ import {
 import { ModerationFacade } from '@app/application/facade/admin/ModerationFacade';
 import type {
   GetMemberTimelineResult,
+  ListMemberReportsResult,
+  ListMemberRoomsResult,
   ListReportsResult,
+  MemberProfile,
   ReportDetailView,
 } from '@app/application/port/in/admin/moderation/ModerationUseCases';
 import type { MemberContext } from '@app/application/port/member-context';
@@ -27,6 +30,8 @@ import { CurrentMember } from '../../decorator/current-member.decorator';
 import {
   listReportsQuerySchema,
   ListReportsQuery,
+  memberReportsQuerySchema,
+  MemberReportsQuery,
   reviewReportSchema,
   ReviewReportRequest,
   timelineQuerySchema,
@@ -151,6 +156,40 @@ export class ModerationController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
   ): Promise<void> {
     await this.moderationFacade.reinstateMember(memberId, member.sub);
+  }
+
+  /**
+   * 審閱視角的成員概覽。
+   *
+   * **具備 `BACKEND:MODERATION:VIEW` 者可查詢任何成員**，不要求該成員與檢舉相關。
+   * 要求「必須先有檢舉」會讓「查一個剛被停權的人」這種正當操作失敗，
+   * 而它擋不住真正想濫用的人——他可以先從任何一筆檢舉取得 id。
+   */
+  @Get('members/:memberId')
+  @Permissions(PermissionCode.BACKEND_MODERATION_VIEW)
+  getMemberProfile(
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ): Promise<MemberProfile> {
+    return this.moderationFacade.getMemberProfile(memberId);
+  }
+
+  @Get('members/:memberId/reports')
+  @Permissions(PermissionCode.BACKEND_MODERATION_VIEW)
+  listMemberReports(
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+    @Query(new ZodValidationPipe(memberReportsQuerySchema))
+    query: MemberReportsQuery,
+  ): Promise<ListMemberReportsResult> {
+    return this.moderationFacade.listMemberReports({ memberId, ...query });
+  }
+
+  @Get('members/:memberId/rooms')
+  @Permissions(PermissionCode.BACKEND_MODERATION_VIEW)
+  listMemberRooms(
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+    @Query(new ZodValidationPipe(timelineQuerySchema)) query: TimelineQuery,
+  ): Promise<ListMemberRoomsResult> {
+    return this.moderationFacade.listMemberRooms({ memberId, ...query });
   }
 
   @Get('members/:memberId/timeline')

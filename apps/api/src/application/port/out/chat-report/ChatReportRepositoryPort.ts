@@ -46,6 +46,36 @@ export interface ChatReportDetail extends ChatReportListItem {
   reviewNote: string | null;
 }
 
+/**
+ * 查詢方向。
+ *
+ * 「他被檢舉」與「他檢舉別人」是兩件不同的事，合併查詢會讓計數與判讀都失去意義：
+ * 一個被檢舉 10 次的人和一個提出 10 次檢舉的人，在「檢舉相關 10 筆」底下看起來一樣。
+ */
+export type MemberReportRole = 'TARGET' | 'REPORTER';
+
+/** 成員相關檢舉的視圖；`counterpartId` 是對造——查被檢舉時是檢舉人，反之亦然 */
+export interface MemberReportListItem {
+  reportId: string;
+  counterpartId: string;
+  roomId: string;
+  reason: ChatReportReason;
+  status: ChatReportStatus;
+  createdAt: Date;
+}
+
+export interface ListMemberReportsParams {
+  memberId: string;
+  role: MemberReportRole;
+  page: number;
+  limit: number;
+}
+
+export interface ListMemberReportsPage {
+  data: MemberReportListItem[];
+  total: number;
+}
+
 export interface ListReportsParams {
   status: ChatReportStatus;
   page: number;
@@ -93,4 +123,21 @@ export interface ChatReportRepositoryPort {
    * @returns false 代表該筆檢舉不存在
    */
   updateStatus(input: UpdateReportStatusInput): Promise<boolean>;
+
+  /**
+   * 某成員在某個方向上的檢舉筆數。
+   *
+   * **用 count 而非取回清單算長度**：被檢舉 500 次的帳號會為了一個數字
+   * 把 500 筆資料撈進記憶體。這種寫法在測試資料上完全正常，
+   * 只會讓某些頁面偶爾比較慢——而那不會有人回報。
+   */
+  countByMember(memberId: string, role: MemberReportRole): Promise<number>;
+
+  /**
+   * 某成員相關的檢舉列表。
+   *
+   * 與 `list()` 同樣**在型別上就沒有 `contentSnapshot`**——概覽頁不寫稽核，
+   * 因此它絕對不能看得到內容。
+   */
+  listByMember(params: ListMemberReportsParams): Promise<ListMemberReportsPage>;
 }

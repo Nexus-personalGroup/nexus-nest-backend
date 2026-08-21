@@ -2,9 +2,13 @@ import { describe, expect, it } from 'vitest';
 
 import {
   actionLabel,
+  counterpartHeader,
   messageActionFor,
+  onlineLabel,
+  parseReportRole,
   participantLabel,
   reasonLabel,
+  roomLabel,
   statusBadgeClass,
   statusLabel,
 } from './moderation-display';
@@ -94,5 +98,52 @@ describe('messageActionFor', () => {
   // 移除一則不存在的訊息會得到 404，那是正確的回饋
   it('undefined 視同未移除', () => {
     expect(messageActionFor(undefined)).toBe('remove');
+  });
+});
+
+describe('onlineLabel', () => {
+  // 不標明「查詢當下」的話，使用者會以為它即時，然後在它不變時懷疑系統壞了
+  it('兩種狀態都標明是查詢當下的快照', () => {
+    expect(onlineLabel(true)).toContain('查詢當下');
+    expect(onlineLabel(false)).toContain('查詢當下');
+  });
+
+  it('分得出在線與離線', () => {
+    expect(onlineLabel(true)).not.toBe(onlineLabel(false));
+  });
+});
+
+describe('roomLabel', () => {
+  it('有名稱就顯示名稱', () => {
+    expect(roomLabel('工作群')).toBe('工作群');
+  });
+
+  // 私聊的顯示名由對方決定、不落庫，所以後端回 null
+  it('null 或空字串 → 顯示「私聊」', () => {
+    expect(roomLabel(null)).toBe('私聊');
+    expect(roomLabel('')).toBe('私聊');
+  });
+});
+
+describe('parseReportRole', () => {
+  it('預設看被檢舉', () => {
+    expect(parseReportRole(null)).toBe('TARGET');
+    expect(parseReportRole(undefined)).toBe('TARGET');
+  });
+
+  it('可指定 REPORTER', () => {
+    expect(parseReportRole('REPORTER')).toBe('REPORTER');
+  });
+
+  it('認不得的值落回 TARGET，不讓手改網址弄壞畫面', () => {
+    expect(parseReportRole('whatever')).toBe('TARGET');
+  });
+});
+
+describe('counterpartHeader', () => {
+  // 對造是「另一邊」；顯示這個人自己等於每一列都印同一個 email
+  it('兩個方向的對造不同', () => {
+    expect(counterpartHeader('TARGET')).toBe('檢舉人');
+    expect(counterpartHeader('REPORTER')).toBe('被檢舉人');
   });
 });
