@@ -22,6 +22,10 @@ import {
   RemoveMessageUseCase,
   RestoreMessageUseCase,
 } from '@app/application/port/in/admin/moderation/MessageModerationUseCases';
+import {
+  UPDATE_MEMBER_USE_CASE,
+  UpdateMemberUseCase,
+} from '@app/application/port/in/admin/member/UpdateMemberUseCase';
 import type { ChatReportDetail } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 
 @Injectable()
@@ -39,6 +43,10 @@ export class ModerationFacade {
     private readonly removeMessageUseCase: RemoveMessageUseCase,
     @Inject(RESTORE_MESSAGE_USE_CASE)
     private readonly restoreMessageUseCase: RestoreMessageUseCase,
+    // 停權走與帳號管理**同一個 use case**：各自實作會讓斷線與稽核的行為分歧，
+    // 而分歧的那一邊不會有人發現
+    @Inject(UPDATE_MEMBER_USE_CASE)
+    private readonly updateMemberUseCase: UpdateMemberUseCase,
   ) {}
 
   listReports(query: ListReportsQuery): Promise<ListReportsResult> {
@@ -65,5 +73,21 @@ export class ModerationFacade {
 
   restoreMessage(command: ModerateMessageCommand): Promise<void> {
     return this.restoreMessageUseCase.execute(command);
+  }
+
+  suspendMember(memberId: string, actorId: string): Promise<void> {
+    return this.updateMemberUseCase.execute({
+      id: memberId,
+      actorId,
+      status: false,
+    });
+  }
+
+  reinstateMember(memberId: string, actorId: string): Promise<void> {
+    return this.updateMemberUseCase.execute({
+      id: memberId,
+      actorId,
+      status: true,
+    });
   }
 }

@@ -206,6 +206,14 @@ paths:
     post:
       $ref: './moderation/restore-message.yaml'
 
+  /moderation/members/{memberId}/suspend:
+    post:
+      $ref: './moderation/suspend-member.yaml'
+
+  /moderation/members/{memberId}/reinstate:
+    post:
+      $ref: './moderation/reinstate-member.yaml'
+
   /moderation/members/{memberId}/timeline:
     get:
       $ref: './moderation/member-timeline.yaml'

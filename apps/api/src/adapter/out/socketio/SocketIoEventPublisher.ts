@@ -53,4 +53,15 @@ export class SocketIoEventPublisher implements EventPublisherPort {
     }
     this.server.to(room).emit(event, payload);
   }
+
+  disconnectMember(memberId: string): void {
+    if (!this.server) {
+      this.logger.warn(`namespace 尚未綁定，無法斷開 memberId=${memberId}`);
+      return;
+    }
+    // disconnectSockets 與 fetchSockets 同樣是 adapter 感知的：
+    // 配上 @socket.io/redis-adapter 就會跨實例生效，
+    // 因此不需要各實例的 gateway 各自訂閱撤銷事件
+    this.server.in(personalRoom(memberId)).disconnectSockets(true);
+  }
 }

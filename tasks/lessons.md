@@ -456,3 +456,35 @@ export {};
 **Why**：`swagger:check` 驗的是「產物是不是最新」，不是「產物編不編得過」。兩者是不同的問題。
 
 **How to apply**：swagger 的回應 schema **不要用 `allOf`**，明列欄位即可（囉嗦但產得出可編譯的型別）。共用結構用 `$ref` 指向整個 schema 是可以的（`_message.yaml` / `_room.yaml` 都這樣），問題只出在 `allOf` 的合併。另外：**動到後台 swagger 一定要跑 `pnpm typecheck`**，只跑 `swagger:check` 會漏。
+
+### 2026-08-21 — 「每一層都正確，但沒有人負責銜接」是一整類缺口
+
+**踩到什麼**：帳號停用做對了（`status` + 清快取 + `ResolveMemberContext` 擋下）、WS 認證做對了、房間授權做對了——但**被停權的人只要 WS 連線還開著就能繼續送訊息**。連線層的認證只在 handshake 執行一次，之後的事件只驗資源層級的授權。
+
+**Why**：既有的守則每一條管的都是自己那一層，沒有一條會問「A 層的狀態變了，B 層怎麼辦」。這類缺口不是任何一層寫錯，而是**沒有人被指派負責那個銜接**。
+
+**How to apply**：新增任何「改變某個長效狀態」的功能時，問一句「**有沒有已經建立、且依賴這個狀態的東西？**」——長連線、快取、排程、已發出的 token。守則要盯**銜接點**而非某個實作（本例是「呼叫 `deactivate()` 的 service 必須撤銷連線」，而不是「gateway 要訂閱某事件」），這樣日後多一條路徑也會被抓到。
+
+### 2026-08-21 — 整合測試的 `logger: false` 會把 DI 錯誤變成 `process.exit(1)`
+
+**踩到什麼**：模組循環（`MemberModule → ChatWsModule → MemberContextModule → MemberModule`）讓 NestJS 啟動失敗，但 `startInstance` 用 `{ logger: false }`，錯誤訊息完全被吞掉，只看得到 `process.exit called with "1"` 與一行堆疊。
+
+**How to apply**：整合測試起不來時，**先把 `logger: false` 拿掉再跑一次**——NestJS 的 DI 錯誤訊息會明確指出哪個模組解不出哪個 provider。查完再改回去（保留它是為了測試輸出乾淨）。
+
+模組循環的解法一律是「**抽出葉節點**」而非 `forwardRef`：本例是讓 `MemberContextModule` 改指向持久層模組。`forwardRef` 讓循環繼續存在、只是不再報錯，而下一個循環會更難拆。
+
+### 2026-08-21 — 用 grep 數錯誤數量是壞掉的驗證，改用 exit code
+
+**踩到什麼**：一直用 `pnpm lint 2>&1 | grep -cE '  error'` 檢查 lint，回報「0 個錯誤」。CI 卻紅了（`@typescript-eslint/await-thenable`）。
+
+**Why**：eslint 的輸出**帶 ANSI 色碼**——實際文字是 `  65:5  <ESC>[31merror<ESC>[39m  ...`，兩個空格後面不是 `error` 而是跳脫序列。那個樣式**永遠匹配不到**，所以它回報的「0」不是「沒有錯誤」，是「這個檢查什麼都沒檢查」。
+
+前幾次的 lint 確實是乾淨的（CI 證實），但**驗證方法本身是壞的**——它不會告訴我任何事，只是碰巧與事實一致。
+
+**How to apply**：**驗證一律看 exit code，不要用 grep 數行數**：
+
+```bash
+pnpm lint > /tmp/lint.log 2>&1; echo "exit=$?"
+```
+
+grep 只用來**讀**已經知道失敗的日誌，不用來**判斷**成功與否。同一個陷阱適用於任何有色輸出的工具（jest、tsc、prisma）。這也是為什麼 e2e 的間歇性失敗三次都沒抓到證據——同一類的管線過濾問題。

@@ -21,6 +21,7 @@ import { PrismaChatReportRepository } from '../../adapter/out/persistence/chat-r
 import { CHAT_REPORT_REPOSITORY_PORT } from '../../application/port/out/chat-report/ChatReportRepositoryPort';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { ChatWsModule } from '../chat-ws.module';
+import { MemberModule } from './member.module';
 
 /**
  * 後台檢舉審閱模組（路由 `/api/admin/moderation`）。
@@ -31,7 +32,8 @@ import { ChatWsModule } from '../chat-ws.module';
  */
 @Module({
   // ChatWsModule 提供 EVENT_PUBLISHER_PORT：移除與還原要推播讓畫面同步
-  imports: [ChatRoomCoreModule, ChatWsModule],
+  // MemberModule 提供 UPDATE_MEMBER_USE_CASE：停權與帳號管理走同一個 use case
+  imports: [ChatRoomCoreModule, ChatWsModule, MemberModule],
   controllers: [ModerationController],
   providers: [
     PrismaChatReportRepository,

@@ -28,14 +28,16 @@ const ACTOR_ID = '00000000-0000-4000-8000-000000000002';
 const ROLE_ID = '00000000-0000-4000-8000-000000000010';
 const NEW_ROLE_ID = '00000000-0000-4000-8000-000000000011';
 
-const makeMember = (overrides: { isDefault?: boolean } = {}): Member =>
+const makeMember = (
+  overrides: { isDefault?: boolean; status?: boolean } = {},
+): Member =>
   Member.reconstitute(
     MEMBER_ID,
     'target@test.com',
     'Target',
     '$2b$10$hashed',
     ROLE_ID,
-    true,
+    overrides.status ?? true,
     overrides.isDefault ?? false,
     new Date('2024-01-01T00:00:00.000Z'),
     'admin',
@@ -85,7 +87,19 @@ const makeService = () =>
     mockClearMemberContext,
     10,
     makePasswordPolicy(),
+    mockRevokeSessions,
+    mockAudit,
   );
+
+/** 停用帳號時必須撤銷既有的 WS 連線——清快取只擋得住下一次請求 */
+const mockRevokeSessions = {
+  execute: jest.fn().mockResolvedValue(undefined),
+};
+
+const mockAudit = {
+  record: jest.fn().mockResolvedValue(undefined),
+  listByMember: jest.fn(),
+};
 
 describe('UpdateMemberService', () => {
   beforeEach(() => {
@@ -292,5 +306,84 @@ describe('UpdateMemberService', () => {
     expect(mockClearMemberContext.clearMemberContext).toHaveBeenCalledWith(
       MEMBER_ID,
     );
+  });
+
+  /**
+   * 停用帳號與既有連線的銜接。
+   *
+   * 清快取只讓「下一次請求」被擋下——連線層的認證只在 handshake 執行一次，
+   * 因此**被停用的人只要 WS 連線還開著就能繼續送訊息**。實際存在過的漏洞。
+   */
+  describe('停用與既有連線', () => {
+    const disable = () =>
+      makeService().execute({
+        id: MEMBER_ID,
+        actorId: 'admin',
+        status: false,
+      });
+
+    it('⭐ 停用時撤銷該成員的所有連線', async () => {
+      await disable();
+
+      expect(mockRevokeSessions.execute).toHaveBeenCalledWith(MEMBER_ID);
+    });
+
+    it('停用時寫 MEMBER_SUSPENDED 稽核', async () => {
+      await disable();
+
+      expect(mockAudit.record).toHaveBeenCalledWith({
+        memberId: 'admin',
+        action: 'MEMBER_SUSPENDED',
+        targetMemberId: MEMBER_ID,
+      });
+    });
+
+    // 啟用不需要撤銷——他本來就沒有活著的連線
+    it('啟用時不撤銷連線，但寫 MEMBER_REINSTATED 稽核', async () => {
+      mockLoadMember.loadMemberDomainById.mockResolvedValue(
+        makeMember({ status: false }),
+      );
+
+      await makeService().execute({
+        id: MEMBER_ID,
+        actorId: 'admin',
+        status: true,
+      });
+
+      expect(mockRevokeSessions.execute).not.toHaveBeenCalled();
+      expect(mockAudit.record).toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'MEMBER_REINSTATED' }),
+      );
+    });
+
+    // 對已停用的帳號重複送 status: false 不該重複斷線或重複稽核
+    it('狀態沒有實際改變時不撤銷、不稽核', async () => {
+      mockLoadMember.loadMemberDomainById.mockResolvedValue(
+        makeMember({ status: false }),
+      );
+
+      await disable();
+
+      expect(mockRevokeSessions.execute).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('只改名字時不撤銷、不稽核', async () => {
+      await makeService().execute({
+        id: MEMBER_ID,
+        actorId: 'admin',
+        member: '新名字',
+      });
+
+      expect(mockRevokeSessions.execute).not.toHaveBeenCalled();
+      expect(mockAudit.record).not.toHaveBeenCalled();
+    });
+
+    it('稽核寫入失敗時，停用仍成功且連線仍被撤銷', async () => {
+      mockAudit.record.mockRejectedValue(new Error('稽核表滿了'));
+
+      await expect(disable()).resolves.toBeUndefined();
+      expect(mockRevokeSessions.execute).toHaveBeenCalled();
+    });
   });
 });

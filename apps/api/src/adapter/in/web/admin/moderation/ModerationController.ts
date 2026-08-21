@@ -126,6 +126,33 @@ export class ModerationController {
     });
   }
 
+  /**
+   * 停權成員（審閱側入口）。
+   *
+   * 與帳號管理的 `PATCH /api/admin/members/:id { status: false }` 效果完全相同——
+   * 兩者呼叫同一個 use case。**刻意並存**：「能管帳號的人」與「能做審閱處置的人」
+   * 是不同的角色，客服能停權違規者但不該改帳號的角色與密碼。
+   */
+  @Post('members/:memberId/suspend')
+  @Permissions(PermissionCode.BACKEND_MODERATION_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async suspendMember(
+    @CurrentMember() member: MemberContext,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ): Promise<void> {
+    await this.moderationFacade.suspendMember(memberId, member.sub);
+  }
+
+  @Post('members/:memberId/reinstate')
+  @Permissions(PermissionCode.BACKEND_MODERATION_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async reinstateMember(
+    @CurrentMember() member: MemberContext,
+    @Param('memberId', ParseUUIDPipe) memberId: string,
+  ): Promise<void> {
+    await this.moderationFacade.reinstateMember(memberId, member.sub);
+  }
+
   @Get('members/:memberId/timeline')
   @Permissions(PermissionCode.BACKEND_MODERATION_VIEW)
   getMemberTimeline(
