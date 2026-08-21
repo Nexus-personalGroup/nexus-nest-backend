@@ -510,6 +510,7 @@ enum ChatAuditAction {
   MESSAGE_RETRACT_REJECTED
   MESSAGE_RATE_LIMITED
   REPORT_SUBMITTED
+  REPORT_VIEWED
 
   @@map("chat_audit_action")
 }
@@ -607,6 +608,16 @@ model ChatReportRecord {
   contentSnapshot String @map("content_snapshot") @db.Text
 
   status ChatReportStatus @default(PENDING)
+
+  /// 審閱時間；未審閱為 null
+  reviewedAt DateTime? @map("reviewed_at") @db.Timestamptz(3)
+
+  /// 審閱的管理員 ID。不建外鍵：稽核性質的欄位要能在帳號被刪除後仍然存在
+  reviewedBy String? @map("reviewed_by")
+
+  /// 處理註記。目前是自由文字——沒有可選的處置動作，
+  /// 日後有了移除訊息／停權會加 action 欄位，本欄的語意不需要改
+  reviewNote String? @map("review_note") @db.VarChar(500)
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 

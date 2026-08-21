@@ -1,0 +1,100 @@
+tags: [Moderation]
+summary: 查詢成員的行為時間軸
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  端點以**成員**為主體，沒有泛用的「查全部稽核」——調查的問題永遠是
+  「這個人做了什麼」，而稽核表的索引就是為它建的。
+  泛用查詢會誘使人做無調查價值的全表瀏覽。
+
+  **回應不含訊息內容**：稽核紀錄本來就不存內容（內容在 `chat_messages`，
+  撤回也保留）。因此本端點不需要另外留稽核。
+
+parameters:
+  - name: memberId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+  - name: page
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  items:
+                    type: object
+                    required: [action, createdAt]
+                    properties:
+                      action:
+                        type: string
+                        enum:
+                          - ROOM_JOINED
+                          - ROOM_LEFT
+                          - MESSAGE_RETRACTED
+                          - MESSAGE_RETRACT_REJECTED
+                          - MESSAGE_RATE_LIMITED
+                          - REPORT_SUBMITTED
+                          - REPORT_VIEWED
+                      roomId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      targetMemberId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      targetMessageId:
+                        type: string
+                        format: uuid
+                        nullable: true
+                      createdAt:
+                        type: string
+                        format: date-time
+                meta:
+                  type: object
+                  required: [page, limit, total, totalPages]
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

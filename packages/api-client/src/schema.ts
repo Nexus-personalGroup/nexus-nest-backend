@@ -4,6 +4,330 @@
  */
 
 export interface paths {
+    "/moderation/reports": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢檢舉佇列
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。預設只回傳 `PENDING`——
+         *     佇列的用途是「還有什麼要處理」，不是瀏覽歷史。
+         *
+         *     **回應不含 `contentSnapshot`**。列表不含內容有兩個作用：讓稽核量與
+         *     「實際看到敏感內容的次數」對齊（詳情端點才會寫稽核），
+         *     也讓管理員瀏覽時不會無意間看到一整頁敏感內容。
+         *
+         *     **本端點不會寫入稽核紀錄。**
+         */
+        get: {
+            parameters: {
+                query?: {
+                    status?: "PENDING" | "REVIEWED" | "DISMISSED";
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                list: {
+                                    /** Format: uuid */
+                                    reportId: string;
+                                    /** Format: uuid */
+                                    reporterId: string;
+                                    /** Format: uuid */
+                                    targetMemberId: string;
+                                    /** Format: uuid */
+                                    roomId: string;
+                                    /** @enum {string} */
+                                    reason: "HARASSMENT" | "SPAM" | "INAPPROPRIATE" | "OTHER";
+                                    /** @enum {string} */
+                                    status: "PENDING" | "REVIEWED" | "DISMISSED";
+                                    /** Format: date-time */
+                                    createdAt: string;
+                                }[];
+                                meta: {
+                                    page: number;
+                                    limit: number;
+                                    total: number;
+                                    totalPages: number;
+                                };
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/reports/{reportId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢檢舉詳情
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     **這是唯一能看到被撤回訊息內容的路徑**（透過檢舉當下的內容快照），
+         *     因此**每次呼叫都會寫入一筆 `REPORT_VIEWED` 稽核**。
+         *
+         *     查看不留痕跡的話，這條路徑與「任何人都看得到」在事後沒有實質區別——
+         *     差別只在誰有權限，而權限可能被誤配、被濫用、或在事後被質疑。
+         *
+         *     稽核寫入失敗不會讓查詢失敗（best-effort），但會以 error 等級記錄。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reportId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                /** Format: uuid */
+                                reportId: string;
+                                /** Format: uuid */
+                                reporterId: string;
+                                /** Format: uuid */
+                                targetMemberId: string;
+                                /** Format: uuid */
+                                targetMessageId: string;
+                                /** Format: uuid */
+                                roomId: string;
+                                /** @enum {string} */
+                                reason: "HARASSMENT" | "SPAM" | "INAPPROPRIATE" | "OTHER";
+                                /** @enum {string} */
+                                status: "PENDING" | "REVIEWED" | "DISMISSED";
+                                description?: string | null;
+                                /** @description 檢舉當下的訊息內容；即使該訊息已被撤回也會回傳 */
+                                contentSnapshot: string;
+                                /** Format: date-time */
+                                reviewedAt?: string | null;
+                                /** Format: uuid */
+                                reviewedBy?: string | null;
+                                reviewNote?: string | null;
+                                /** Format: date-time */
+                                createdAt: string;
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                /** @description 檢舉不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "檢舉不存在",
+                         *       "code": "CHAT_REPORT_NOT_FOUND",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * 判定檢舉
+         * @description 需 `BACKEND:MODERATION:EDIT` 權限（與 VIEW 分開：查看接觸敏感內容、
+         *     判定改變狀態，「能看的人」與「能判的人」經常不是同一群）。
+         *
+         *     **只做狀態流轉**，不移除訊息也不停用帳號——那些是獨立的行為，
+         *     各自需要自己的授權、稽核，以及對使用者的語意
+         *     （「因違規被移除」與「已收回」對客戶端是不同的東西）。
+         *
+         *     `REVIEWED` 與 `DISMISSED` 之間可以互轉（終態間的更正）；
+         *     **不可改回 `PENDING`**，那是「重新開啟」，語意不同。
+         */
+        patch: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    reportId: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    /**
+                     * @example {
+                     *       "status": "REVIEWED",
+                     *       "reviewNote": "已私下警告"
+                     *     }
+                     */
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "REVIEWED" | "DISMISSED";
+                        reviewNote?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description 已判定（無回應內容） */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                /** @description 檢舉不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "檢舉不存在",
+                         *       "code": "CHAT_REPORT_NOT_FOUND",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        trace?: never;
+    };
+    "/moderation/members/{memberId}/timeline": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢成員的行為時間軸
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     端點以**成員**為主體，沒有泛用的「查全部稽核」——調查的問題永遠是
+         *     「這個人做了什麼」，而稽核表的索引就是為它建的。
+         *     泛用查詢會誘使人做無調查價值的全表瀏覽。
+         *
+         *     **回應不含訊息內容**：稽核紀錄本來就不存內容（內容在 `chat_messages`，
+         *     撤回也保留）。因此本端點不需要另外留稽核。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path: {
+                    memberId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                list: {
+                                    /** @enum {string} */
+                                    action: "ROOM_JOINED" | "ROOM_LEFT" | "MESSAGE_RETRACTED" | "MESSAGE_RETRACT_REJECTED" | "MESSAGE_RATE_LIMITED" | "REPORT_SUBMITTED" | "REPORT_VIEWED";
+                                    /** Format: uuid */
+                                    roomId?: string | null;
+                                    /** Format: uuid */
+                                    targetMemberId?: string | null;
+                                    /** Format: uuid */
+                                    targetMessageId?: string | null;
+                                    /** Format: date-time */
+                                    createdAt: string;
+                                }[];
+                                meta: {
+                                    page: number;
+                                    limit: number;
+                                    total: number;
+                                    totalPages: number;
+                                };
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;

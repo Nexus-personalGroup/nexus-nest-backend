@@ -19,6 +19,26 @@ export const touchesMessageTable = (source: string): boolean =>
   MESSAGE_TABLE.test(stripComments(source));
 
 /**
+ * 與調查相關的豁免，理由必須同時說明三件事。
+ *
+ * 「看得到被撤回內容」的需求遲早會直接落到 `chat_messages` 上（例如後台查看某人的
+ * 完整對話），而**那時候的人會有充分的理由趕著加豁免**。標準要在還不急的時候立好。
+ *
+ * 三個關鍵詞各自對應一個代價：僅限後台（範圍）、需 RBAC（授權）、查看留稽核（可追溯）。
+ * 少任何一項，這條豁免就只是「有人需要繞過」而非「繞過的代價已經付清」。
+ */
+const REQUIRED_REASON_TERMS = [
+  { term: /後台/, label: '僅限後台' },
+  { term: /RBAC|權限/, label: '需 RBAC 授權' },
+  { term: /稽核/, label: '查看留稽核' },
+] as const;
+
+export const missingReasonTerms = (reason: string): string[] =>
+  REQUIRED_REASON_TERMS.filter(({ term }) => !term.test(reason)).map(
+    ({ label }) => label,
+  );
+
+/**
  * 訊息的持久層存取必須只有一個入口。
  *
  * 理由不是分層潔癖，是**內容遮蔽只寫在一處**：被撤回的訊息內容保留在資料庫供
@@ -99,12 +119,48 @@ describe('架構守則：訊息表只能由其 repository 存取', () => {
     ).toBe('');
   });
 
+  it('與調查相關的豁免必須說明三個條件', () => {
+    const incomplete = CHAT_MESSAGE_ACCESS_EXEMPTIONS.map((exemption) => ({
+      file: exemption.file,
+      missing: missingReasonTerms(exemption.reason),
+    }))
+      .filter((entry) => entry.missing.length > 0)
+      .map((entry) => `  ${entry.file}  缺少：${entry.missing.join('、')}`);
+
+    expect(
+      incomplete.length === 0
+        ? ''
+        : `以下豁免的理由沒有說清代價：\n${incomplete.join(
+            '\n',
+          )}\n繞過內容遮蔽的路徑必須同時「僅限後台、需 RBAC 授權、查看留稽核」。\n代價沒付清的豁免等同於放寬規則。`,
+    ).toBe('');
+  });
+
   /**
    * 守則自身的測試。
    *
    * 這支規則出錯是**靜默的**——它只會少報，不會有任何徵兆。
    */
   describe('判定邏輯（合成輸入）', () => {
+    it('豁免理由只寫「後台要用」→ 缺兩項', () => {
+      expect(missingReasonTerms('後台調查要用')).toEqual([
+        '需 RBAC 授權',
+        '查看留稽核',
+      ]);
+    });
+
+    it('豁免理由三者齊全 → 通過', () => {
+      expect(
+        missingReasonTerms(
+          '僅限後台的調查路徑，需 RBAC 授權（@Permissions），且查看行為本身會寫稽核',
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('空理由 → 三項都缺', () => {
+      expect(missingReasonTerms('')).toHaveLength(3);
+    });
+
     it('A：service 直接查訊息表 → 判定為存取', () => {
       const src = `const rows = await this.prisma.chatMessageRecord.findMany({});`;
       expect(touchesMessageTable(src)).toBe(true);

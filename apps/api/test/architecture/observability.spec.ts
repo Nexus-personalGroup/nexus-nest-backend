@@ -34,7 +34,10 @@ export const uncaughtAuditCalls = (source: string): number[] => {
   const field = auditField(clean);
   if (!field) return [];
 
-  const callPattern = new RegExp(`this\\.${field}\\.\\w+\\(`);
+  // **只認寫入（record），不認讀取。** best-effort 的立場是「記錄失敗不該讓業務失敗」，
+  // 它不適用於查詢——稽核查詢失敗時靜默回空清單，會讓調查者以為那個人什麼都沒做過。
+  // 一開始寫成「任何 this.audit.x() 都要 catch」，結果把時間軸查詢也抓了
+  const callPattern = new RegExp(`this\\.${field}\\.record\\(`);
   const lines = clean.split('\n');
   const offenders: number[] = [];
 
@@ -161,6 +164,13 @@ describe('架構守則：可觀測性不得滲入業務層', () => {
         `    // 稽核失敗不影響業務，已 catch\n    await this.audit.record({ action: 'ROOM_LEFT' });`,
       );
       expect(uncaughtAuditCalls(src)).toHaveLength(1);
+    });
+
+    it('F2：讀取型呼叫（listByMember）不需要 catch', () => {
+      const src = withAudit(
+        `    const rows = await this.audit.listByMember({ memberId });`,
+      );
+      expect(uncaughtAuditCalls(src)).toHaveLength(0);
     });
 
     it('F：沒有注入稽核 port → 不檢查', () => {

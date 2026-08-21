@@ -430,3 +430,29 @@ export {};
 **Why**：那對設定是**正確**的行為（環境變數不該在執行期變動），錯的是我的註解與測試策略。
 
 **How to apply**：要測「開關關閉」的行為，只能在單元測試裡 `jest.mock` 掉 `validate-env` 並 mock `getEnv`（`RedisMessageRateLimitAdapter.spec.ts` 就是這個作法）。e2e 改不動它。順帶一提：**寫註解斷言某個機制怎麼運作之前，先確認它真的那樣運作**——那句錯誤的註解會讓下一個人也走同一條死路。
+
+### 2026-08-21 — 反向驗證會告訴你「真正的防線是什麼」，而不只是「測試有沒有用」
+
+**踩到什麼**：為了確保「檢舉列表不外流內容快照」，我在 repository 的 `listSelect` 排除了 `contentSnapshot`，並寫 e2e 釘住。反向驗證時把它加回 select——**e2e 卻沒有變紅**。
+
+**Why**：投影函式 `toListItem()` 不會把它複製到輸出，所以 API 回應仍然乾淨。再往前把它加進投影函式，**TypeScript 直接編譯失敗**——列表視圖的型別裡根本沒有這個欄位。
+
+**How to apply**：反向驗證不只是「確認測試會紅」，它會告訴你**哪一層在真正防守**。這次的答案是型別（列表與詳情是兩個型別），select 只是順手的最佳化，e2e 是最後的背書。**如果沒做反向驗證，我會以為防線是 select，然後在下一個類似情境重複一個其實沒有效果的作法。**
+
+推論：要保證「某個欄位不外流」，最強的作法是讓它**在型別上就不存在**於對外視圖，而不是靠查詢層排除或靠測試檢查。
+
+### 2026-08-21 — 守則要分「寫入」與「讀取」，best-effort 只適用於前者
+
+**踩到什麼**：稽核守則要求「所有 `this.audit.x()` 呼叫都要 catch」。新增行為時間軸查詢（`audit.listByMember()`）後，守則立刻誤報。
+
+**Why**：best-effort 的立場是「**記錄**失敗不該讓業務失敗」。它不適用於查詢——稽核查詢失敗時靜默回空清單，會讓調查者以為那個人什麼都沒做過，那比報錯嚴重得多。
+
+**How to apply**：判定改成只認 `.record(`。這與先前限流守則的「消費者 ≠ 實作」是同一類：**規則的動詞要精確**，「碰到這個 port」與「用它做某件特定的事」是兩回事。
+
+### 2026-08-21 — swagger 用 `allOf` 會讓 api-client 的產物編不過，而 `swagger:check` 抓不到
+
+**踩到什麼**：後台檢舉詳情的回應用 `allOf` 合併「列表欄位 + 詳情欄位」，`swagger:bundle` 與 `swagger:check` 都通過，**但 `pnpm typecheck` 在 `packages/api-client` 爆掉**——openapi-typescript 產出交集型別，codegen 之後取 `.schema` 失敗。
+
+**Why**：`swagger:check` 驗的是「產物是不是最新」，不是「產物編不編得過」。兩者是不同的問題。
+
+**How to apply**：swagger 的回應 schema **不要用 `allOf`**，明列欄位即可（囉嗦但產得出可編譯的型別）。共用結構用 `$ref` 指向整個 schema 是可以的（`_message.yaml` / `_room.yaml` 都這樣），問題只出在 `allOf` 的合併。另外：**動到後台 swagger 一定要跑 `pnpm typecheck`**，只跑 `swagger:check` 會漏。

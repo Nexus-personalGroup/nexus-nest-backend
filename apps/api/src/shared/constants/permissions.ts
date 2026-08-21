@@ -42,6 +42,8 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
   { code: PermissionCode.BACKEND_ROLE_VIEW, name: '後台-角色管理-檢視' },
   { code: PermissionCode.BACKEND_ROLE_EDIT, name: '後台-角色管理-編輯' },
   { code: PermissionCode.BACKEND_ATTACHMENT_EDIT, name: '後台-附件-編輯' },
+  { code: PermissionCode.BACKEND_MODERATION_VIEW, name: '後台-檢舉審閱-檢視' },
+  { code: PermissionCode.BACKEND_MODERATION_EDIT, name: '後台-檢舉審閱-判定' },
 ];
 
 /** 所有權限碼（衍生自目錄），供需要靜態清單的驗證 / 顯示使用 */

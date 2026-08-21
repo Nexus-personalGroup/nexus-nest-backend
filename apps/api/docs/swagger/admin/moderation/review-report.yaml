@@ -1,0 +1,61 @@
+tags: [Moderation]
+summary: 判定檢舉
+description: |
+  需 `BACKEND:MODERATION:EDIT` 權限（與 VIEW 分開：查看接觸敏感內容、
+  判定改變狀態，「能看的人」與「能判的人」經常不是同一群）。
+
+  **只做狀態流轉**，不移除訊息也不停用帳號——那些是獨立的行為，
+  各自需要自己的授權、稽核，以及對使用者的語意
+  （「因違規被移除」與「已收回」對客戶端是不同的東西）。
+
+  `REVIEWED` 與 `DISMISSED` 之間可以互轉（終態間的更正）；
+  **不可改回 `PENDING`**，那是「重新開啟」，語意不同。
+
+parameters:
+  - name: reportId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [status]
+        properties:
+          status:
+            type: string
+            enum: [REVIEWED, DISMISSED]
+          reviewNote:
+            type: string
+            maxLength: 500
+      example:
+        status: REVIEWED
+        reviewNote: 已私下警告
+
+responses:
+  '204':
+    description: 已判定（無回應內容）
+  '400':
+    $ref: '../openapi.yaml#/components/responses/BadRequest'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 檢舉不存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 檢舉不存在
+          code: CHAT_REPORT_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
