@@ -22,6 +22,7 @@ const messagesOf = (count: number, startSeq = 1): ChatMessage[] =>
     content: `第 ${startSeq + i} 則`,
     seq: startSeq + i,
     retractedAt: null,
+    removedAt: null,
     createdAt: new Date(0),
   }));
 

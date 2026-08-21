@@ -198,6 +198,14 @@ paths:
     patch:
       $ref: './moderation/review-report.yaml'
 
+  /moderation/messages/{messageId}:
+    delete:
+      $ref: './moderation/remove-message.yaml'
+
+  /moderation/messages/{messageId}/restore:
+    post:
+      $ref: './moderation/restore-message.yaml'
+
   /moderation/members/{memberId}/timeline:
     get:
       $ref: './moderation/member-timeline.yaml'

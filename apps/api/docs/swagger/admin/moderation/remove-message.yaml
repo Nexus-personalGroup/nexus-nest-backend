@@ -1,0 +1,47 @@
+tags: [Moderation]
+summary: 移除違規訊息
+description: |
+  需 `BACKEND:MODERATION:EDIT` 權限。
+
+  **不要求該訊息被檢舉過**：管理員可能從私訊、主動巡邏等管道發現違規內容。
+  移除的授權來自 RBAC，不來自檢舉的存在。
+
+  移除採**軟刪除**：該則與它的 `seq` 會保留、內容保留在資料庫（供調查與申訴），
+  但前台看不到內容。它在歷史與斷線補齊中仍會出現，帶 `removedAt`。
+
+  **與使用者撤回是不同的標記**（`removedAt` vs `retractedAt`）：
+  兩者對客戶端的語意不同（「因違反規範被移除」vs「對方自己收回」）。
+  兩個標記可以同時存在，呈現上以移除優先。
+
+  **冪等**：重複移除回 `204`，不重複推播、不覆寫原本的移除時間。
+
+  成功時房間成員會收到 `server:messageRemoved`（payload 不含內容）。
+
+parameters:
+  - name: messageId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 已移除（無回應內容）；重複移除同樣回 204
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 訊息不存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 訊息不存在或不是你發送的
+          code: CHAT_MESSAGE_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

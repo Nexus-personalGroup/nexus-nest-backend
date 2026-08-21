@@ -11,9 +11,16 @@ import { ListReportsService } from '../../application/service/admin/moderation/L
 import { GetReportDetailService } from '../../application/service/admin/moderation/GetReportDetailService';
 import { ReviewReportService } from '../../application/service/admin/moderation/ReviewReportService';
 import { GetMemberTimelineService } from '../../application/service/admin/moderation/GetMemberTimelineService';
+import { RemoveMessageService } from '../../application/service/admin/moderation/RemoveMessageService';
+import { RestoreMessageService } from '../../application/service/admin/moderation/RestoreMessageService';
+import {
+  REMOVE_MESSAGE_USE_CASE,
+  RESTORE_MESSAGE_USE_CASE,
+} from '../../application/port/in/admin/moderation/MessageModerationUseCases';
 import { PrismaChatReportRepository } from '../../adapter/out/persistence/chat-report/PrismaChatReportRepository';
 import { CHAT_REPORT_REPOSITORY_PORT } from '../../application/port/out/chat-report/ChatReportRepositoryPort';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
+import { ChatWsModule } from '../chat-ws.module';
 
 /**
  * 後台檢舉審閱模組（路由 `/api/admin/moderation`）。
@@ -23,7 +30,8 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
  * 同一個實作，但兩者的相依方向不同，各自 provide 比開一個共用模組單純。
  */
 @Module({
-  imports: [ChatRoomCoreModule],
+  // ChatWsModule 提供 EVENT_PUBLISHER_PORT：移除與還原要推播讓畫面同步
+  imports: [ChatRoomCoreModule, ChatWsModule],
   controllers: [ModerationController],
   providers: [
     PrismaChatReportRepository,
@@ -38,6 +46,8 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
       provide: GET_MEMBER_TIMELINE_USE_CASE,
       useClass: GetMemberTimelineService,
     },
+    { provide: REMOVE_MESSAGE_USE_CASE, useClass: RemoveMessageService },
+    { provide: RESTORE_MESSAGE_USE_CASE, useClass: RestoreMessageService },
     ModerationFacade,
   ],
 })

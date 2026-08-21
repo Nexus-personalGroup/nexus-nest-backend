@@ -1,6 +1,7 @@
 # 訊息的共用結構；歷史查詢與 WS 推送用同一份欄位，客戶端只需一個型別
 type: object
-required: [messageId, roomId, senderId, content, seq, retractedAt, createdAt]
+required:
+  [messageId, roomId, senderId, content, seq, retractedAt, removedAt, createdAt]
 properties:
   messageId:
     type: string
@@ -26,6 +27,16 @@ properties:
       撤回時間；null 代表未撤回。有值時 `content` 為空字串——
       內容保留在資料庫供檢舉調查，但不會由前台路徑回傳。
       **已撤回的訊息仍會出現在結果中**（seq 不可有洞），請顯示為「訊息已收回」。
+  removedAt:
+    type: string
+    format: date-time
+    nullable: true
+    description: |
+      管理員移除的時間；null 代表未被移除。有值時 `content` 為空字串。
+
+      **與 `retractedAt` 是不同的狀態**：前者是「因違反規範被平台移除」，
+      後者是「對方自己收回」。兩者可以同時有值，呈現上以移除優先。
+      同樣會出現在結果中（seq 不可有洞）。
   createdAt:
     type: string
     format: date-time

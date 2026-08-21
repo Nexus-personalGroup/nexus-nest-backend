@@ -1,0 +1,3 @@
+schema: spec-driven-custom
+created: 2026-08-21
+goal: 管理員移除違規訊息：與使用者撤回區分、可還原、兩者都留稽核與推播

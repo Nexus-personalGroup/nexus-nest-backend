@@ -21,6 +21,7 @@ const row = {
   content: '午餐吃什麼',
   seq: 42,
   retractedAt: null,
+  removedAt: null,
   createdAt: new Date(0),
 };
 
@@ -285,6 +286,138 @@ describe('PrismaChatMessageRepository', () => {
 
       expect(message.content).toBe(row.content);
       expect(message.retractedAt).toBeNull();
+    });
+  });
+
+  /**
+   * 管理員移除的遮蔽與還原。
+   *
+   * 遮蔽只寫在 `toMessage()` 一處，但**讀取路徑有兩條**（歷史、補齊）——
+   * 上一次的反向驗證證明它們要分別測：只驗一條時，另一條的迴歸不會被發現。
+   */
+  describe('移除', () => {
+    const removedRow = {
+      ...row,
+      content: '被管理員移除的內容',
+      removedAt: new Date('2026-08-21T00:00:00.000Z'),
+    };
+
+    beforeEach(() => {
+      prisma = {
+        chatMessageRecord: {
+          findMany: jest.fn().mockResolvedValue([removedRow]),
+        },
+      } as unknown as PrismaService;
+      repo = new PrismaChatMessageRepository(prisma);
+    });
+
+    it('findBeforeSeq（歷史查詢）遮蔽已移除的內容', async () => {
+      const [message] = await repo.findBeforeSeq('room-1', undefined, 10);
+
+      expect(message.content).toBe('');
+      expect(message.removedAt).toEqual(removedRow.removedAt);
+    });
+
+    it('findAfterSeq（斷線補齊）遮蔽已移除的內容', async () => {
+      const [message] = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(message.content).toBe('');
+    });
+
+    // 濾掉會讓 seq 出現洞，客戶端無法區分「被移除」與「我漏收了」
+    it('已移除的訊息仍出現在結果中，seq 保留', async () => {
+      const messages = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(messages).toHaveLength(1);
+      expect(messages[0].seq).toBe(removedRow.seq);
+    });
+
+    // 兩個標記可以同時存在（撤回後仍可被移除）
+    it('同時被撤回與移除時仍遮蔽，兩個欄位都有值', async () => {
+      (prisma.chatMessageRecord.findMany as jest.Mock).mockResolvedValue([
+        {
+          ...removedRow,
+          retractedAt: new Date('2026-08-20T00:00:00.000Z'),
+        },
+      ]);
+
+      const [message] = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(message.content).toBe('');
+      expect(message.retractedAt).not.toBeNull();
+      expect(message.removedAt).not.toBeNull();
+    });
+
+    it('未撤回也未移除的內容原樣回傳', async () => {
+      (prisma.chatMessageRecord.findMany as jest.Mock).mockResolvedValue([row]);
+
+      const [message] = await repo.findAfterSeq('room-1', 0, 10);
+
+      expect(message.content).toBe(row.content);
+      expect(message.removedAt).toBeNull();
+    });
+  });
+
+  describe('移除與還原的寫入', () => {
+    let updateMany: jest.Mock;
+    let findUniqueOrThrow3: jest.Mock;
+
+    beforeEach(() => {
+      updateMany = jest.fn().mockResolvedValue({ count: 1 });
+      findUniqueOrThrow3 = jest.fn().mockResolvedValue({ retractedAt: null });
+      prisma = {
+        chatMessageRecord: {
+          updateMany,
+          findUniqueOrThrow: findUniqueOrThrow3,
+        },
+      } as unknown as PrismaService;
+      repo = new PrismaChatMessageRepository(prisma);
+    });
+
+    // 條件寫在 SQL 裡才是原子的；讀-比-寫會讓並發的兩次移除互相覆寫時間
+    it('remove 只在尚未移除時寫入', async () => {
+      await repo.remove('msg-1', 'admin');
+
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'msg-1', removedAt: null } }),
+      );
+    });
+
+    it('已移除時回 null（呼叫端據此不重複推播）', async () => {
+      updateMany.mockResolvedValue({ count: 0 });
+
+      expect(await repo.remove('msg-1', 'admin')).toBeNull();
+    });
+
+    it('restore 只在已移除時清除標記', async () => {
+      await repo.restore('msg-1');
+
+      expect(updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'msg-1', removedAt: { not: null } },
+        }),
+      );
+    });
+
+    // 還原不該讓「使用者曾經自己收回」這件事消失
+    it('restore 不碰 retractedAt', async () => {
+      await repo.restore('msg-1');
+
+      const [args] = updateMany.mock.calls[0] as [{ data: object }];
+      expect(args.data).not.toHaveProperty('retractedAt');
+    });
+
+    it('restore 回傳還原後的撤回狀態', async () => {
+      const retractedAt = new Date('2026-08-20T00:00:00.000Z');
+      findUniqueOrThrow3.mockResolvedValue({ retractedAt });
+
+      expect(await repo.restore('msg-1')).toEqual({ retractedAt });
+    });
+
+    it('本來就沒被移除時回 null', async () => {
+      updateMany.mockResolvedValue({ count: 0 });
+
+      expect(await repo.restore('msg-1')).toBeNull();
     });
   });
 });
