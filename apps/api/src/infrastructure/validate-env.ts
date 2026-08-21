@@ -167,6 +167,38 @@ const envSchema = z.object({
   LOG_PURGE_CRON: z.string().default('0 0 3 * * *'),
 
   /**
+   * 聊天資料的保留排程是否啟用。
+   *
+   * **與 `LOG_PURGE_ENABLED` 刻意分開。** 兩者的失效後果不同：日誌關掉只是磁碟長大，
+   * 稽核關掉會讓日後的調查沒有依據。共用一個開關會讓「調整日誌保留」這個低風險操作
+   * 順手改到稽核。
+   *
+   * 用 `z.enum` 而非鄰近變數慣用的 `z.string()`：後者把任何非 `'true'` 的值都當成 false，
+   * 因此 `=TRUE`（大寫）會靜默關閉清理。
+   */
+  CHAT_RETENTION_ENABLED: z
+    .enum(['true', 'false'])
+    .default('true')
+    .transform((v) => v === 'true'),
+  /**
+   * 聊天稽核紀錄的保留天數。
+   *
+   * 它的用途是「這個人在被檢舉前做了什麼」——檢舉通常在事發後數天內提出，
+   * 半年的回溯窗遠超實際需要；而它是聊天相關資料表中成長最快的
+   * （每次加入／離開房間、被限流、撤回被拒、提出檢舉、查看檢舉都寫一筆）。
+   */
+  CHAT_AUDIT_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
+  /**
+   * 檢舉的保留天數，**自判定時間起算**。
+   *
+   * 未判定（PENDING）的檢舉永不清理：按建立時間清會讓積壓的佇列靜默地把證據刪掉，
+   * 而積壓正是最需要那些證據的時候。
+   */
+  CHAT_REPORT_RETENTION_DAYS: z.coerce.number().int().positive().default(365),
+  /** 聊天資料清理排程的 cron 表達式，預設每日 03:30（錯開日誌清理） */
+  CHAT_RETENTION_CRON: z.string().default('0 30 3 * * *'),
+
+  /**
    * Redis 不可用時的節流策略。預設 `false` = fail-closed（拒絕請求，回 429）。
    *
    * 設為 `true` 換取可用性，但要清楚代價：Redis 一掛，全站速率限制同時歸零，
