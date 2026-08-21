@@ -336,6 +336,21 @@ const envSchema = z.object({
   /** 送訊息限流的視窗長度（秒） */
   WS_MESSAGE_RATE_WINDOW_SEC: z.coerce.number().int().min(1).default(10),
   /**
+   * 單一 WebSocket **連線**在一個視窗內允許的事件數。
+   *
+   * 與 `WS_MESSAGE_RATE_LIMIT` 是兩道獨立的防線，不可互相取代：
+   * 這一道保護的是**這個行程的事件迴圈**（計數單位是單一連線），
+   * 那一道保護的是**房間不被洗版**（計數單位是成員 + 房間，跨連線跨實例）。
+   * 開 N 條連線就能繞過這一道，但繞不過那一道。
+   *
+   * 門檻刻意設在遠高於任何合理客戶端的水準——它是「明顯失控」的界線而非精細控制。
+   * 設太低會誤傷合理的批次操作（例如重連後連續 join 多個房間），
+   * 而那類誤傷會以「偶爾有房間加不進去」的形式出現，很難查。
+   */
+  WS_CONNECTION_EVENT_LIMIT: z.coerce.number().int().min(1).default(20),
+  /** 連線層事件限流的視窗長度（秒） */
+  WS_CONNECTION_EVENT_WINDOW_SEC: z.coerce.number().int().min(1).default(1),
+  /**
    * 訊息可撤回的時限（秒）。
    *
    * 撤回的用途是「剛剛傳錯了」，不是「抹除歷史」——不設時限等於讓對話紀錄

@@ -28,6 +28,23 @@ const usesRateLimit = (source: string): boolean => {
 };
 
 /**
+ * 豁免的理由是否以「連線層已經有限流」為依據。
+ *
+ * 兩道限流的計數單位不同：連線層是**單一連線**（開 N 條就有 N 倍額度），
+ * 業務層是**成員 + 房間**（跨連線、跨實例）。以前者為由豁免後者，
+ * 等於讓「多開幾條連線」就能繞過。
+ *
+ * 這條規則防的是一個很具體的未來：日後有人看到兩處限流，
+ * 判斷它們重複而移除其一——**而被移除的一定是業務層的那個**，
+ * 因為連線層看起來更「底層」、更像基礎設施。移除後不會有任何測試變紅。
+ *
+ * 只匹配「連線層」而不匹配「連線數」：後者指的是 `WS_MAX_CONNECTIONS_PER_MEMBER`，
+ * 那是另一道獨立且正當的約束。
+ */
+export const citesConnectionLayer = (reason: string): boolean =>
+  /連線層/.test(reason);
+
+/**
  * 限流的**實作**，而非使用者。
  *
  * 用「有沒有提到 RATE_LIMIT_PORT」判斷會把消費端（送訊息的 service）也算進來，
@@ -188,6 +205,20 @@ describe('架構守則：WS 事件必須表態限流', () => {
     ).toBe('');
   });
 
+  it('豁免不得以連線層限流為理由', () => {
+    const citing = WS_RATE_LIMIT_EXEMPTIONS.filter((exemption) =>
+      citesConnectionLayer(exemption.reason),
+    ).map((exemption) => `  ${exemption.file}  ${exemption.snippet}`);
+
+    expect(
+      citing.length === 0
+        ? ''
+        : `以下豁免以連線層限流為理由：\n${citing.join(
+            '\n',
+          )}\n連線層的計數單位是單一連線，開 N 條就有 N 倍額度；業務層是「成員 + 房間」，\n跨連線跨實例。前者取代不了後者。豁免請以這個 handler 自身的性質為依據。`,
+    ).toBe('');
+  });
+
   it('每筆豁免都必須註明理由', () => {
     const noReason = WS_RATE_LIMIT_EXEMPTIONS.filter(
       (exemption) => exemption.reason.trim().length === 0,
@@ -277,6 +308,23 @@ describe('架構守則：WS 事件必須表態限流', () => {
       const implementation = `export class RedisMessageRateLimitAdapter implements MessageRateLimitPort {}`;
       expect(RATE_LIMIT_IMPLEMENTATION.test(consumer)).toBe(false);
       expect(RATE_LIMIT_IMPLEMENTATION.test(implementation)).toBe(true);
+    });
+
+    it('I：豁免理由提到「連線層」→ 抓出', () => {
+      expect(
+        citesConnectionLayer(
+          '唯讀且成本有界；連線層的事件限流已經涵蓋這類濫用',
+        ),
+      ).toBe(true);
+    });
+
+    // 「連線數」指的是 WS_MAX_CONNECTIONS_PER_MEMBER，是另一道獨立且正當的約束
+    it('J：理由提到「連線數」上限 → 不得誤判', () => {
+      expect(
+        citesConnectionLayer(
+          '不寫入；單一成員的連線數已受 WS_MAX_CONNECTIONS_PER_MEMBER 約束',
+        ),
+      ).toBe(false);
     });
 
     it('F：handler 呼叫多個 use case，其一有限流即算表態', () => {

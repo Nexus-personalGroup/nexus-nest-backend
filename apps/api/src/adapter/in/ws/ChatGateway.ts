@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
   OnModuleInit,
   UseFilters,
+  UseGuards,
 } from '@nestjs/common';
 import {
   ConnectedSocket,
@@ -46,6 +47,8 @@ import { getEnv } from '@app/infrastructure/validate-env';
 import { INSTANCE_ID } from '@app/infrastructure/instance-id';
 import { WsAuthenticated } from './decorator/ws-auth.decorator';
 import { WsExceptionFilter } from './WsExceptionFilter';
+import { ConnectionThrottle } from './ConnectionThrottle';
+import { ConnectionThrottleGuard } from './ConnectionThrottleGuard';
 import { CLIENT_EVENTS, SERVER_EVENTS, personalRoom } from './events';
 import {
   RoomMembershipRequest,
@@ -76,6 +79,7 @@ export interface AuthenticatedSocket extends Socket {
   cors: { origin: getEnv().CORS_ORIGIN.split(','), credentials: true },
 })
 @WsAuthenticated()
+@UseGuards(ConnectionThrottleGuard)
 @UseFilters(WsExceptionFilter)
 export class ChatGateway
   implements
@@ -113,6 +117,7 @@ export class ChatGateway
     private readonly eventPublisher: SocketIoEventPublisher,
     @Inject(INSTANCE_ID) private readonly instanceId: string,
     @Inject(METRICS_PORT) private readonly metrics: MetricsPort,
+    private readonly connectionThrottle: ConnectionThrottle,
   ) {}
 
   /**
@@ -217,6 +222,10 @@ export class ChatGateway
   }
 
   async handleDisconnect(client: Socket): Promise<void> {
+    // 放在 early return 之前：未通過認證的連線同樣進過 guard 而留下計數器，
+    // 只清「認得的」連線就是把清理綁在一個不相干的條件上
+    this.connectionThrottle.release(client.id);
+
     const memberId = this.ownedSockets.get(client.id);
     if (!memberId) return;
 
