@@ -17,8 +17,34 @@ export interface ListReportsQuery {
   limit?: number;
 }
 
+/**
+ * 當事人的 email；帳號已被刪除時為 `null`。
+ *
+ * **email 加在 in-port 的視圖型別上，不加在 out-port 的 `ChatReportListItem` 上。**
+ * `chat_reports` 刻意沒有外鍵（帳號刪除後檢舉仍須可審閱），
+ * 把 email 放進持久層的型別等於要求 repository 去 join——那會把「沒有外鍵」
+ * 這個決定悄悄推翻。補齊發生在 service，型別也就屬於 service 的輸出。
+ */
+export interface ReportParticipants {
+  reporterEmail: string | null;
+  targetMemberEmail: string | null;
+}
+
+export type ReportListItemView = ChatReportListItem & ReportParticipants;
+
+export type ReportDetailView = ChatReportDetail &
+  ReportParticipants & {
+    /**
+     * 被檢舉訊息目前的移除時間；未被移除或訊息已不存在時為 `null`。
+     *
+     * **回時間戳而非布林**：布林會讓「何時被移除」永遠拿不到，
+     * 而那是審閱紀錄的一部分。時間戳推得出布林，反之不行。
+     */
+    targetMessageRemovedAt: Date | null;
+  };
+
 export interface ListReportsResult {
-  list: ChatReportListItem[];
+  list: ReportListItemView[];
   meta: PaginationMeta;
 }
 
@@ -33,7 +59,7 @@ export interface GetReportDetailQuery {
 }
 
 export interface GetReportDetailUseCase {
-  execute(query: GetReportDetailQuery): Promise<ChatReportDetail>;
+  execute(query: GetReportDetailQuery): Promise<ReportDetailView>;
 }
 
 export interface ReviewReportCommand {

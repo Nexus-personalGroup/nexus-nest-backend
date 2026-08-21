@@ -49,8 +49,18 @@ export interface paths {
                                     reportId: string;
                                     /** Format: uuid */
                                     reporterId: string;
+                                    /**
+                                     * Format: email
+                                     * @description 檢舉人的 email；該帳號已被刪除時為 null
+                                     */
+                                    reporterEmail: string | null;
                                     /** Format: uuid */
                                     targetMemberId: string;
+                                    /**
+                                     * Format: email
+                                     * @description 被檢舉人的 email；該帳號已被刪除時為 null
+                                     */
+                                    targetMemberEmail: string | null;
                                     /** Format: uuid */
                                     roomId: string;
                                     /** @enum {string} */
@@ -128,10 +138,28 @@ export interface paths {
                                 reportId: string;
                                 /** Format: uuid */
                                 reporterId: string;
+                                /**
+                                 * Format: email
+                                 * @description 檢舉人的 email；該帳號已被刪除時為 null
+                                 */
+                                reporterEmail: string | null;
                                 /** Format: uuid */
                                 targetMemberId: string;
+                                /**
+                                 * Format: email
+                                 * @description 被檢舉人的 email；該帳號已被刪除時為 null
+                                 */
+                                targetMemberEmail: string | null;
                                 /** Format: uuid */
                                 targetMessageId: string;
+                                /**
+                                 * Format: date-time
+                                 * @description 被檢舉訊息目前的移除時間；**未被移除或該訊息已不存在時為 null**。
+                                 *
+                                 *     回時間戳而非布林：布林會讓「何時被移除」永遠拿不到，
+                                 *     而那是審閱紀錄的一部分。介面依本欄二選一顯示「移除」或「還原」。
+                                 */
+                                targetMessageRemovedAt: string | null;
                                 /** Format: uuid */
                                 roomId: string;
                                 /** @enum {string} */

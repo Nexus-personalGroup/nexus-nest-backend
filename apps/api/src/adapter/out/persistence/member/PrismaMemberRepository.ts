@@ -93,6 +93,16 @@ export class PrismaMemberRepository
     return rows.map((row) => row.id);
   }
 
+  async findEmailsByIds(ids: string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.memberRecord.findMany({
+      // 不濾 status：被停權的人仍然是審閱要辨識的對象
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, email: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.email]));
+  }
+
   async createMember(member: Member): Promise<void> {
     try {
       await this.prisma.memberRecord.create({

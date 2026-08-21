@@ -16,8 +16,8 @@ import { ModerationFacade } from '@app/application/facade/admin/ModerationFacade
 import type {
   GetMemberTimelineResult,
   ListReportsResult,
+  ReportDetailView,
 } from '@app/application/port/in/admin/moderation/ModerationUseCases';
-import type { ChatReportDetail } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 import type { MemberContext } from '@app/application/port/member-context';
 import { PermissionCode } from '@app/domain/value-object/Role';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
@@ -65,7 +65,7 @@ export class ModerationController {
   getReportDetail(
     @CurrentMember() member: MemberContext,
     @Param('reportId', ParseUUIDPipe) reportId: string,
-  ): Promise<ChatReportDetail> {
+  ): Promise<ReportDetailView> {
     return this.moderationFacade.getReportDetail({
       reportId,
       viewerId: member.sub,

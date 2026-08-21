@@ -6,6 +6,9 @@ import { ChatReportNotFoundException } from '@app/domain/exception/ChatReportNot
 import { ChatReportInvalidTransitionException } from '@app/domain/exception/ChatReportInvalidTransitionException';
 import type { ChatReportRepositoryPort } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 import type { ChatAuditPort } from '@app/application/port/out/ChatAuditPort';
+import type { LoadMemberPort } from '@app/application/port/out/member/LoadMemberPort';
+import type { ChatMessageRepositoryPort } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
+import { CHAT_AUDIT_PORT } from '@app/application/port/out/ChatAuditPort';
 
 const mockReportRepo = {
   list: jest.fn(),
@@ -17,6 +20,28 @@ const mockAudit = {
   record: jest.fn(),
   listByMember: jest.fn(),
 } as unknown as jest.Mocked<ChatAuditPort>;
+
+const mockMemberRepo = {
+  findEmailsByIds: jest.fn(),
+} as unknown as jest.Mocked<LoadMemberPort>;
+
+const mockMessageRepo = {
+  findForModeration: jest.fn(),
+} as unknown as jest.Mocked<ChatMessageRepositoryPort>;
+
+/** 檢舉列表的一筆；`makeRow` 讓每支測試只寫它在意的欄位 */
+const makeRow = (
+  over: Partial<{ reporterId: string; targetMemberId: string }>,
+) => ({
+  reportId: 'rep-x',
+  reporterId: 'reporter',
+  targetMemberId: 'offender',
+  roomId: 'room-1',
+  reason: 'HARASSMENT' as const,
+  status: 'PENDING' as const,
+  createdAt: new Date(0),
+  ...over,
+});
 
 const detail = {
   reportId: 'rep-1',
@@ -40,7 +65,8 @@ describe('ListReportsService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockReportRepo.list.mockResolvedValue({ data: [], total: 0 });
-    service = new ListReportsService(mockReportRepo);
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(new Map());
+    service = new ListReportsService(mockReportRepo, mockMemberRepo);
   });
 
   it('預設只查待處理', async () => {
@@ -58,17 +84,101 @@ describe('ListReportsService', () => {
   });
 
   /**
-   * 列表不寫稽核——由**建構子簽章**保證，而不是靠測試斷言。
+   * 列表不寫稽核——由**相依關係**保證，而不是靠測試斷言。
    *
-   * `ListReportsService` 根本沒有注入稽核 port，因此「它會不會寫稽核」
-   * 在型別層面就已經是否定的。在這裡寫 `expect(audit.record).not.toHaveBeenCalled()`
+   * `ListReportsService` 沒有注入稽核 port，因此「它會不會寫稽核」
+   * 在型別層面就已經是否定的。寫 `expect(audit.record).not.toHaveBeenCalled()`
    * 是一條空測試：那個 mock 不可能被呼叫，斷言永遠成立、也永遠不會因為
    * 真正的迴歸而變紅。
    *
+   * **改為檢查注入的 token 而非建構子參數個數**：原本斷言 `.length === 1`，
+   * 但那會在加入任何一個正當的相依時變紅（補 email 就是），
+   * 而它變紅的理由與它想守的事情無關——那種測試只會被順手改掉，
+   * 守則也就跟著消失了。
+   *
    * 真正有意義的檢查在 e2e：瀏覽列表後稽核表必須是空的。
    */
-  it('建構子不接受稽核 port（列表不可能寫稽核）', () => {
-    expect(ListReportsService.length).toBe(1);
+  it('沒有注入稽核 port（列表不可能寫稽核）', () => {
+    const injected: unknown = Reflect.getMetadata(
+      'self:paramtypes',
+      ListReportsService,
+    );
+    const tokens = Array.isArray(injected)
+      ? injected.map((dep: { param: unknown }) => dep.param)
+      : [];
+
+    expect(tokens).not.toContain(CHAT_AUDIT_PORT);
+  });
+
+  it('⭐ 一頁只查一次 email，不逐列查', async () => {
+    mockReportRepo.list.mockResolvedValue({
+      data: Array.from({ length: 15 }, (_, i) =>
+        makeRow({ reporterId: `reporter-${i}`, targetMemberId: `target-${i}` }),
+      ),
+      total: 15,
+    });
+
+    await service.execute({});
+
+    // 逐列查在 15 筆的測試資料上跑起來完全正常，只有計次抓得到
+    expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('查詢前先去重：同一人在多筆檢舉中只送一次 id', async () => {
+    mockReportRepo.list.mockResolvedValue({
+      data: [
+        makeRow({ reporterId: 'alice', targetMemberId: 'bob' }),
+        makeRow({ reporterId: 'carol', targetMemberId: 'bob' }),
+      ],
+      total: 2,
+    });
+
+    await service.execute({});
+
+    const ids: string[] = mockMemberRepo.findEmailsByIds.mock.calls[0][0];
+    expect([...ids].sort()).toEqual(['alice', 'bob', 'carol']);
+  });
+
+  it('補上兩造的 email', async () => {
+    mockReportRepo.list.mockResolvedValue({
+      data: [makeRow({ reporterId: 'alice', targetMemberId: 'bob' })],
+      total: 1,
+    });
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+      new Map([
+        ['alice', 'alice@example.com'],
+        ['bob', 'bob@example.com'],
+      ]),
+    );
+
+    const { list } = await service.execute({});
+
+    expect(list[0].reporterEmail).toBe('alice@example.com');
+    expect(list[0].targetMemberEmail).toBe('bob@example.com');
+  });
+
+  // 帳號被刪除不該讓檢舉無法審閱——這正是 chat_reports 刻意不建外鍵的理由
+  it('帳號已刪除 → 該欄為 null，其餘欄位照常', async () => {
+    mockReportRepo.list.mockResolvedValue({
+      data: [makeRow({ reporterId: 'alice', targetMemberId: 'ghost' })],
+      total: 1,
+    });
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+      new Map([['alice', 'alice@example.com']]),
+    );
+
+    const { list } = await service.execute({});
+
+    expect(list[0].targetMemberEmail).toBeNull();
+    expect(list[0].reporterEmail).toBe('alice@example.com');
+    expect(list[0].reason).toBe('HARASSMENT');
+  });
+
+  it('空列表不發出 email 查詢的無效呼叫', async () => {
+    await service.execute({});
+
+    const ids: string[] = mockMemberRepo.findEmailsByIds.mock.calls[0][0];
+    expect(ids).toEqual([]);
   });
 });
 
@@ -79,7 +189,14 @@ describe('GetReportDetailService', () => {
     jest.clearAllMocks();
     mockReportRepo.findDetail.mockResolvedValue(detail);
     mockAudit.record.mockResolvedValue(undefined);
-    service = new GetReportDetailService(mockReportRepo, mockAudit);
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(new Map());
+    mockMessageRepo.findForModeration.mockResolvedValue(null);
+    service = new GetReportDetailService(
+      mockReportRepo,
+      mockAudit,
+      mockMemberRepo,
+      mockMessageRepo,
+    );
   });
 
   it('回傳含內容快照的詳情', async () => {
@@ -109,7 +226,74 @@ describe('GetReportDetailService', () => {
 
     await expect(
       service.execute({ reportId: 'rep-1', viewerId: 'admin' }),
-    ).resolves.toEqual(detail);
+    ).resolves.toEqual(expect.objectContaining(detail));
+  });
+
+  it('補上兩造的 email', async () => {
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+      new Map([
+        ['reporter', 'alice@example.com'],
+        ['offender', 'bob@example.com'],
+      ]),
+    );
+
+    const result = await service.execute({
+      reportId: 'rep-1',
+      viewerId: 'admin',
+    });
+
+    expect(result.reporterEmail).toBe('alice@example.com');
+    expect(result.targetMemberEmail).toBe('bob@example.com');
+  });
+
+  it('訊息已被移除 → 回傳移除時間', async () => {
+    const removedAt = new Date('2026-08-21T06:00:00.000Z');
+    mockMessageRepo.findForModeration.mockResolvedValue({
+      messageId: 'msg-1',
+      roomId: 'room-1',
+      senderId: 'offender',
+      seq: 1,
+      retractedAt: null,
+      removedAt,
+    });
+
+    const result = await service.execute({
+      reportId: 'rep-1',
+      viewerId: 'admin',
+    });
+
+    expect(result.targetMessageRemovedAt).toEqual(removedAt);
+  });
+
+  it('訊息未被移除 → null', async () => {
+    mockMessageRepo.findForModeration.mockResolvedValue({
+      messageId: 'msg-1',
+      roomId: 'room-1',
+      senderId: 'offender',
+      seq: 1,
+      retractedAt: null,
+      removedAt: null,
+    });
+
+    const result = await service.execute({
+      reportId: 'rep-1',
+      viewerId: 'admin',
+    });
+
+    expect(result.targetMessageRemovedAt).toBeNull();
+  });
+
+  // 檢舉的快照本來就不依賴訊息是否還在——查不到不是錯誤
+  it('訊息已不存在 → null，詳情照常回傳', async () => {
+    mockMessageRepo.findForModeration.mockResolvedValue(null);
+
+    const result = await service.execute({
+      reportId: 'rep-1',
+      viewerId: 'admin',
+    });
+
+    expect(result.targetMessageRemovedAt).toBeNull();
+    expect(result.contentSnapshot).toBe('被檢舉的內容');
   });
 
   it('檢舉不存在 → ChatReportNotFoundException，且不寫稽核', async () => {
