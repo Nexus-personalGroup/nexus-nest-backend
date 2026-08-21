@@ -24,8 +24,13 @@
 
 預設由新到舊回傳（聊天介面從最新往回捲）。
 
-**已撤回的訊息 MUST 仍出現在結果中**（`seq` 不可有洞），但 `content` MUST 為空字串，
-並帶 `retractedAt` 讓客戶端顯示「訊息已收回」。
+**已撤回或已被管理員移除的訊息 MUST 仍出現在結果中**（`seq` 不可有洞），
+但 `content` MUST 為空字串。
+
+兩種狀態用**不同的欄位**表達：`retractedAt`（使用者自己收回）與
+`removedAt`（因違反規範被平台移除）。兩者對使用者的語意不同，
+共用一個欄位會讓發送者以為自己撤回了。兩個標記可以同時存在，
+呈現上以移除優先——它是更強的宣告。
 
 **Request**（path + query）：`roomId`；`beforeSeq`（可選，回傳 seq 小於此值的訊息）、`limit`（預設 30，上限 100）
 
@@ -42,6 +47,7 @@
         "content": "",
         "seq": 42,
         "retractedAt": "2026-08-21T06:00:00.000Z",
+        "removedAt": null,
         "createdAt": "2026-08-20T06:00:00.000Z"
       }
     ],
@@ -51,7 +57,7 @@
 }
 ```
 
-未撤回的訊息 `retractedAt` 為 `null`。
+未撤回的訊息 `retractedAt` 為 `null`；未被移除的 `removedAt` 為 `null`。
 
 **Failure Responses**：
 
@@ -77,6 +83,11 @@
 
 - **WHEN** 查詢區間內有被撤回的訊息
 - **THEN** 該則仍在結果中且 `seq` 連續，`content` 為空字串、`retractedAt` 有值
+
+#### Scenario: 結果含已被移除的訊息
+
+- **WHEN** 查詢區間內有被管理員移除的訊息
+- **THEN** 該則仍在結果中且 `seq` 連續，`content` 為空字串、`removedAt` 有值
 
 ### Requirement: 更新已讀位置
 

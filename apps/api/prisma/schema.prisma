@@ -466,9 +466,21 @@ model ChatMessageRecord {
   /// 「這個號碼被撤回了」與「我漏收了」——後者會讓它反覆嘗試補齊同一段區間
   retractedAt DateTime? @map("retracted_at") @db.Timestamptz(3)
 
-  /// 執行撤回的成員 ID。目前僅限發送者本人，欄位存在是為了 M3 的檢舉調查
-  /// （日後若開放後台管理員移除訊息，這裡才分得出是誰的動作）
+  /// 執行撤回的成員 ID。僅限發送者本人——管理員的移除走 removed_by，兩者不共用
   retractedBy String? @map("retracted_by")
+
+  /// 管理員移除的時間；null 代表未被移除
+  ///
+  /// **刻意不與 retracted_at 共用。** 兩者對客戶端的語意不同：
+  /// 「對方自己收回」與「被平台處理」。共用會讓發送者以為自己撤回了（他沒有），
+  /// 也讓後台無法統計「被移除幾則」——而那是判斷平台治理狀況的基本指標。
+  ///
+  /// 兩個標記可以同時存在（撤回後仍可被移除），呈現上以移除優先——它是更強的宣告。
+  /// 移除同樣是軟刪除：被移除的訊息正是最需要留下證據的那些
+  removedAt DateTime? @map("removed_at") @db.Timestamptz(3)
+
+  /// 執行移除的管理員 ID。不建外鍵：稽核性質的欄位要能在帳號被刪除後仍然存在
+  removedBy String? @map("removed_by")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
 
@@ -511,6 +523,8 @@ enum ChatAuditAction {
   MESSAGE_RATE_LIMITED
   REPORT_SUBMITTED
   REPORT_VIEWED
+  MESSAGE_REMOVED
+  MESSAGE_RESTORED
 
   @@map("chat_audit_action")
 }

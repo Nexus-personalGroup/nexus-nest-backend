@@ -28,6 +28,16 @@ export const SERVER_EVENTS = {
   ROOM_READ: 'roomRead',
   /** 訊息被撤回，送給房間所有成員；payload 不含內容 */
   MESSAGE_RETRACTED: 'messageRetracted',
+  /**
+   * 訊息被管理員移除。
+   *
+   * 與 MESSAGE_RETRACTED 是**兩個獨立事件**，不共用帶 action 的單一事件：
+   * 兩者對使用者的語意不同，共用會讓客戶端在每個 handler 裡先分支，
+   * 而它們的 payload 也確實不同
+   */
+  MESSAGE_REMOVED: 'messageRemoved',
+  /** 被誤移除的訊息已還原；payload 帶還原後的撤回狀態 */
+  MESSAGE_RESTORED: 'messageRestored',
 } as const;
 
 export type ServerEvent = (typeof SERVER_EVENTS)[keyof typeof SERVER_EVENTS];

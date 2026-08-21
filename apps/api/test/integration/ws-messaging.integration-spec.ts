@@ -637,4 +637,74 @@ describe('WebSocket 訊息（整合）', () => {
       expect(JSON.stringify(rows)).not.toContain('機密的訊息內容');
     });
   });
+
+  /**
+   * 管理員移除。
+   *
+   * 與撤回同樣要驗跨實例，但多一件事：**移除與撤回必須是不同的事件**——
+   * 共用會讓發送者以為自己撤回了。
+   */
+  describe('管理員移除', () => {
+    it('移除後，另一個實例上的成員收得到 messageRemoved', async () => {
+      const socketA = await connectA();
+      await joinRoom(socketA, roomId);
+      const socketB = await connectB();
+      await joinRoom(socketB, roomId);
+      const ack = await sendMessage(socketA, roomId, '違規內容');
+
+      const removed = waitForEvent<{ messageId: string; seq: number }>(
+        socketB,
+        SERVER_EVENTS.MESSAGE_REMOVED,
+      );
+      await instanceA.removeMessage.execute({
+        messageId: ack.messageId,
+        moderatorId: idB,
+      });
+
+      const payload = await removed;
+      expect(payload.messageId).toBe(ack.messageId);
+      expect(payload.seq).toBe(ack.seq);
+    });
+
+    it('推播的 payload 不含 content', async () => {
+      const socketA = await connectA();
+      await joinRoom(socketA, roomId);
+      const ack = await sendMessage(socketA, roomId, '這段不該出現在推播');
+
+      const removed = waitForEvent<Record<string, unknown>>(
+        socketA,
+        SERVER_EVENTS.MESSAGE_REMOVED,
+      );
+      await instanceA.removeMessage.execute({
+        messageId: ack.messageId,
+        moderatorId: idB,
+      });
+
+      const payload = await removed;
+      expect(payload).not.toHaveProperty('content');
+      expect(JSON.stringify(payload)).not.toContain('這段不該出現在推播');
+    });
+
+    // 讀取路徑之一：濾掉會讓 seq 有洞，客戶端會反覆嘗試補同一段
+    it('斷線期間被移除的訊息，補齊時仍在但無內容', async () => {
+      const socketA = await connectA();
+      const first = await sendMessage(socketA, roomId, '第一則');
+      const second = await sendMessage(socketA, roomId, '第二則違規內容');
+      await instanceA.removeMessage.execute({
+        messageId: second.messageId,
+        moderatorId: idB,
+      });
+
+      const synced = waitForEvent<Synced>(socketA, SERVER_EVENTS.ROOM_SYNCED);
+      socketA.emit(CLIENT_EVENTS.SYNC_ROOM, { roomId, lastSeq: 0 });
+      const result = await synced;
+
+      expect(result.messages.map((m) => m.seq)).toEqual([
+        first.seq,
+        second.seq,
+      ]);
+      expect(result.messages[1].content).toBe('');
+      expect(JSON.stringify(result)).not.toContain('第二則違規內容');
+    });
+  });
 });

@@ -250,6 +250,150 @@ export interface paths {
         };
         trace?: never;
     };
+    "/moderation/messages/{messageId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 移除違規訊息
+         * @description 需 `BACKEND:MODERATION:EDIT` 權限。
+         *
+         *     **不要求該訊息被檢舉過**：管理員可能從私訊、主動巡邏等管道發現違規內容。
+         *     移除的授權來自 RBAC，不來自檢舉的存在。
+         *
+         *     移除採**軟刪除**：該則與它的 `seq` 會保留、內容保留在資料庫（供調查與申訴），
+         *     但前台看不到內容。它在歷史與斷線補齊中仍會出現，帶 `removedAt`。
+         *
+         *     **與使用者撤回是不同的標記**（`removedAt` vs `retractedAt`）：
+         *     兩者對客戶端的語意不同（「因違反規範被移除」vs「對方自己收回」）。
+         *     兩個標記可以同時存在，呈現上以移除優先。
+         *
+         *     **冪等**：重複移除回 `204`，不重複推播、不覆寫原本的移除時間。
+         *
+         *     成功時房間成員會收到 `server:messageRemoved`（payload 不含內容）。
+         */
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    messageId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已移除（無回應內容）；重複移除同樣回 204 */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                /** @description 訊息不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "訊息不存在或不是你發送的",
+                         *       "code": "CHAT_MESSAGE_NOT_FOUND",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/messages/{messageId}/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 還原被誤移除的訊息
+         * @description 需 `BACKEND:MODERATION:EDIT` 權限。
+         *
+         *     誤判在審閱情境是真實的——沒有回頭路會讓管理員傾向不敢處理，
+         *     而一個不敢用的工具等於沒有工具。
+         *
+         *     **不影響使用者自己的撤回狀態**：若該則原本已被發送者撤回，
+         *     還原後它會回到「已收回」而非完全正常。推播的 payload 會帶還原後的 `retractedAt`，
+         *     讓客戶端知道要顯示哪一種。
+         *
+         *     **還原同樣留稽核**：`removedAt` 清除後，「這則曾被移除過」就不再留在訊息列上，
+         *     而反覆移除再還原本身就是可疑行為。
+         *
+         *     **冪等**：還原未被移除的訊息回 `204`，不推播。
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    messageId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 已還原（無回應內容）；未被移除時同樣回 204 */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                /** @description 訊息不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "訊息不存在或不是你發送的",
+                         *       "code": "CHAT_MESSAGE_NOT_FOUND",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/moderation/members/{memberId}/timeline": {
         parameters: {
             query?: never;

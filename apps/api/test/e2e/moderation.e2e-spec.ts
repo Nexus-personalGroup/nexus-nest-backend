@@ -306,4 +306,155 @@ describe('Moderation E2E', () => {
       expectForbidden(res);
     });
   });
+
+  /**
+   * 移除與還原。
+   *
+   * 核心是**移除與撤回必須分得開**：共用欄位會讓發送者以為自己撤回了（他沒有），
+   * 也讓後台無法統計「被移除幾則」。
+   */
+  describe('移除訊息', () => {
+    let messageId = '';
+
+    const remove = (id = messageId, token = tokenFull) =>
+      request(app.getHttpServer())
+        .delete(`/api/admin/moderation/messages/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const restore = (id = messageId, token = tokenFull) =>
+      request(app.getHttpServer())
+        .post(`/api/admin/moderation/messages/${id}/restore`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const messageRow = () =>
+      prisma.chatMessageRecord.findUniqueOrThrow({ where: { id: messageId } });
+
+    beforeEach(async () => {
+      const message = await prisma.chatMessageRecord.findFirstOrThrow({
+        where: { senderId: offenderId },
+      });
+      messageId = message.id;
+      // 讓被檢舉者成為房間成員，才查得到歷史
+      await prisma.chatRoomMemberRecord.createMany({
+        data: [
+          { roomId: message.roomId, memberId: adminId },
+          { roomId: message.roomId, memberId: offenderId },
+        ],
+        skipDuplicates: true,
+      });
+    });
+
+    it('移除 → 204 並標記 removedAt', async () => {
+      const res = await remove();
+
+      expect(res.status).toBe(204);
+      const row = await messageRow();
+      expect(row.removedAt).not.toBeNull();
+      expect(row.removedBy).toBe(adminId);
+    });
+
+    // 移除的訊息正是最需要留下證據的那些
+    it('內容仍保留在資料庫', async () => {
+      await remove();
+
+      expect((await messageRow()).content).toBe(SNAPSHOT);
+    });
+
+    // ⭐ 本 change 的核心：兩者必須分得開
+    it('⭐ 移除不會設定 retractedAt', async () => {
+      await remove();
+
+      expect((await messageRow()).retractedAt).toBeNull();
+    });
+
+    it('已被使用者撤回的訊息仍可移除，兩個標記同時存在', async () => {
+      await prisma.chatMessageRecord.update({
+        where: { id: messageId },
+        data: { retractedAt: new Date(), retractedBy: offenderId },
+      });
+
+      await remove();
+
+      const row = await messageRow();
+      expect(row.retractedAt).not.toBeNull();
+      expect(row.removedAt).not.toBeNull();
+    });
+
+    it('重複移除 → 204 且不覆寫移除時間', async () => {
+      await remove();
+      const first = await messageRow();
+
+      const res = await remove();
+
+      expect(res.status).toBe(204);
+      expect((await messageRow()).removedAt).toEqual(first.removedAt);
+    });
+
+    it('只有 VIEW 權限 → 403', async () => {
+      const res = await remove(messageId, tokenViewOnly);
+
+      expectForbidden(res);
+      expect((await messageRow()).removedAt).toBeNull();
+    });
+
+    it('訊息不存在 → 404', async () => {
+      const res = await remove(MISSING_ID);
+      expectApiError(res, 404, ResponseCodes.CHAT_MESSAGE_NOT_FOUND);
+    });
+
+    it('移除與還原各留一筆稽核', async () => {
+      await remove();
+      await restore();
+
+      const rows = await prisma.chatAuditLogRecord.findMany({
+        orderBy: { createdAt: 'asc' },
+      });
+      expect(rows.map((r) => r.action)).toEqual([
+        'MESSAGE_REMOVED',
+        'MESSAGE_RESTORED',
+      ]);
+    });
+
+    describe('還原', () => {
+      it('⭐ 還原後 removedAt 清除', async () => {
+        await remove();
+        const res = await restore();
+
+        expect(res.status).toBe(204);
+        const row = await messageRow();
+        expect(row.removedAt).toBeNull();
+        expect(row.removedBy).toBeNull();
+      });
+
+      // 若原本已被發送者撤回，還原後應回到「已收回」而非完全正常
+      it('⭐ 還原不碰 retractedAt', async () => {
+        await prisma.chatMessageRecord.update({
+          where: { id: messageId },
+          data: { retractedAt: new Date(), retractedBy: offenderId },
+        });
+        await remove();
+
+        await restore();
+
+        const row = await messageRow();
+        expect(row.removedAt).toBeNull();
+        expect(row.retractedAt).not.toBeNull();
+      });
+
+      it('還原未被移除的訊息 → 204 且無變化', async () => {
+        const res = await restore();
+
+        expect(res.status).toBe(204);
+        expect(await prisma.chatAuditLogRecord.count()).toBe(0);
+      });
+
+      it('只有 VIEW 權限 → 403', async () => {
+        await remove();
+        const res = await restore(messageId, tokenViewOnly);
+
+        expectForbidden(res);
+        expect((await messageRow()).removedAt).not.toBeNull();
+      });
+    });
+  });
 });

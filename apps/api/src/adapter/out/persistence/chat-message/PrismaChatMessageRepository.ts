@@ -8,6 +8,7 @@ import {
   ChatMessage,
   ChatMessageRepositoryPort,
   MessageForReport,
+  MessageModerationTarget,
   MessageOwnership,
 } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
 
@@ -21,6 +22,7 @@ type MessageRow = {
   content: string;
   seq: number;
   retractedAt: Date | null;
+  removedAt: Date | null;
   createdAt: Date;
 };
 
@@ -167,6 +169,61 @@ export class PrismaChatMessageRepository implements ChatMessageRepositoryPort {
     return existing.retractedAt ?? now;
   }
 
+  async findForModeration(
+    messageId: string,
+  ): Promise<MessageModerationTarget | null> {
+    const row = await this.prisma.chatMessageRecord.findUnique({
+      where: { id: messageId },
+      // 刻意不選 content：這條路徑不需要它，不取就沒有洩漏的可能
+      select: {
+        id: true,
+        roomId: true,
+        senderId: true,
+        seq: true,
+        retractedAt: true,
+        removedAt: true,
+      },
+    });
+    if (!row) return null;
+    return {
+      messageId: row.id,
+      roomId: row.roomId,
+      senderId: row.senderId,
+      seq: row.seq,
+      retractedAt: row.retractedAt,
+      removedAt: row.removedAt,
+    };
+  }
+
+  async remove(messageId: string, removedBy: string): Promise<Date | null> {
+    const now = new Date();
+    // 條件寫在 SQL 裡才是原子的，與撤回、已讀位置同一個模式。
+    // 受影響列數為 0 代表早已移除——呼叫端據此不重複推播、不覆寫原本的時間
+    const { count } = await this.prisma.chatMessageRecord.updateMany({
+      where: { id: messageId, removedAt: null },
+      data: { removedAt: now, removedBy },
+    });
+    return count > 0 ? now : null;
+  }
+
+  async restore(
+    messageId: string,
+  ): Promise<{ retractedAt: Date | null } | null> {
+    // 只清除移除標記，**不碰 retractedAt**：若該則原本已被發送者撤回，
+    // 還原後它應回到「已收回」而非完全正常
+    const { count } = await this.prisma.chatMessageRecord.updateMany({
+      where: { id: messageId, removedAt: { not: null } },
+      data: { removedAt: null, removedBy: null },
+    });
+    if (count === 0) return null;
+
+    const row = await this.prisma.chatMessageRecord.findUniqueOrThrow({
+      where: { id: messageId },
+      select: { retractedAt: true },
+    });
+    return { retractedAt: row.retractedAt };
+  }
+
   private readonly messageSelect = {
     id: true,
     roomId: true,
@@ -174,13 +231,14 @@ export class PrismaChatMessageRepository implements ChatMessageRepositoryPort {
     content: true,
     seq: true,
     retractedAt: true,
+    removedAt: true,
     createdAt: true,
   } as const;
 
   /**
    * 資料列 → 對外物件的**唯一投影點**。
    *
-   * 內容遮蔽只寫在這裡：被撤回的訊息內容保留在資料庫供 M3 的檢舉調查，
+   * 內容遮蔽只寫在這裡：被撤回**或被管理員移除**的訊息內容保留在資料庫供檢舉調查，
    * 但任何前台路徑都不得回傳它。讀取路徑有三條（歷史查詢、斷線補齊、即時廣播），
    * 在各個 service 各自遮蔽的話，漏掉一條就是洩漏，而且不會有徵兆。
    *
@@ -192,9 +250,11 @@ export class PrismaChatMessageRepository implements ChatMessageRepositoryPort {
       messageId: row.id,
       roomId: row.roomId,
       senderId: row.senderId,
-      content: row.retractedAt ? '' : row.content,
+      // 兩種狀態都要遮蔽；只判斷其中一個是這裡最容易漏的地方
+      content: row.retractedAt || row.removedAt ? '' : row.content,
       seq: row.seq,
       retractedAt: row.retractedAt,
+      removedAt: row.removedAt,
       createdAt: row.createdAt,
     };
   }

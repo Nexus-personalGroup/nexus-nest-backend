@@ -43,6 +43,7 @@ const ownership = (overrides: Record<string, unknown> = {}) => ({
   senderId: 'me',
   createdAt: secondsAgo(10),
   retractedAt: null,
+  removedAt: null,
   ...overrides,
 });
 

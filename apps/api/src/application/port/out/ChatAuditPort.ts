@@ -13,7 +13,9 @@ export type ChatAuditAction =
   | 'MESSAGE_RETRACT_REJECTED'
   | 'MESSAGE_RATE_LIMITED'
   | 'REPORT_SUBMITTED'
-  | 'REPORT_VIEWED';
+  | 'REPORT_VIEWED'
+  | 'MESSAGE_REMOVED'
+  | 'MESSAGE_RESTORED';
 
 export interface ChatAuditEvent {
   /** 執行動作的成員 */

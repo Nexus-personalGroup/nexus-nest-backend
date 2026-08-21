@@ -4,11 +4,18 @@ export interface ChatMessage {
   messageId: string;
   roomId: string;
   senderId: string;
-  /** 已撤回時為空字串——遮蔽發生在 repository 的投影函式，呼叫端拿不到原內容 */
+  /** 已撤回或已被移除時為空字串——遮蔽發生在 repository 的投影函式，呼叫端拿不到原內容 */
   content: string;
   seq: number;
-  /** 撤回時間；null 代表未撤回 */
+  /** 使用者自己撤回的時間；null 代表未撤回 */
   retractedAt: Date | null;
+  /**
+   * 管理員移除的時間；null 代表未被移除。
+   *
+   * 與 `retractedAt` 分開：兩者對客戶端的語意不同（「對方自己收回」vs「被平台處理」）。
+   * 兩個標記可以同時存在，呈現上以移除優先。
+   */
+  removedAt: Date | null;
   createdAt: Date;
 }
 
@@ -28,6 +35,22 @@ export interface MessageForReport {
   senderId: string;
   /** 未遮蔽的原始內容——即使該則已撤回 */
   rawContent: string;
+}
+
+/**
+ * 管理員移除／還原所需的資訊，**不含內容**。
+ *
+ * 與 `MessageOwnership` 分開是因為入口不同：撤回從房間端進來（已知 roomId），
+ * 管理員只有 messageId——後台可能從私訊、主動巡邏等管道發現違規內容，
+ * 而不是從某個房間點進去。
+ */
+export interface MessageModerationTarget {
+  messageId: string;
+  roomId: string;
+  senderId: string;
+  seq: number;
+  retractedAt: Date | null;
+  removedAt: Date | null;
 }
 
 /** 撤回的授權與時限判斷所需的最小資訊，不含內容 */
@@ -102,4 +125,27 @@ export interface ChatMessageRepositoryPort {
    * @returns 撤回時間；該則已撤回時回傳原本的時間（冪等）
    */
   retract(messageId: string, retractedBy: string): Promise<Date>;
+
+  /**
+   * 取管理員移除／還原所需的資訊；不存在時回 null。
+   *
+   * 不需要 roomId：管理員的入口是訊息本身，不是房間。同樣不回傳內容——
+   * 這條路徑不需要它，而不取就沒有洩漏的可能。
+   */
+  findForModeration(messageId: string): Promise<MessageModerationTarget | null>;
+
+  /**
+   * 管理員移除。同樣是軟刪除、同樣不碰 `retractedAt`。
+   *
+   * @returns 移除時間；已移除時回 null（沒有任何改變，呼叫端據此不推播）
+   */
+  remove(messageId: string, removedBy: string): Promise<Date | null>;
+
+  /**
+   * 還原被移除的訊息。**不碰 `retractedAt`**——若該則原本已被發送者撤回，
+   * 還原後它應回到「已收回」而非完全正常。
+   *
+   * @returns 還原後的撤回狀態；該則本來就沒被移除時回 null（沒有任何改變）
+   */
+  restore(messageId: string): Promise<{ retractedAt: Date | null } | null>;
 }

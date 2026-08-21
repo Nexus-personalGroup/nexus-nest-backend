@@ -15,6 +15,13 @@ import {
   ReviewReportCommand,
   ReviewReportUseCase,
 } from '@app/application/port/in/admin/moderation/ModerationUseCases';
+import {
+  REMOVE_MESSAGE_USE_CASE,
+  RESTORE_MESSAGE_USE_CASE,
+  ModerateMessageCommand,
+  RemoveMessageUseCase,
+  RestoreMessageUseCase,
+} from '@app/application/port/in/admin/moderation/MessageModerationUseCases';
 import type { ChatReportDetail } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 
 @Injectable()
@@ -28,6 +35,10 @@ export class ModerationFacade {
     private readonly reviewReportUseCase: ReviewReportUseCase,
     @Inject(GET_MEMBER_TIMELINE_USE_CASE)
     private readonly getMemberTimelineUseCase: GetMemberTimelineUseCase,
+    @Inject(REMOVE_MESSAGE_USE_CASE)
+    private readonly removeMessageUseCase: RemoveMessageUseCase,
+    @Inject(RESTORE_MESSAGE_USE_CASE)
+    private readonly restoreMessageUseCase: RestoreMessageUseCase,
   ) {}
 
   listReports(query: ListReportsQuery): Promise<ListReportsResult> {
@@ -46,5 +57,13 @@ export class ModerationFacade {
     query: GetMemberTimelineQuery,
   ): Promise<GetMemberTimelineResult> {
     return this.getMemberTimelineUseCase.execute(query);
+  }
+
+  removeMessage(command: ModerateMessageCommand): Promise<void> {
+    return this.removeMessageUseCase.execute(command);
+  }
+
+  restoreMessage(command: ModerateMessageCommand): Promise<void> {
+    return this.restoreMessageUseCase.execute(command);
   }
 }

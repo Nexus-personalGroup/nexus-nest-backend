@@ -47,6 +47,7 @@ const message: ChatMessage = {
   content: '午餐吃什麼',
   seq: 42,
   retractedAt: null,
+  removedAt: null,
   createdAt: new Date(0),
 };
 

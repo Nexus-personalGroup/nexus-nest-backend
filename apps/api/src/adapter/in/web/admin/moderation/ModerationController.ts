@@ -1,12 +1,14 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
   Param,
   ParseUUIDPipe,
   Patch,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -83,6 +85,44 @@ export class ModerationController {
       status: dto.status,
       reviewerId: member.sub,
       reviewNote: dto.reviewNote,
+    });
+  }
+
+  /**
+   * 移除違規訊息。
+   *
+   * **不要求該訊息被檢舉過**：管理員可能從私訊、主動巡邏等管道發現違規內容。
+   * 移除的授權來自 RBAC，不來自檢舉的存在。
+   */
+  @Delete('messages/:messageId')
+  @Permissions(PermissionCode.BACKEND_MODERATION_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async removeMessage(
+    @CurrentMember() member: MemberContext,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+  ): Promise<void> {
+    await this.moderationFacade.removeMessage({
+      messageId,
+      moderatorId: member.sub,
+    });
+  }
+
+  /**
+   * 還原被誤移除的訊息。
+   *
+   * 誤判在審閱情境是真實的——沒有回頭路會讓管理員傾向不敢處理，
+   * 而一個不敢用的工具等於沒有工具。還原同樣留稽核。
+   */
+  @Post('messages/:messageId/restore')
+  @Permissions(PermissionCode.BACKEND_MODERATION_EDIT)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async restoreMessage(
+    @CurrentMember() member: MemberContext,
+    @Param('messageId', ParseUUIDPipe) messageId: string,
+  ): Promise<void> {
+    await this.moderationFacade.restoreMessage({
+      messageId,
+      moderatorId: member.sub,
     });
   }
 
