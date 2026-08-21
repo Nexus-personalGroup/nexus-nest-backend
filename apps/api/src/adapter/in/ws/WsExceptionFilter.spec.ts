@@ -6,6 +6,7 @@ import {
 import { Socket } from 'socket.io';
 import { WsExceptionFilter } from './WsExceptionFilter';
 import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
+import { WsRateLimitedException } from '@app/domain/exception/WsRateLimitedException';
 
 const makeHost = () => {
   const emit = jest.fn();
@@ -31,6 +32,24 @@ describe('WsExceptionFilter', () => {
     expect(emit).toHaveBeenCalledWith(
       'error',
       expect.objectContaining({ code: expect.any(String) }),
+    );
+  });
+
+  /**
+   * guard 拋出的例外會不會經過本 filter，是**實測而非推論**的問題。
+   *
+   * Nest 的 guard 在 filter 綁定的執行脈絡內，例外理應冒泡到這裡；
+   * 但「理應」在連線層限流上不可接受——若沒接上，超過門檻的客戶端
+   * 收不到任何訊息，只看到事件憑空消失，無從退避。
+   */
+  it('連線層限流的例外 → 轉成 WS_RATE_LIMITED', () => {
+    const { host, emit } = makeHost();
+
+    filter.catch(new WsRateLimitedException(), host);
+
+    expect(emit).toHaveBeenCalledWith(
+      'error',
+      expect.objectContaining({ code: 'WS_RATE_LIMITED' }),
     );
   });
 

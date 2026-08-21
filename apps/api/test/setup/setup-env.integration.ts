@@ -54,6 +54,14 @@ process.env.WS_MESSAGE_RATE_LIMIT = '10';
 process.env.WS_MESSAGE_RATE_WINDOW_SEC = '60';
 process.env.SCHEDULE_ENABLED = 'false';
 
+// 連線層限流的閾值。**必須高於任何其他測試中單一連線的最大連發數**——
+// 目前的上限是限流測試的 11 次送訊息加上 join，約 13 個事件。
+// 設得太低會讓那些測試以「事件憑空消失」的形式失敗，而症狀完全指不到這裡：
+// 業務層限流回的是 CHAT_MESSAGE_RATE_LIMITED，連線層回的是 WS_RATE_LIMITED，
+// 兩個都走同一個 error 事件。
+process.env.WS_CONNECTION_EVENT_LIMIT = '30';
+process.env.WS_CONNECTION_EVENT_WINDOW_SEC = '1';
+
 // 心跳壓到 1 秒、陳舊門檻 2 秒：實例死亡的情境用預設值要等 45 秒才驗得到，
 // 那會讓這支測試慢到沒人願意跑。行為與正式設定完全相同，只是時間尺度不同
 process.env.WS_HEARTBEAT_INTERVAL = '1';

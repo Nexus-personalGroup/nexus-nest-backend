@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ChatGateway } from '@app/adapter/in/ws/ChatGateway';
+import { ConnectionThrottle } from '@app/adapter/in/ws/ConnectionThrottle';
+import { ConnectionThrottleGuard } from '@app/adapter/in/ws/ConnectionThrottleGuard';
 import { SocketIoEventPublisher } from '@app/adapter/out/socketio/SocketIoEventPublisher';
 import { EVENT_PUBLISHER_PORT } from '@app/application/port/out/EventPublisherPort';
 import { instanceIdProvider } from '@app/infrastructure/instance-id';
@@ -43,6 +45,9 @@ import { MetricsModule } from './metrics.module';
     { provide: SEND_MESSAGE_USE_CASE, useClass: SendMessageService },
     { provide: SYNC_ROOM_USE_CASE, useClass: SyncRoomService },
     { provide: EVENT_PUBLISHER_PORT, useExisting: SocketIoEventPublisher },
+    // 連線層限流的計數在記憶體，必須是單例——每條連線的計數器都在這一份裡
+    ConnectionThrottle,
+    ConnectionThrottleGuard,
     ChatGateway,
   ],
   exports: [EVENT_PUBLISHER_PORT],

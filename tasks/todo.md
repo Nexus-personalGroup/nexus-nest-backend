@@ -42,11 +42,7 @@
 
 ### 已知缺口（知情，非遺漏）
 
-- **WebSocket 沒有連線層的事件限流**：HTTP 端有全域 throttle middleware，但連線建立後的
-  每個 WS 事件都是同一條 TCP 連線上的訊框，**不經過任何計次**。目前只有送訊息接了
-  逐 use case 的限流（`add-chat-messaging`），`ping` / `joinRoom` / `syncRoom` 都不受限。
-  正確的防線是「每條連線每秒最多 N 個事件」的傳輸層限制，而非逐個 use case 接——
-  後者只會給出覆蓋完整的錯覺。`ws-rate-limit.spec.ts` 的豁免清單記錄了目前的取捨。
+（無。連線層事件限流已由 `add-ws-connection-throttle` 補上，見「已完成」。）
 
 ### 技術債（小，隨手可修）
 
@@ -71,7 +67,7 @@
 
 ### 觀察中
 
-- **e2e 有間歇性失敗**：**已發生 4 次**，皆重跑後全綠。
+- **e2e 有間歇性失敗**：**已發生 6 次**，皆重跑後全綠。
   **第 4 次（2026-08-21，`add-admin-message-removal`）終於抓到證據**：
 
   ```
@@ -118,8 +114,27 @@
   **抓到證據的方法**（前三次都因為 grep 管線而丟失）：
   先 `pnpm --filter @app/api test:e2e > /tmp/e2e.log 2>&1`，再從檔案 grep。
 
-  **抓到證據的方法**（前三次都因為 grep 管線而丟失）：
-  先 `pnpm --filter @app/api test:e2e > /tmp/e2e.log 2>&1`，再從檔案 grep。
+  **第 6 次（2026-08-21，`add-ws-connection-throttle`）——症狀變了，值得記**：
+  同一次執行中 3 支測試失敗，**沒有任何一支是 `ECONNRESET`**：
+
+  | 測試 | 症狀 |
+  | --- | --- |
+  | `Security E2E › PATCH ip-blacklist/:id` | 預期 204，收到 **401**（`缺少授權憑證`） |
+  | `Member E2E › status=foo → 400` | 登入回應**沒有 `data`**（`res.body.data` undefined） |
+  | `Member E2E › role/options 分頁` | 預期 200，收到 **404** |
+
+  三支的共同點是**請求送出去了、回應也回來了，只是內容不對**——
+  這與前五次「連線層錯誤、測試邏輯沒跑到」完全不同。
+  立即重跑全套 **258/258 全綠**。
+
+  **新的資訊**：這次失敗的執行是 `test:cov → test:integration → build → test:e2e`
+  串在同一條指令鏈裡的最後一段，前面剛跑完用**真實 Redis** 的整合測試
+  （e2e 是 mock Redis 的）。兩者共用同一個 `*_test` 資料庫。
+  第二次單獨跑 e2e 就全綠——**「前面剛跑過整合測試」是目前唯一沒被排除的變因**。
+
+  **下次要試的**：單獨跑 `test:e2e` × N 對照 `test:integration && test:e2e` × N。
+  如果只有後者會壞，方向就從 supertest 轉到「整合測試留下的資料庫連線 / 資料狀態」。
+  在有證據之前一樣不改。
 
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 
@@ -138,6 +153,22 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-21 — WS 連線層事件限流（`add-ws-connection-throttle`）
+
+補上最後一個已知的安全缺口。HTTP 端有全域 throttle，但連線建立後的每個 WS 事件
+都是同一條 TCP 連線上的訊框，**不經過任何計次**——先前只有送訊息接了逐 use case 的限流。
+
+做成 gateway 層的 guard 而非逐個 handler 加一行：後者會在新增 handler 時被忘記，
+而「忘記」正是這個 change 要防的缺口。**沒有例外清單，`ping` 也計入**。
+超過門檻時丟棄該事件並回 `WS_RATE_LIMITED`，**不斷線**——誤判的代價不對稱。
+
+計數放本實例記憶體不走 Redis：一條連線只存在於一個實例上，跨實例一致性沒有意義，
+而每個事件多一次網路往返會讓限流本身變成它要防的那種負載。代價（多開連線有多倍額度）
+由 `WS_MAX_CONNECTIONS_PER_MEMBER` 管。
+
+守則補了一條：**豁免不得以「連線層已有限流」為理由**。兩者計數單位不同，
+前者取代不了後者——而日後有人看到兩處限流判斷它們重複時，被移除的通常是業務層那個。
 
 ### 2026-08-21 — M3 監控埋點（`add-chat-observability`）
 

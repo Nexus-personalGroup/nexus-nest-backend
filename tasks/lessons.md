@@ -488,3 +488,13 @@ pnpm lint > /tmp/lint.log 2>&1; echo "exit=$?"
 ```
 
 grep 只用來**讀**已經知道失敗的日誌，不用來**判斷**成功與否。同一個陷阱適用於任何有色輸出的工具（jest、tsc、prisma）。這也是為什麼 e2e 的間歇性失敗三次都沒抓到證據——同一類的管線過濾問題。
+
+### 2026-08-21 — exit code 說「失敗」，但沒說是誰失敗：`pnpm --filter` 跑不存在的 script 也回 1
+
+**踩到什麼**：反向驗證時用 `pnpm --filter @app/api jest <單檔>` 想確認測試會變紅。它回 exit 1，我當成「測試如預期失敗」。把程式碼還原後**又回 1**，才發現不對——真正的輸出是 `ERR_PNPM_RECURSIVE_RUN_NO_SCRIPT: None of the selected packages has a "jest" script`。整個反向驗證是空的。
+
+**Why**：`pnpm --filter <pkg> <cmd>` 只跑 `package.json` 的 **script**，`jest` 不是 script（`test` 才是）。而在 workspace 目錄裡直接 `pnpm jest` 會落到 `node_modules/.bin`，所以同一個指令換個位置就能動——這是它最容易誤導人的地方。**執行失敗與測試失敗的 exit code 都是 1**。
+
+**How to apply**：反向驗證要成立，必須**兩邊都看**：破壞後紅、還原後**綠**。只看到「紅」不能證明任何事——還原後沒有回到綠，就代表紅的原因不是你以為的那個。跑單一測試檔用 `cd apps/api && pnpm jest <path>`，不要用 `--filter`。
+
+這與上一條互補：exit code 是對的驗證方式，但它只回答「成功了嗎」，不回答「跑的是不是你以為的東西」。

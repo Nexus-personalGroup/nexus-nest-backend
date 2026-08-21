@@ -120,8 +120,7 @@ export const WS_RATE_LIMIT_EXEMPTIONS: Exemption[] = [
   {
     file: 'src/adapter/in/ws/ChatGateway.ts',
     snippet: 'handleSyncRoom',
-    reason:
-      '唯讀且成本有界（單次索引範圍查詢、上限 101 列），不寫入任何資料。針對讀取濫用的正確防線是「連線層的事件限流」而非逐個 use case 接——只擋這一支會給出覆蓋完整的錯覺，而 ping / joinRoom 仍然不受限。該防線列為跟進項（tasks/todo.md）',
+    reason: '唯讀且成本有界（單次索引範圍查詢、上限 101 列），不寫入任何資料',
   },
   {
     file: 'src/adapter/in/ws/ChatGateway.ts',
