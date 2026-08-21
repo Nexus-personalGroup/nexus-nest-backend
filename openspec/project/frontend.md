@@ -36,6 +36,14 @@ apps/web/src/
 - **shadcn 元件**：執行 `cd apps/web && pnpm dlx shadcn@latest add <name>` 加入。`form` 元件目前 nova preset 缺貨，**已自寫**於 `src/components/ui/form.tsx`（標準 shadcn 模板），更新 shadcn 時注意保留。
 - **UI 文字**：一律繁體中文 hardcode，**不導入 i18n 框架**。註解亦只用繁體中文。
 - **Lint exception**：`src/components/ui/**` 與 `src/hooks/use-mobile.ts` 是 shadcn 直接 copy 的官方範本，與專案 lint 規則不同的部分（hook 與元件同檔、effect 內 setState）在 `eslint.config.js` 集中 disable。
+- **詳情用 Dialog + `?view=<id>`，但檢舉審閱是例外**：會員 / 角色 / IP 名單的詳情都走 Dialog，
+  `/moderation/reports/:reportId` 走**獨立路由**。它不是表單而是工作區
+  （內容快照、行為時間軸、四個處置動作、判定表單要同時在畫面上），
+  塞進 Dialog 會變成需要捲動的擁擠彈窗；獨立路由還讓網址可以貼給同事，
+  且瀏覽器返回鍵直接回佇列——審閱是「看一筆、回列表、看下一筆」的動線。
+- **jsdom 缺的 DOM API 統一補在 `src/test/setup.ts`**：Radix 的 Select / DropdownMenu
+  依賴 pointer capture 與 `scrollIntoView`，jsdom 都沒有實作，缺了會讓下拉在測試中
+  **永遠打不開**，而錯誤訊息是「找不到 role=option」——指不到真正的原因。
 
 ### 已知取捨：localStorage token × 無 CSP
 

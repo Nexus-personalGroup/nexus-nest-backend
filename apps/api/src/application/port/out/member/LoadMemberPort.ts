@@ -44,4 +44,15 @@ export interface LoadMemberPort {
    * 而且一次查完避免 N 次往返。
    */
   findActiveMemberIds(ids: string[]): Promise<string[]>;
+  /**
+   * 批次取 id → email 的對照，供顯示用。
+   *
+   * **查不到的 id 不會出現在對照中**（回傳缺鍵而非 null 值）：
+   * 呼叫端本來就要處理「這個人已經不在了」，用 `Map.get()` 拿到 `undefined`
+   * 比拿到一個值是 null 的鍵少一層判斷。
+   *
+   * 已軟刪除的帳號視為查不到；**被停權的帳號仍然回傳**——
+   * 停權者依然是一個存在的人，審閱要看得到他是誰。
+   */
+  findEmailsByIds(ids: string[]): Promise<Map<string, string>>;
 }

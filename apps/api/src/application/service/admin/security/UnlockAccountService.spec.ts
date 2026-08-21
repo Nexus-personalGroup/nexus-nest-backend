@@ -29,6 +29,7 @@ const mockLoadMember = {
   listMembers: jest.fn(),
   existsByEmail: jest.fn(),
   findActiveMemberIds: jest.fn(),
+  findEmailsByIds: jest.fn(),
 } as jest.Mocked<LoadMemberPort>;
 
 const mockAccountLock = {

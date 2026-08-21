@@ -498,3 +498,28 @@ grep 只用來**讀**已經知道失敗的日誌，不用來**判斷**成功與�
 **How to apply**：反向驗證要成立，必須**兩邊都看**：破壞後紅、還原後**綠**。只看到「紅」不能證明任何事——還原後沒有回到綠，就代表紅的原因不是你以為的那個。跑單一測試檔用 `cd apps/api && pnpm jest <path>`，不要用 `--filter`。
 
 這與上一條互補：exit code 是對的驗證方式，但它只回答「成功了嗎」，不回答「跑的是不是你以為的東西」。
+
+### 2026-08-21 — jsdom 沒有 pointer capture，Radix 的下拉在測試中永遠打不開
+
+**踩到什麼**：`ReviewForm` 的判定下拉寫了一支「沒有『回到待處理』選項」的測試，`userEvent.click(combobox)` 之後找不到任何 `role="option"`。改用鍵盤 `{Enter}` 一樣找不到。
+
+**Why**：Radix 的 `Select` / `DropdownMenu` 用 `hasPointerCapture` / `setPointerCapture` 判斷拖曳、用 `scrollIntoView` 把選中項捲進視野——**jsdom 三個都沒有實作**。缺了之後下拉根本不展開，而錯誤訊息是「Unable to find an accessible element with the role "option"」，看起來像是選項寫錯或名稱不對，指不到真正的原因。
+
+**How to apply**：補在 `apps/web/src/test/setup.ts`（一次補完，之後所有 Select / DropdownMenu 測試都受用）：
+
+```ts
+Element.prototype.hasPointerCapture = () => false;
+Element.prototype.setPointerCapture = () => undefined;
+Element.prototype.releasePointerCapture = () => undefined;
+Element.prototype.scrollIntoView = () => undefined;
+```
+
+同一類問題會出現在任何依賴瀏覽器互動 API 的 Radix 元件上。症狀一律是「找不到元素」而不是「API 不存在」。
+
+### 2026-08-21 — 「補一個欄位」的正確位置取決於那張表為什麼沒有外鍵
+
+**踩到什麼**：要讓檢舉列表帶出當事人 email，第一直覺是在 `PrismaChatReportRepository` 用 relation join——但 `chat_reports` 對 `members` **沒有外鍵**。
+
+**Why**：那不是疏漏，是刻意的：檢舉必須在被檢舉者的帳號被刪除之後仍然可以審閱。在 repository 加 join 等於悄悄假設「這個人一定還在」，而 Prisma 的 relation 也需要 schema 上真的有關聯。
+
+**How to apply**：**沒有外鍵的關聯，補值屬於 service 層**——收集本頁的 id、一次批次查、貼回結果，查不到就是 `null`。判準是問「這張表為什麼沒有外鍵」，答案通常直接指出補值該放哪一層。另外批次查要用**呼叫次數**斷言（`toHaveBeenCalledTimes(1)`），不要用「有沒有被呼叫」——N+1 在 15 筆測試資料上跑起來完全正常。

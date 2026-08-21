@@ -15,8 +15,21 @@ const PASSWORD = 'TestPass123!';
 const MISSING_ID = '00000000-0000-4000-8000-0000000000ff';
 const SNAPSHOT = '被檢舉時的訊息內容';
 
-type ListBody = { data: { list: { reportId: string }[] } };
-type DetailBody = { data: { contentSnapshot?: string; reportId: string } };
+type ListItem = {
+  reportId: string;
+  reporterEmail: string | null;
+  targetMemberEmail: string | null;
+};
+type ListBody = { data: { list: ListItem[] } };
+type DetailBody = {
+  data: {
+    contentSnapshot?: string;
+    reportId: string;
+    reporterEmail: string | null;
+    targetMemberEmail: string | null;
+    targetMessageRemovedAt: string | null;
+  };
+};
 
 describe('Moderation E2E', () => {
   let app: NestExpressApplication;
@@ -159,6 +172,52 @@ describe('Moderation E2E', () => {
       expect(await auditRows()).toHaveLength(0);
     });
 
+    it('帶出兩造的 email', async () => {
+      const res = await asFull('get', '/api/admin/moderation/reports');
+
+      const [row] = (res.body as ListBody).data.list;
+      expect(row.reporterEmail).toBe('admin@test.com');
+      expect(row.targetMemberEmail).toBe('offender@test.com');
+    });
+
+    // chat_reports 刻意不建外鍵，正是為了帳號消失後檢舉仍可審閱
+    it('⭐ 被檢舉人的帳號已刪除 → email 為 null，該筆仍在列表中', async () => {
+      await prisma.memberRecord.update({
+        where: { id: offenderId },
+        data: { deletedAt: new Date() },
+      });
+
+      const res = await asFull('get', '/api/admin/moderation/reports');
+
+      const [row] = (res.body as ListBody).data.list;
+      expect(row.targetMemberEmail).toBeNull();
+      expect(row.reporterEmail).toBe('admin@test.com');
+    });
+
+    /**
+     * 本端點的授權是 `BACKEND:MODERATION:VIEW`，不是 `BACKEND:ACCOUNT:VIEW`。
+     *
+     * 補 email 是為了讓審閱者辨識當事人；順手把角色、狀態、最後登入時間
+     * 一起帶出來就是在繞過帳號管理的權限邊界，而那種洩漏在 code review 時
+     * 看起來只是「多回幾個欄位」。
+     */
+    it('⭐ 只帶 email，不帶其他帳號資料', async () => {
+      const res = await asFull('get', '/api/admin/moderation/reports');
+
+      const [row] = (res.body as ListBody).data.list;
+      expect(Object.keys(row).sort()).toEqual([
+        'createdAt',
+        'reason',
+        'reportId',
+        'reporterEmail',
+        'reporterId',
+        'roomId',
+        'status',
+        'targetMemberEmail',
+        'targetMemberId',
+      ]);
+    });
+
     it('沒有 moderation 權限 → 403', async () => {
       const res = await request(app.getHttpServer())
         .get('/api/admin/moderation/reports')
@@ -202,6 +261,60 @@ describe('Moderation E2E', () => {
         `/api/admin/moderation/reports/${reportId}`,
       );
 
+      expect((res.body as DetailBody).data.contentSnapshot).toBe(SNAPSHOT);
+    });
+
+    it('詳情同樣帶出兩造的 email', async () => {
+      const res = await asFull(
+        'get',
+        `/api/admin/moderation/reports/${reportId}`,
+      );
+
+      expect((res.body as DetailBody).data.reporterEmail).toBe(
+        'admin@test.com',
+      );
+      expect((res.body as DetailBody).data.targetMemberEmail).toBe(
+        'offender@test.com',
+      );
+    });
+
+    // 介面依這個欄位二選一顯示「移除」或「還原」，兩者不可同時出現
+    it('⭐ 訊息被移除前後，targetMessageRemovedAt 從 null 變成時間戳', async () => {
+      const before = await asFull(
+        'get',
+        `/api/admin/moderation/reports/${reportId}`,
+      );
+      expect(
+        (before.body as DetailBody).data.targetMessageRemovedAt,
+      ).toBeNull();
+
+      await prisma.chatMessageRecord.updateMany({
+        where: { senderId: offenderId },
+        data: { removedAt: new Date(), removedBy: adminId },
+      });
+
+      const after = await asFull(
+        'get',
+        `/api/admin/moderation/reports/${reportId}`,
+      );
+      expect(
+        (after.body as DetailBody).data.targetMessageRemovedAt,
+      ).not.toBeNull();
+    });
+
+    // 檢舉的快照本來就不依賴訊息是否還在
+    it('訊息已不存在 → targetMessageRemovedAt 為 null 且詳情照常回傳', async () => {
+      await prisma.chatMessageRecord.deleteMany({
+        where: { senderId: offenderId },
+      });
+
+      const res = await asFull(
+        'get',
+        `/api/admin/moderation/reports/${reportId}`,
+      );
+
+      expect(res.status).toBe(200);
+      expect((res.body as DetailBody).data.targetMessageRemovedAt).toBeNull();
       expect((res.body as DetailBody).data.contentSnapshot).toBe(SNAPSHOT);
     });
 

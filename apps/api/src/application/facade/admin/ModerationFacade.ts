@@ -6,6 +6,7 @@ import {
   GetMemberTimelineResult,
   GetMemberTimelineUseCase,
   GetReportDetailQuery,
+  ReportDetailView,
   GetReportDetailUseCase,
   LIST_REPORTS_USE_CASE,
   ListReportsQuery,
@@ -26,7 +27,6 @@ import {
   UPDATE_MEMBER_USE_CASE,
   UpdateMemberUseCase,
 } from '@app/application/port/in/admin/member/UpdateMemberUseCase';
-import type { ChatReportDetail } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 
 @Injectable()
 export class ModerationFacade {
@@ -53,7 +53,7 @@ export class ModerationFacade {
     return this.listReportsUseCase.execute(query);
   }
 
-  getReportDetail(query: GetReportDetailQuery): Promise<ChatReportDetail> {
+  getReportDetail(query: GetReportDetailQuery): Promise<ReportDetailView> {
     return this.getReportDetailUseCase.execute(query);
   }
 

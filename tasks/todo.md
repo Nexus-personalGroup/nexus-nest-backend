@@ -23,7 +23,9 @@
   那部分與訊息無關，所以它獨立成一個 change 是對的切法。
 - ~~**M3 監控埋點**~~：`add-chat-observability` 已完成（Prometheus 自訂指標 + `chat_audit_log`）。
   - 檢舉入口與後台查詢已移到「進行中」。
-- **M4 後台介面**：SSE 即時儀表板、使用者 360 視圖、聊天室總覽、檢舉佇列與處置。
+- **M4 後台介面**：~~檢舉佇列與處置~~（`add-admin-moderation-ui` 已完成）。
+  剩 SSE 即時儀表板、使用者 360 視圖、聊天室總覽——三者與審閱動線沒有共用元件，
+  各自獨立成 change。360 視圖可以直接複用審閱詳情頁的時間軸元件。
 
 ### 待辦（近期）
 
@@ -153,6 +155,23 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-21 — 後台檢舉審閱介面（`add-admin-moderation-ui`）
+
+後端八個審閱端點做完後**沒有任何介面在用**，只有 e2e 測試碰過。這個 change 接起來，
+並補上「一接前端就露出來」的兩個後端落差：
+
+1. **檢舉回應只回 UUID**。前端逐列查 `/members/{id}` 在權限模型上不成立——
+   那支要 `BACKEND:ACCOUNT:VIEW`，審閱人員只有 `BACKEND:MODERATION:VIEW`。
+   改成後端補 email（service 層批次查一次，不在 repository join——
+   `chat_reports` 刻意沒有外鍵，join 會把那個決定悄悄推翻）。
+2. **詳情看不出訊息目前是否已被移除**，按鈕只能盲按。補 `targetMessageRemovedAt`
+   （回時間戳不回布林：布林會讓「何時被移除」永遠拿不到）。用既有的
+   `findForModeration()` 取，沒有新增訊息表的存取入口。
+
+前端刻意不 prefetch 詳情：查詳情每次都寫 `REPORT_VIEWED` 稽核，hover 預載會製造
+一堆沒有人真的看過的紀錄。**已知取捨**：每做一次處置會多一筆 `REPORT_VIEWED`，
+因為處置後要重查詳情才知道新狀態——而畫面確實又顯示了一次內容。
 
 ### 2026-08-21 — WS 連線層事件限流（`add-ws-connection-throttle`）
 

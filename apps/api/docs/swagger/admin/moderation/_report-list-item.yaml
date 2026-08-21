@@ -1,6 +1,17 @@
 # 佇列列表的項目。**刻意不含 contentSnapshot**——列表看不到任何敏感內容
 type: object
-required: [reportId, reporterId, targetMemberId, roomId, reason, status, createdAt]
+required:
+  [
+    reportId,
+    reporterId,
+    reporterEmail,
+    targetMemberId,
+    targetMemberEmail,
+    roomId,
+    reason,
+    status,
+    createdAt,
+  ]
 properties:
   reportId:
     type: string
@@ -8,9 +19,19 @@ properties:
   reporterId:
     type: string
     format: uuid
+  reporterEmail:
+    type: string
+    format: email
+    nullable: true
+    description: 檢舉人的 email；該帳號已被刪除時為 null
   targetMemberId:
     type: string
     format: uuid
+  targetMemberEmail:
+    type: string
+    format: email
+    nullable: true
+    description: 被檢舉人的 email；該帳號已被刪除時為 null
   roomId:
     type: string
     format: uuid
