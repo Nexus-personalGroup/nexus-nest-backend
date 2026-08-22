@@ -13,6 +13,51 @@ export interface ChatRoomSummary {
   createdAt: Date;
 }
 
+/**
+ * 後台視角的房間摘要。
+ *
+ * 與 `ChatRoomSummary` 分開而不是加欄位：前者是**成員視角**（前台「我的房間」用），
+ * 而 `messageCount` 對終端使用者沒有意義。同一個型別服務兩種視角，
+ * 遲早會有人在前台的回應裡看到後台才該有的數字。
+ */
+export interface AdminRoomSummary {
+  roomId: string;
+  roomType: ChatRoomType;
+  /** 群組名稱；私聊為 null */
+  name: string | null;
+  memberCount: number;
+  /**
+   * 歷史訊息總數，取自 `chat_rooms.last_seq`。
+   *
+   * **語意是「曾經有多少則」**，含已撤回與已被移除的訊息。
+   * 訊息列永遠不會被刪除（刪了會讓 seq 出現洞），所以它與 `count(*)` 目前相等——
+   * 但它不需要多一次查詢，而且在日後真的做了清理時仍然誠實。
+   */
+  messageCount: number;
+  createdAt: Date;
+}
+
+export interface AdminRoomMember {
+  memberId: string;
+  joinedAt: Date;
+}
+
+export interface AdminRoomDetail extends AdminRoomSummary {
+  members: AdminRoomMember[];
+}
+
+export interface ListAllRoomsParams {
+  /** 未指定表示不篩選 */
+  roomType?: ChatRoomType;
+  page: number;
+  limit: number;
+}
+
+export interface ListAllRoomsPage {
+  data: AdminRoomSummary[];
+  total: number;
+}
+
 export interface ListMyRoomsParams {
   memberId: string;
   page: number;
@@ -54,4 +99,16 @@ export interface ChatRoomRepositoryPort {
   countMembers(roomId: string): Promise<number>;
   /** 房間目前已配出的最大訊息序號；房間不存在時回 null */
   getLastSeq(roomId: string): Promise<number | null>;
+
+  /**
+   * 後台的房間列表。
+   *
+   * **與 `listByMember` 分開而不是加一個 optional memberId**：
+   * 兩者的語意不同（「某人的房間」與「全部房間」），
+   * 混在同一個查詢裡會讓「忘了帶 memberId」變成一個看不出來的越權。
+   */
+  listAll(params: ListAllRoomsParams): Promise<ListAllRoomsPage>;
+
+  /** 後台的單一房間概覽，含成員清單；房間不存在時回 null */
+  findAdminDetail(roomId: string): Promise<AdminRoomDetail | null>;
 }

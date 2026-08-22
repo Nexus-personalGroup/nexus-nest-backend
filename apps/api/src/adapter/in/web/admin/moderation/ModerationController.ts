@@ -18,6 +18,8 @@ import type {
   ListMemberReportsResult,
   ListMemberRoomsResult,
   ListReportsResult,
+  ListRoomsResult,
+  RoomDetailView,
   MemberProfile,
   ReportDetailView,
 } from '@app/application/port/in/admin/moderation/ModerationUseCases';
@@ -32,6 +34,8 @@ import {
   ListReportsQuery,
   memberReportsQuerySchema,
   MemberReportsQuery,
+  listRoomsQuerySchema,
+  ListRoomsQueryDto,
   reviewReportSchema,
   ReviewReportRequest,
   timelineQuerySchema,
@@ -156,6 +160,29 @@ export class ModerationController {
     @Param('memberId', ParseUUIDPipe) memberId: string,
   ): Promise<void> {
     await this.moderationFacade.reinstateMember(memberId, member.sub);
+  }
+
+  /**
+   * 聊天室列表。
+   *
+   * **回應不含任何訊息內容**——總覽回答的是「這個房間發生了什麼」，
+   * 不是「他們說了什麼」。要看內容仍然只能經由檢舉。
+   */
+  @Get('rooms')
+  @Permissions(PermissionCode.BACKEND_MODERATION_VIEW)
+  listRooms(
+    @Query(new ZodValidationPipe(listRoomsQuerySchema))
+    query: ListRoomsQueryDto,
+  ): Promise<ListRoomsResult> {
+    return this.moderationFacade.listRooms(query);
+  }
+
+  @Get('rooms/:roomId')
+  @Permissions(PermissionCode.BACKEND_MODERATION_VIEW)
+  getRoomDetail(
+    @Param('roomId', ParseUUIDPipe) roomId: string,
+  ): Promise<RoomDetailView> {
+    return this.moderationFacade.getRoomDetail(roomId);
   }
 
   /**

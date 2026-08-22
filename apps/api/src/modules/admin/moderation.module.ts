@@ -7,6 +7,8 @@ import {
   GET_REPORT_DETAIL_USE_CASE,
   LIST_MEMBER_REPORTS_USE_CASE,
   LIST_MEMBER_ROOMS_USE_CASE,
+  LIST_ROOMS_USE_CASE,
+  GET_ROOM_DETAIL_USE_CASE,
   LIST_REPORTS_USE_CASE,
   REVIEW_REPORT_USE_CASE,
 } from '../../application/port/in/admin/moderation/ModerationUseCases';
@@ -17,6 +19,8 @@ import { GetMemberTimelineService } from '../../application/service/admin/modera
 import { GetMemberProfileService } from '../../application/service/admin/moderation/GetMemberProfileService';
 import { ListMemberReportsService } from '../../application/service/admin/moderation/ListMemberReportsService';
 import { ListMemberRoomsService } from '../../application/service/admin/moderation/ListMemberRoomsService';
+import { ListRoomsService } from '../../application/service/admin/moderation/ListRoomsService';
+import { GetRoomDetailService } from '../../application/service/admin/moderation/GetRoomDetailService';
 import { RemoveMessageService } from '../../application/service/admin/moderation/RemoveMessageService';
 import { RestoreMessageService } from '../../application/service/admin/moderation/RestoreMessageService';
 import {
@@ -60,6 +64,8 @@ import { MemberModule } from './member.module';
       useClass: ListMemberReportsService,
     },
     { provide: LIST_MEMBER_ROOMS_USE_CASE, useClass: ListMemberRoomsService },
+    { provide: LIST_ROOMS_USE_CASE, useClass: ListRoomsService },
+    { provide: GET_ROOM_DETAIL_USE_CASE, useClass: GetRoomDetailService },
     { provide: REMOVE_MESSAGE_USE_CASE, useClass: RemoveMessageService },
     { provide: RESTORE_MESSAGE_USE_CASE, useClass: RestoreMessageService },
     ModerationFacade,

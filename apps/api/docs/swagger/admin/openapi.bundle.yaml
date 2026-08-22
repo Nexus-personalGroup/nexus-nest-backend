@@ -697,6 +697,238 @@ paths:
                 timestamp: '2026-08-21T06:00:00.000Z'
         '500':
           $ref: '#/components/responses/InternalServerError'
+  /moderation/rooms:
+    get:
+      tags:
+        - Moderation
+      summary: 查詢聊天室列表
+      description: |
+        需 `BACKEND:MODERATION:VIEW` 權限。
+
+        **回應不含任何訊息內容**——總覽回答的是「這個房間發生了什麼」，
+        不是「他們說了什麼」。要看內容仍然只能經由檢舉，那保持了「看內容必須有理由」。
+      parameters:
+        - name: roomType
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - DIRECT
+              - GROUP
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - list
+                      - meta
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - roomId
+                            - roomType
+                            - name
+                            - memberCount
+                            - messageCount
+                            - createdAt
+                          properties:
+                            roomId:
+                              type: string
+                              format: uuid
+                            roomType:
+                              type: string
+                              enum:
+                                - DIRECT
+                                - GROUP
+                            name:
+                              type: string
+                              nullable: true
+                              description: 群組名稱；私聊為 null（顯示名稱由對方決定，不落庫）
+                            memberCount:
+                              type: integer
+                            messageCount:
+                              type: integer
+                              description: |
+                                **歷史訊息總數**，取自 `chat_rooms.last_seq`。
+
+                                語意是「這個房間曾經有多少則」——**含已撤回與已被管理員移除的訊息**，
+                                不是「目前存在幾則」。訊息列永遠不會被刪除（刪了會讓 seq 出現洞，
+                                補齊的客戶端無法區分「被清掉」與「我漏收了」），因此兩者目前相等，
+                                但 last_seq 不需要多一次查詢。
+                            createdAt:
+                              type: string
+                              format: date-time
+                      meta:
+                        type: object
+                        required:
+                          - page
+                          - limit
+                          - total
+                          - totalPages
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: roomType 不是 DIRECT 或 GROUP
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 資料驗證失敗
+                code: VALIDATION_ERROR
+                timestamp: '2026-08-21T06:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/moderation/rooms/{roomId}':
+    get:
+      tags:
+        - Moderation
+      summary: 查詢單一聊天室的概覽
+      description: |
+        需 `BACKEND:MODERATION:VIEW` 權限。
+
+        回傳房間概覽與**完整成員清單**（不分頁：房間成員數受業務常識約束，
+        而分頁一個 20 人的清單只會多一組狀態要管）。
+
+        **回應不含訊息內容，也不含任何訊息 ID**——房間詳情不是內容存取路徑。
+        要看內容只能經由檢舉。
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - roomId
+                      - roomType
+                      - name
+                      - memberCount
+                      - messageCount
+                      - createdAt
+                      - members
+                    properties:
+                      roomId:
+                        type: string
+                        format: uuid
+                      roomType:
+                        type: string
+                        enum:
+                          - DIRECT
+                          - GROUP
+                      name:
+                        type: string
+                        nullable: true
+                        description: 群組名稱；私聊為 null
+                      memberCount:
+                        type: integer
+                      messageCount:
+                        type: integer
+                        description: |
+                          **歷史訊息總數**，含已撤回與已被移除的訊息；不是「目前存在幾則」
+                      createdAt:
+                        type: string
+                        format: date-time
+                      members:
+                        type: array
+                        items:
+                          type: object
+                          required:
+                            - memberId
+                            - email
+                            - joinedAt
+                          properties:
+                            memberId:
+                              type: string
+                              format: uuid
+                            email:
+                              type: string
+                              format: email
+                              nullable: true
+                              description: 該帳號已被刪除時為 null
+                            joinedAt:
+                              type: string
+                              format: date-time
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 聊天室不存在
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 聊天室不存在
+                code: CHAT_ROOM_NOT_FOUND
+                timestamp: '2026-08-21T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   '/moderation/members/{memberId}':
     get:
       tags:

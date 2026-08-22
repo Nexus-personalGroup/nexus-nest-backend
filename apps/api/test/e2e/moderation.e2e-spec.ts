@@ -391,6 +391,180 @@ describe('Moderation E2E', () => {
     });
   });
 
+  describe('聊天室總覽', () => {
+    type RoomListBody = {
+      data: {
+        list: {
+          roomId: string;
+          roomType: string;
+          name: string | null;
+          memberCount: number;
+          messageCount: number;
+        }[];
+        meta: { total: number };
+      };
+    };
+    type RoomDetailBody = {
+      data: {
+        members: { memberId: string; email: string | null }[];
+        messageCount: number;
+      };
+    };
+
+    const listRooms = (query = '', token = tokenFull) =>
+      request(app.getHttpServer())
+        .get(`/api/admin/moderation/rooms${query}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    const roomDetail = (id: string, token = tokenFull) =>
+      request(app.getHttpServer())
+        .get(`/api/admin/moderation/rooms/${id}`)
+        .set('Authorization', `Bearer ${token}`);
+
+    /** beforeEach 已建了一個群組（審閱測試房間），這裡再補一個私聊 */
+    const seedDirect = () =>
+      prisma.chatRoomRecord.create({
+        data: {
+          roomType: 'DIRECT',
+          directKey: `${adminId}:${offenderId}`,
+          members: {
+            create: [{ memberId: adminId }, { memberId: offenderId }],
+          },
+        },
+      });
+
+    it('列出全部房間，私聊的 name 為 null', async () => {
+      await seedDirect();
+
+      const res = await listRooms();
+
+      expect(res.status).toBe(200);
+      const { list } = (res.body as RoomListBody).data;
+      expect(list.length).toBeGreaterThanOrEqual(2);
+      expect(list.find((room) => room.roomType === 'DIRECT')?.name).toBeNull();
+    });
+
+    it('roomType 篩選各自只回對應類型', async () => {
+      await seedDirect();
+
+      const groups = await listRooms('?roomType=GROUP');
+      const directs = await listRooms('?roomType=DIRECT');
+
+      expect(
+        (groups.body as RoomListBody).data.list.every(
+          (room) => room.roomType === 'GROUP',
+        ),
+      ).toBe(true);
+      expect(
+        (directs.body as RoomListBody).data.list.every(
+          (room) => room.roomType === 'DIRECT',
+        ),
+      ).toBe(true);
+    });
+
+    /**
+     * `messageCount` 的語意是**歷史累計**，不是「目前存在幾則」。
+     *
+     * 它取自 `chat_rooms.last_seq`——訊息列永遠不會被刪除，撤回與移除都只是打標記。
+     * 改成 `count(*)` 的話這支測試仍會過（因為列還在），
+     * 但語意會在日後真的做訊息清理時悄悄改變。
+     */
+    it('⭐ 撤回與移除的訊息仍計入 messageCount', async () => {
+      const room = await prisma.chatRoomRecord.create({
+        data: { roomType: 'GROUP', name: '計數測試房', lastSeq: 3 },
+      });
+      await prisma.chatMessageRecord.createMany({
+        data: [
+          {
+            roomId: room.id,
+            senderId: offenderId,
+            content: '第一則',
+            seq: 1,
+            clientMessageId: 'm-1',
+            retractedAt: new Date(),
+            retractedBy: offenderId,
+          },
+          {
+            roomId: room.id,
+            senderId: offenderId,
+            content: '第二則',
+            seq: 2,
+            clientMessageId: 'm-2',
+            removedAt: new Date(),
+            removedBy: adminId,
+          },
+          {
+            roomId: room.id,
+            senderId: offenderId,
+            content: '第三則',
+            seq: 3,
+            clientMessageId: 'm-3',
+          },
+        ],
+      });
+
+      const res = await roomDetail(room.id);
+
+      expect((res.body as RoomDetailBody).data.messageCount).toBe(3);
+    });
+
+    it('詳情的成員清單含 email', async () => {
+      const direct = await seedDirect();
+
+      const res = await roomDetail(direct.id);
+
+      expect(res.status).toBe(200);
+      const { members } = (res.body as RoomDetailBody).data;
+      expect(members).toHaveLength(2);
+      expect(members.map((member) => member.email).sort()).toEqual([
+        'admin@test.com',
+        'offender@test.com',
+      ]);
+    });
+
+    // 帳號刪除不該讓成員從房間裡消失——那會讓成員數與清單長度對不起來
+    it('成員的帳號已刪除 → email 為 null 且仍在清單中', async () => {
+      const direct = await seedDirect();
+      await prisma.memberRecord.update({
+        where: { id: offenderId },
+        data: { deletedAt: new Date() },
+      });
+
+      const res = await roomDetail(direct.id);
+
+      const { members } = (res.body as RoomDetailBody).data;
+      expect(members).toHaveLength(2);
+      expect(members.filter((member) => member.email === null)).toHaveLength(1);
+    });
+
+    /**
+     * 房間總覽**不是內容存取路徑**。
+     *
+     * 這是這個 change 最重要的一條界線：看得到房間訊息是實質擴權，
+     * 從「有人檢舉才看得到那一句」變成「能瀏覽任何房間的對話」。
+     */
+    it('⭐ 列表與詳情都不含訊息內容', async () => {
+      const list = await listRooms();
+      const detail = await roomDetail(
+        (list.body as RoomListBody).data.list[0].roomId,
+      );
+
+      expect(JSON.stringify(list.body)).not.toContain(SNAPSHOT);
+      expect(JSON.stringify(detail.body)).not.toContain(SNAPSHOT);
+    });
+
+    it('房間不存在 → 404', async () => {
+      const res = await roomDetail(MISSING_ID);
+
+      expectApiError(res, 404, ResponseCodes.CHAT_ROOM_NOT_FOUND);
+    });
+
+    it('只有 ACCOUNT:VIEW → 兩支都 403', async () => {
+      expectForbidden(await listRooms('', tokenNone));
+      expectForbidden(await roomDetail(MISSING_ID, tokenNone));
+    });
+  });
+
   describe('成員概覽', () => {
     const profile = (id: string, token = tokenFull) =>
       request(app.getHttpServer())

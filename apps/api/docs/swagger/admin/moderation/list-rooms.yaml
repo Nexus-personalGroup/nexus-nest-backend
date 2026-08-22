@@ -1,0 +1,80 @@
+tags: [Moderation]
+summary: 查詢聊天室列表
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  **回應不含任何訊息內容**——總覽回答的是「這個房間發生了什麼」，
+  不是「他們說了什麼」。要看內容仍然只能經由檢舉，那保持了「看內容必須有理由」。
+
+parameters:
+  - name: roomType
+    in: query
+    required: false
+    schema:
+      type: string
+      enum: [DIRECT, GROUP]
+  - name: page
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 100
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: './_admin-room.yaml'
+                meta:
+                  type: object
+                  required: [page, limit, total, totalPages]
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+  '400':
+    description: roomType 不是 DIRECT 或 GROUP
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 資料驗證失敗
+          code: VALIDATION_ERROR
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

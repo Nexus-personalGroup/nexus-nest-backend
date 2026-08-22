@@ -33,3 +33,11 @@ export const memberReportsQuerySchema = z.object({
 });
 
 export type MemberReportsQuery = z.infer<typeof memberReportsQuerySchema>;
+
+export const listRoomsQuerySchema = z.object({
+  roomType: z.enum(['DIRECT', 'GROUP']).optional(),
+  page: z.coerce.number().int().positive().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
+export type ListRoomsQueryDto = z.infer<typeof listRoomsQuerySchema>;
