@@ -31,6 +31,22 @@ export const buildPasswordResetKey = (prefix: string, token: string): string =>
 export const buildPresenceKey = (prefix: string, memberId: string): string =>
   `${prefix}presence:member:${memberId}`;
 
+/**
+ * 目前有在線連線的成員 ID 集合。
+ *
+ * **這是衍生索引，不是連線紀錄。** 真相仍然在 `presence:member:*` 的 Hash 上
+ * （每筆連線帶心跳時間、由 TTL 與 sweep 回收）——本 Set 只是為了讓
+ * 「在線人數」變成 O(1) 的 `SCARD` 而存在的投影。
+ *
+ * 因此它**不牴觸**「不得用無時效集合儲存連線」那條規則：被禁止的是把連線本身
+ * 存成集合（實例被 kill 時無法自動恢復），而這裡任何**在線與否的判斷**
+ * 讀的仍然是 Hash。Set 壞掉只會讓統計數字暫時不準，不會給出錯的狀態。
+ *
+ * 漂移由 sweep 的既有遍歷以差集校正——實例被強制終止時 `markOffline` 不會執行。
+ */
+export const buildOnlineMembersKey = (prefix: string): string =>
+  `${prefix}presence:online-members`;
+
 /** 掃描所有 presence key 的 pattern，供排程 sweep 使用（不可用於請求路徑） */
 export const buildPresenceScanPattern = (prefix: string): string =>
   `${prefix}presence:member:*`;

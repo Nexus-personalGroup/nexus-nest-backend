@@ -44,6 +44,11 @@ export const createMockRedis = () => ({
   hashGetAll: jest.fn().mockResolvedValue({}),
   // presence 的全域計數走 SCAN；沒有這一支的話儀表板的線上人數會炸成 500
   scanKeys: jest.fn().mockResolvedValue([]),
+  // 在線成員的衍生索引；與 scanKeys 同樣的意思——e2e 沒有真的 WS 連線
+  setAdd: jest.fn().mockResolvedValue(undefined),
+  setRemove: jest.fn().mockResolvedValue(undefined),
+  setCard: jest.fn().mockResolvedValue(0),
+  setMembers: jest.fn().mockResolvedValue([]),
 });
 
 /** 每次呼叫回傳全新的 SaveSystemLog mock 實例 */
