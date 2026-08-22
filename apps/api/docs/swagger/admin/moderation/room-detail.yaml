@@ -1,0 +1,101 @@
+tags: [Moderation]
+summary: 查詢單一聊天室的概覽
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  回傳房間概覽與**完整成員清單**（不分頁：房間成員數受業務常識約束，
+  而分頁一個 20 人的清單只會多一組狀態要管）。
+
+  **回應不含訊息內容，也不含任何訊息 ID**——房間詳情不是內容存取路徑。
+  要看內容只能經由檢舉。
+
+parameters:
+  - name: roomId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            # 不用 allOf 併入 _admin-room：openapi-typescript 會產出交集型別，
+            # 而 api-client 的 codegen 在那之後取 `.schema` 會失敗（只有 typecheck 抓得到）
+            data:
+              type: object
+              required:
+                [
+                  roomId,
+                  roomType,
+                  name,
+                  memberCount,
+                  messageCount,
+                  createdAt,
+                  members,
+                ]
+              properties:
+                roomId:
+                  type: string
+                  format: uuid
+                roomType:
+                  type: string
+                  enum: [DIRECT, GROUP]
+                name:
+                  type: string
+                  nullable: true
+                  description: 群組名稱；私聊為 null
+                memberCount:
+                  type: integer
+                messageCount:
+                  type: integer
+                  description: |
+                    **歷史訊息總數**，含已撤回與已被移除的訊息；不是「目前存在幾則」
+                createdAt:
+                  type: string
+                  format: date-time
+                members:
+                  type: array
+                  items:
+                    type: object
+                    required: [memberId, email, joinedAt]
+                    properties:
+                      memberId:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+                        nullable: true
+                        description: 該帳號已被刪除時為 null
+                      joinedAt:
+                        type: string
+                        format: date-time
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 聊天室不存在
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 聊天室不存在
+          code: CHAT_ROOM_NOT_FOUND
+          timestamp: '2026-08-21T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

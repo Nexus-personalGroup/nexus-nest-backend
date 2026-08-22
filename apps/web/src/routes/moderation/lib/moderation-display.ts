@@ -153,3 +153,39 @@ export const parseReportRole = (
 /** 兩個方向各自的對造欄位標題——對造是「另一邊」，不是這個人自己 */
 export const counterpartHeader = (role: MemberReportRole): string =>
   role === 'TARGET' ? '檢舉人' : '被檢舉人';
+
+/** 聊天室類型 */
+export type RoomType = 'DIRECT' | 'GROUP';
+
+/**
+ * 聊天室類型的中文標籤
+ *
+ * @param roomType - 後端回的類型列舉
+ * @returns 中文標籤；認不得時回原字串
+ */
+export const roomTypeLabel = (roomType: string): string =>
+  roomType === 'GROUP' ? '群組' : roomType === 'DIRECT' ? '私聊' : roomType;
+
+/**
+ * 把 URL 的 roomType 參數轉成篩選值
+ *
+ * `undefined` 代表「全部」——後端的 query 是選填，不帶就不篩選。
+ * 認不得的值也落回全部，使用者手改網址不該讓畫面壞掉。
+ *
+ * @param raw - URL query 中的原始值
+ * @returns 合法的類型，或 undefined 表示不篩選
+ */
+export const parseRoomTypeFilter = (
+  raw: string | null | undefined,
+): RoomType | undefined =>
+  raw === 'GROUP' || raw === 'DIRECT' ? raw : undefined;
+
+/**
+ * 訊息量的說明文字
+ *
+ * `messageCount` 取自 `chat_rooms.last_seq`，語意是「這個房間曾經有多少則」——
+ * **含已撤回與已被移除的訊息**。不標明的話它會被讀成「現在有幾則」，
+ * 而那兩個數字在有人撤回過訊息之後就不一樣了。
+ */
+export const MESSAGE_COUNT_HINT =
+  '歷史累計，含已撤回與已被移除的訊息；不是目前顯示中的則數';

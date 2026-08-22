@@ -214,6 +214,14 @@ paths:
     post:
       $ref: './moderation/reinstate-member.yaml'
 
+  /moderation/rooms:
+    get:
+      $ref: './moderation/list-rooms.yaml'
+
+  /moderation/rooms/{roomId}:
+    get:
+      $ref: './moderation/room-detail.yaml'
+
   /moderation/members/{memberId}:
     get:
       $ref: './moderation/member-profile.yaml'

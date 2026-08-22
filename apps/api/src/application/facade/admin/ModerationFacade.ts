@@ -16,6 +16,13 @@ import {
   ListMemberRoomsResult,
   ListMemberRoomsUseCase,
   LIST_MEMBER_ROOMS_USE_CASE,
+  ListRoomsQuery,
+  ListRoomsResult,
+  ListRoomsUseCase,
+  LIST_ROOMS_USE_CASE,
+  GetRoomDetailUseCase,
+  GET_ROOM_DETAIL_USE_CASE,
+  RoomDetailView,
   MemberProfile,
   ReportDetailView,
   GetReportDetailUseCase,
@@ -64,6 +71,10 @@ export class ModerationFacade {
     private readonly listMemberReportsUseCase: ListMemberReportsUseCase,
     @Inject(LIST_MEMBER_ROOMS_USE_CASE)
     private readonly listMemberRoomsUseCase: ListMemberRoomsUseCase,
+    @Inject(LIST_ROOMS_USE_CASE)
+    private readonly listRoomsUseCase: ListRoomsUseCase,
+    @Inject(GET_ROOM_DETAIL_USE_CASE)
+    private readonly getRoomDetailUseCase: GetRoomDetailUseCase,
   ) {}
 
   listReports(query: ListReportsQuery): Promise<ListReportsResult> {
@@ -90,6 +101,14 @@ export class ModerationFacade {
 
   listMemberRooms(query: ListMemberRoomsQuery): Promise<ListMemberRoomsResult> {
     return this.listMemberRoomsUseCase.execute(query);
+  }
+
+  listRooms(query: ListRoomsQuery): Promise<ListRoomsResult> {
+    return this.listRoomsUseCase.execute(query);
+  }
+
+  getRoomDetail(roomId: string): Promise<RoomDetailView> {
+    return this.getRoomDetailUseCase.execute(roomId);
   }
 
   getMemberTimeline(

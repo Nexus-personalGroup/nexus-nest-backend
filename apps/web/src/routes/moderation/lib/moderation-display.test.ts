@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   actionLabel,
   counterpartHeader,
+  MESSAGE_COUNT_HINT,
   messageActionFor,
+  parseRoomTypeFilter,
+  roomTypeLabel,
   onlineLabel,
   parseReportRole,
   participantLabel,
@@ -145,5 +148,40 @@ describe('counterpartHeader', () => {
   it('兩個方向的對造不同', () => {
     expect(counterpartHeader('TARGET')).toBe('檢舉人');
     expect(counterpartHeader('REPORTER')).toBe('被檢舉人');
+  });
+});
+
+describe('roomTypeLabel', () => {
+  it('把類型轉成中文', () => {
+    expect(roomTypeLabel('GROUP')).toBe('群組');
+    expect(roomTypeLabel('DIRECT')).toBe('私聊');
+  });
+
+  it('認不得的值回原字串', () => {
+    expect(roomTypeLabel('CHANNEL')).toBe('CHANNEL');
+  });
+});
+
+describe('parseRoomTypeFilter', () => {
+  it('沒帶參數 → undefined（不篩選）', () => {
+    expect(parseRoomTypeFilter(null)).toBeUndefined();
+    expect(parseRoomTypeFilter(undefined)).toBeUndefined();
+  });
+
+  it('兩個合法值原樣回傳', () => {
+    expect(parseRoomTypeFilter('GROUP')).toBe('GROUP');
+    expect(parseRoomTypeFilter('DIRECT')).toBe('DIRECT');
+  });
+
+  it('認不得的值落回不篩選', () => {
+    expect(parseRoomTypeFilter('whatever')).toBeUndefined();
+  });
+});
+
+describe('MESSAGE_COUNT_HINT', () => {
+  // 不標明的話「訊息量」會被讀成「現在有幾則」，而撤回過訊息後兩者就不一樣了
+  it('說明文字要點出「含已撤回與已移除」', () => {
+    expect(MESSAGE_COUNT_HINT).toContain('已撤回');
+    expect(MESSAGE_COUNT_HINT).toContain('已被移除');
   });
 });

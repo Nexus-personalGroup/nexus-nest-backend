@@ -578,6 +578,199 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/moderation/rooms": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢聊天室列表
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     **回應不含任何訊息內容**——總覽回答的是「這個房間發生了什麼」，
+         *     不是「他們說了什麼」。要看內容仍然只能經由檢舉，那保持了「看內容必須有理由」。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    roomType?: "DIRECT" | "GROUP";
+                    page?: number;
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                list: {
+                                    /** Format: uuid */
+                                    roomId: string;
+                                    /** @enum {string} */
+                                    roomType: "DIRECT" | "GROUP";
+                                    /** @description 群組名稱；私聊為 null（顯示名稱由對方決定，不落庫） */
+                                    name: string | null;
+                                    memberCount: number;
+                                    /**
+                                     * @description **歷史訊息總數**，取自 `chat_rooms.last_seq`。
+                                     *
+                                     *     語意是「這個房間曾經有多少則」——**含已撤回與已被管理員移除的訊息**，
+                                     *     不是「目前存在幾則」。訊息列永遠不會被刪除（刪了會讓 seq 出現洞，
+                                     *     補齊的客戶端無法區分「被清掉」與「我漏收了」），因此兩者目前相等，
+                                     *     但 last_seq 不需要多一次查詢。
+                                     */
+                                    messageCount: number;
+                                    /** Format: date-time */
+                                    createdAt: string;
+                                }[];
+                                meta: {
+                                    page: number;
+                                    limit: number;
+                                    total: number;
+                                    totalPages: number;
+                                };
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                /** @description roomType 不是 DIRECT 或 GROUP */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "資料驗證失敗",
+                         *       "code": "VALIDATION_ERROR",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/rooms/{roomId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢單一聊天室的概覽
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     回傳房間概覽與**完整成員清單**（不分頁：房間成員數受業務常識約束，
+         *     而分頁一個 20 人的清單只會多一組狀態要管）。
+         *
+         *     **回應不含訊息內容，也不含任何訊息 ID**——房間詳情不是內容存取路徑。
+         *     要看內容只能經由檢舉。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    roomId: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                /** Format: uuid */
+                                roomId: string;
+                                /** @enum {string} */
+                                roomType: "DIRECT" | "GROUP";
+                                /** @description 群組名稱；私聊為 null */
+                                name: string | null;
+                                memberCount: number;
+                                /** @description **歷史訊息總數**，含已撤回與已被移除的訊息；不是「目前存在幾則」 */
+                                messageCount: number;
+                                /** Format: date-time */
+                                createdAt: string;
+                                members: {
+                                    /** Format: uuid */
+                                    memberId: string;
+                                    /**
+                                     * Format: email
+                                     * @description 該帳號已被刪除時為 null
+                                     */
+                                    email: string | null;
+                                    /** Format: date-time */
+                                    joinedAt: string;
+                                }[];
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                /** @description 聊天室不存在 */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /**
+                         * @example {
+                         *       "success": false,
+                         *       "message": "聊天室不存在",
+                         *       "code": "CHAT_ROOM_NOT_FOUND",
+                         *       "timestamp": "2026-08-21T06:00:00.000Z"
+                         *     }
+                         */
+                        "application/json": components["schemas"]["ErrorResponse"];
+                    };
+                };
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/moderation/members/{memberId}": {
         parameters: {
             query?: never;

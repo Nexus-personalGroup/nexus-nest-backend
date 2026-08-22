@@ -15,6 +15,8 @@ import { RolesPage } from '@/routes/roles/page';
 import { ReportsPage } from '@/routes/moderation/reports/page';
 import { ReportDetailPage } from '@/routes/moderation/report-detail/page';
 import { MemberProfilePage } from '@/routes/moderation/member-profile/page';
+import { RoomsPage } from '@/routes/moderation/rooms/page';
+import { RoomDetailPage } from '@/routes/moderation/room-detail/page';
 import { IpWhitelistPage } from '@/routes/security/ip-whitelist/page';
 import { IpBlacklistPage } from '@/routes/security/ip-blacklist/page';
 import { queryClient } from '@/api/query-client';
@@ -49,6 +51,11 @@ export const App = () => {
                 <Route
                   path="/moderation/members/:memberId"
                   element={<MemberProfilePage />}
+                />
+                <Route path="/moderation/rooms" element={<RoomsPage />} />
+                <Route
+                  path="/moderation/rooms/:roomId"
+                  element={<RoomDetailPage />}
                 />
                 <Route
                   path="/security/ip-whitelist"

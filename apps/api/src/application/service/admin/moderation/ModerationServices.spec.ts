@@ -3,6 +3,9 @@ import { GetReportDetailService } from './GetReportDetailService';
 import { GetMemberTimelineService } from './GetMemberTimelineService';
 import { GetMemberProfileService } from './GetMemberProfileService';
 import { ListMemberReportsService } from './ListMemberReportsService';
+import { ListRoomsService } from './ListRoomsService';
+import { GetRoomDetailService } from './GetRoomDetailService';
+import { ChatRoomNotFoundException } from '@app/domain/exception/ChatRoomNotFoundException';
 import { MemberNotFoundException } from '@app/domain/exception/MemberNotFoundException';
 import type { ChatRoomRepositoryPort } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
 import type { PresencePort } from '@app/application/port/out/presence/PresencePort';
@@ -25,6 +28,8 @@ const mockReportRepo = {
 
 const mockRoomRepo = {
   listByMember: jest.fn(),
+  listAll: jest.fn(),
+  findAdminDetail: jest.fn(),
 } as unknown as jest.Mocked<ChatRoomRepositoryPort>;
 
 const mockPresence = {
@@ -599,5 +604,119 @@ describe('ListMemberReportsService', () => {
     await service.execute({ memberId: 'bob' });
 
     expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('ListRoomsService', () => {
+  let service: ListRoomsService;
+
+  const room = {
+    roomId: 'room-1',
+    roomType: 'GROUP' as const,
+    name: '午餐團',
+    memberCount: 3,
+    messageCount: 10,
+    createdAt: new Date(0),
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRoomRepo.listAll.mockResolvedValue({ data: [room], total: 1 });
+    service = new ListRoomsService(mockRoomRepo);
+  });
+
+  it('未指定類型 → 不篩選', async () => {
+    await service.execute({});
+
+    expect(mockRoomRepo.listAll).toHaveBeenCalledWith(
+      expect.objectContaining({ roomType: undefined }),
+    );
+  });
+
+  it('可指定只看群組', async () => {
+    await service.execute({ roomType: 'GROUP' });
+
+    expect(mockRoomRepo.listAll).toHaveBeenCalledWith(
+      expect.objectContaining({ roomType: 'GROUP' }),
+    );
+  });
+
+  /**
+   * `messageCount` 來自 `chat_rooms.last_seq`，不是訊息列的 count。
+   *
+   * 這支測試用「repository 回 messageCount=10」來釘住 service 不會自作聰明
+   * 去重算——真正驗證資料來源的是 e2e（發 3 則、撤回 1、移除 1，仍是 3）。
+   */
+  it('訊息量原樣傳遞，service 不重算', async () => {
+    const { list } = await service.execute({});
+
+    expect(list[0].messageCount).toBe(10);
+  });
+
+  // 回應不含任何訊息內容，記了會讓稽核量與「點了幾下」對齊
+  it('沒有注入稽核 port（列表不可能寫稽核）', () => {
+    const injected: unknown = Reflect.getMetadata(
+      'self:paramtypes',
+      ListRoomsService,
+    );
+    const tokens = Array.isArray(injected)
+      ? injected.map((dep: { param: unknown }) => dep.param)
+      : [];
+
+    expect(tokens).not.toContain(CHAT_AUDIT_PORT);
+  });
+});
+
+describe('GetRoomDetailService', () => {
+  let service: GetRoomDetailService;
+
+  const detail = {
+    roomId: 'room-1',
+    roomType: 'GROUP' as const,
+    name: '午餐團',
+    memberCount: 2,
+    messageCount: 10,
+    createdAt: new Date(0),
+    members: [
+      { memberId: 'alice', joinedAt: new Date(0) },
+      { memberId: 'ghost', joinedAt: new Date(0) },
+    ],
+  };
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockRoomRepo.findAdminDetail.mockResolvedValue(detail);
+    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+      new Map([['alice', 'alice@example.com']]),
+    );
+    service = new GetRoomDetailService(mockRoomRepo, mockMemberRepo);
+  });
+
+  it('補上成員的 email', async () => {
+    const result = await service.execute('room-1');
+
+    expect(result.members[0].email).toBe('alice@example.com');
+  });
+
+  // 帳號刪除不該讓成員從房間裡消失——那會讓成員數與清單長度對不起來
+  it('帳號已刪除 → email 為 null，該成員仍在清單中', async () => {
+    const result = await service.execute('room-1');
+
+    expect(result.members[1].email).toBeNull();
+    expect(result.members).toHaveLength(2);
+  });
+
+  it('⭐ 補 email 只查一次', async () => {
+    await service.execute('room-1');
+
+    expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
+  });
+
+  it('房間不存在 → ChatRoomNotFoundException', async () => {
+    mockRoomRepo.findAdminDetail.mockResolvedValue(null);
+
+    await expect(service.execute('ghost-room')).rejects.toThrow(
+      ChatRoomNotFoundException,
+    );
   });
 });

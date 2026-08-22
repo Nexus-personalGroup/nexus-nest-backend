@@ -1,0 +1,28 @@
+# 後台視角的房間摘要。**不含任何訊息內容**
+type: object
+required: [roomId, roomType, name, memberCount, messageCount, createdAt]
+properties:
+  roomId:
+    type: string
+    format: uuid
+  roomType:
+    type: string
+    enum: [DIRECT, GROUP]
+  name:
+    type: string
+    nullable: true
+    description: 群組名稱；私聊為 null（顯示名稱由對方決定，不落庫）
+  memberCount:
+    type: integer
+  messageCount:
+    type: integer
+    description: |
+      **歷史訊息總數**，取自 `chat_rooms.last_seq`。
+
+      語意是「這個房間曾經有多少則」——**含已撤回與已被管理員移除的訊息**，
+      不是「目前存在幾則」。訊息列永遠不會被刪除（刪了會讓 seq 出現洞，
+      補齊的客戶端無法區分「被清掉」與「我漏收了」），因此兩者目前相等，
+      但 last_seq 不需要多一次查詢。
+  createdAt:
+    type: string
+    format: date-time

@@ -6,7 +6,11 @@ import type {
 } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 import type { ChatAuditEntry } from '@app/application/port/out/ChatAuditPort';
 import type { MemberReportRole } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
-import type { ChatRoomSummary } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
+import type {
+  AdminRoomSummary,
+  ChatRoomSummary,
+  ChatRoomType,
+} from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
 
 export const LIST_REPORTS_USE_CASE = 'LIST_REPORTS_USE_CASE';
 export const GET_REPORT_DETAIL_USE_CASE = 'GET_REPORT_DETAIL_USE_CASE';
@@ -15,6 +19,8 @@ export const GET_MEMBER_TIMELINE_USE_CASE = 'GET_MEMBER_TIMELINE_USE_CASE';
 export const GET_MEMBER_PROFILE_USE_CASE = 'GET_MEMBER_PROFILE_USE_CASE';
 export const LIST_MEMBER_REPORTS_USE_CASE = 'LIST_MEMBER_REPORTS_USE_CASE';
 export const LIST_MEMBER_ROOMS_USE_CASE = 'LIST_MEMBER_ROOMS_USE_CASE';
+export const LIST_ROOMS_USE_CASE = 'LIST_ROOMS_USE_CASE';
+export const GET_ROOM_DETAIL_USE_CASE = 'GET_ROOM_DETAIL_USE_CASE';
 
 export interface ListReportsQuery {
   status?: ChatReportStatus;
@@ -157,4 +163,34 @@ export interface ListMemberRoomsResult {
 
 export interface ListMemberRoomsUseCase {
   execute(query: ListMemberRoomsQuery): Promise<ListMemberRoomsResult>;
+}
+
+export interface ListRoomsQuery {
+  roomType?: ChatRoomType;
+  page?: number;
+  limit?: number;
+}
+
+export interface ListRoomsResult {
+  list: AdminRoomSummary[];
+  meta: PaginationMeta;
+}
+
+export interface ListRoomsUseCase {
+  execute(query: ListRoomsQuery): Promise<ListRoomsResult>;
+}
+
+/** 房間成員的視圖；`email` 在帳號已刪除時為 null */
+export interface RoomMemberView {
+  memberId: string;
+  email: string | null;
+  joinedAt: Date;
+}
+
+export type RoomDetailView = AdminRoomSummary & {
+  members: RoomMemberView[];
+};
+
+export interface GetRoomDetailUseCase {
+  execute(roomId: string): Promise<RoomDetailView>;
 }

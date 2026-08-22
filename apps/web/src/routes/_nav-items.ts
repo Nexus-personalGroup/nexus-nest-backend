@@ -1,4 +1,12 @@
-import { Flag, Home, Shield, ShieldBan, ShieldCheck, Users } from 'lucide-react';
+import {
+  Flag,
+  Home,
+  MessagesSquare,
+  Shield,
+  ShieldBan,
+  ShieldCheck,
+  Users,
+} from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import { ROLE_CODE, type RoleCode } from '@/lib/role-codes';
@@ -45,6 +53,14 @@ export const NAV_ITEMS: NavItem[] = [
     label: '檢舉審閱',
     path: '/moderation/reports',
     icon: Flag,
+    group: '聊天管理',
+    requiredPermission: 'BACKEND:MODERATION:VIEW',
+  },
+
+  {
+    label: '聊天室',
+    path: '/moderation/rooms',
+    icon: MessagesSquare,
     group: '聊天管理',
     requiredPermission: 'BACKEND:MODERATION:VIEW',
   },

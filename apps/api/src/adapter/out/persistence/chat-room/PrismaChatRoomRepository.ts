@@ -2,11 +2,16 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, RoomType } from '@prisma/client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import {
+  AdminRoomDetail,
+  AdminRoomSummary,
   CHAT_ROOM_REPOSITORY_PORT,
   ChatRoomRepositoryPort,
   ChatRoomSummary,
+  ChatRoomType,
   CreateDirectRoomInput,
   CreateGroupRoomInput,
+  ListAllRoomsPage,
+  ListAllRoomsParams,
   ListMyRoomsPage,
   ListMyRoomsParams,
 } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
@@ -120,6 +125,81 @@ export class PrismaChatRoomRepository implements ChatRoomRepositoryPort {
       select: { lastSeq: true },
     });
     return room?.lastSeq ?? null;
+  }
+
+  async listAll(params: ListAllRoomsParams): Promise<ListAllRoomsPage> {
+    const where: Prisma.ChatRoomRecordWhereInput = params.roomType
+      ? { roomType: params.roomType }
+      : {};
+    const [rows, total] = await this.prisma.$transaction([
+      this.prisma.chatRoomRecord.findMany({
+        where,
+        // 後台看的是「這個系統有哪些房間」，建立時間比最後活動時間直觀；
+        // 前台的「我的房間」用 updatedAt 是因為使用者要的是最近聊過的
+        orderBy: { createdAt: 'desc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+        select: this.adminSelect,
+      }),
+      this.prisma.chatRoomRecord.count({ where }),
+    ]);
+    return { data: rows.map((row) => this.toAdminSummary(row)), total };
+  }
+
+  async findAdminDetail(roomId: string): Promise<AdminRoomDetail | null> {
+    const row = await this.prisma.chatRoomRecord.findUnique({
+      where: { id: roomId },
+      select: {
+        ...this.adminSelect,
+        members: {
+          select: { memberId: true, joinedAt: true },
+          orderBy: { joinedAt: 'asc' },
+        },
+      },
+    });
+    if (!row) return null;
+
+    return {
+      ...this.toAdminSummary(row),
+      members: row.members.map((member) => ({
+        memberId: member.memberId,
+        joinedAt: member.joinedAt,
+      })),
+    };
+  }
+
+  /**
+   * 後台列表的欄位。
+   *
+   * `lastSeq` 就是歷史訊息總數——**不要改成 `_count: { messages: true }`**：
+   * 那會為了一個已經在這一列上的數字多掃一次訊息表，
+   * 而在「訊息永不刪除」的前提下兩者相等。
+   */
+  private readonly adminSelect = {
+    id: true,
+    roomType: true,
+    name: true,
+    createdAt: true,
+    lastSeq: true,
+    _count: { select: { members: true } },
+  } as const;
+
+  private toAdminSummary(row: {
+    id: string;
+    roomType: ChatRoomType;
+    name: string | null;
+    createdAt: Date;
+    lastSeq: number;
+    _count: { members: number };
+  }): AdminRoomSummary {
+    return {
+      roomId: row.id,
+      roomType: row.roomType,
+      name: row.name,
+      memberCount: row._count.members,
+      messageCount: row.lastSeq,
+      createdAt: row.createdAt,
+    };
   }
 
   private readonly summarySelect = {
