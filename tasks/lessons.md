@@ -549,3 +549,26 @@ Element.prototype.scrollIntoView = () => undefined;
 **How to apply**：反向驗證沒紅時要先問「是測試看不見，還是這兩個實作真的等價」。等價的話，那個選擇就**沒有守則在守**，必須寫進 design.md 說清楚為什麼選它、以及什麼條件下差別才會顯現（這裡是「日後真的做了訊息清理」）。把「沒有守則」誤讀成「有守則」比沒有守則更危險。
 
 同一個判準也適用於上一個 change：`listSelect` 多選 `contentSnapshot` 不會紅，因為投影函式擋在後面——那也是「真的擋住了」，不是「測試看不見」。
+
+### 2026-08-22 — 守則的掃描器只認它當初見過的裝飾器
+
+**踩到什麼**：加了第一支 SSE 端點（`@Sse('stream')`），`swagger-sync` 守則只抓到旁邊那支 `@Get()` 缺 yaml，**完全沒提到 SSE 那支**。補完 yaml 後它就綠了——而 SSE 端點其實還沒寫文件。
+
+**Why**：掃描器的樣式是 `@(Get|Post|Patch|Put|Delete)\(`。`@Sse()` 也是一條 GET 路由，但它不在那個清單裡，所以對這條守則完全隱形。這是本專案第 N 次遇到同一種形狀：**規則本身沒錯，只是看不見新東西**（`layering` 只掃 `*Controller.ts`、`authorization-coverage` 看不到 WS、`includes()` 分不出使用與提及、限流守則注入即通過）。
+
+**How to apply**：用 Nest 加入**新種類的路由裝飾器**（`@Sse`、`@All`、日後的自訂裝飾器）時，先去 `test/architecture/swagger-helpers.ts` 把它加進 `ROUTE_DECORATORS`，並在 `methodOfDecorator` 決定它對應哪個 HTTP method。更一般的判準：**任何守則只要靠「列舉已知形式」實作，加入新形式時就要同步更新它**——而那件事沒有任何東西會提醒你，因為守則會安靜地通過。
+
+### 2026-08-22 — 中斷 prisma migrate 會留下 advisory lock，後續全部卡住
+
+**踩到什麼**：`pnpm db:migrate -- --name X --create-only` 因為多帶了 `--` 而讓 prisma 沒收到 `--name`，卡在互動式提問。`pkill` 掉之後，接下來每一次 migrate 都失敗：`P1002 Timed out trying to acquire a postgres advisory lock`。
+
+**Why**：`prisma migrate` 用 `pg_advisory_lock` 防止多個 migration 同時跑。advisory lock 是 **session 綁定**的，而被 kill 的 node 行程留下了一個 idle 的 Postgres 連線——鎖跟著那個連線留在原地，新的 migrate 只能等到逾時。
+
+**How to apply**：兩件事。**(a)** `pnpm db:migrate --name X --create-only`，**不要加 `--` 分隔符**——加了會讓 prisma 把 `--name` 當成位置參數而轉入互動模式。**(b)** 真的卡住時，找出持有鎖的 orphan 連線再精準終止：
+
+```sql
+SELECT pid, granted FROM pg_locks WHERE locktype='advisory';   -- granted=t 的那個是元凶
+SELECT pg_terminate_backend(<pid>);
+```
+
+不要整個重啟資料庫容器——那會影響其他正在用同一個 Postgres 的專案。

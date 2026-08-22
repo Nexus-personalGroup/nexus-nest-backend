@@ -488,6 +488,12 @@ model ChatMessageRecord {
   // 而不是靜默產生重號；查詢面則涵蓋補齊與歷史查詢（都是「某房間、seq 大於／小於 N」）
   @@unique([roomId, seq], map: "uq_chat_messages_room_seq")
   @@unique([roomId, clientMessageId], map: "uq_chat_messages_room_client_id")
+  // 「今日訊息數」需要 created_at 的範圍查詢。用 BRIN 而非 B-tree：
+  // 這張表是 append-only 且 created_at 單調遞增，物理順序與值天然相關——
+  // 正是 BRIN 的適用條件。索引大小差三個數量級，插入時的維護成本也遠低於 B-tree，
+  // 而這是專案寫最頻繁的表。代價是走 bitmap heap scan 而非 index-only scan，
+  // 但要掃的正好是最後幾個區塊，差異很小
+  @@index([createdAt], map: "idx_chat_messages_created_at", type: Brin)
   @@map("chat_messages")
 }
 

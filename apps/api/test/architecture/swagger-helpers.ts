@@ -6,6 +6,19 @@ export type Route = string;
 
 const HTTP_METHODS = ['get', 'post', 'patch', 'put', 'delete'] as const;
 
+/**
+ * 路由裝飾器 → HTTP method。
+ *
+ * **`@Sse()` 也是一條 GET 路由。** 原本的樣式只認五個標準動詞，
+ * 於是 SSE 端點對這條守則完全隱形——而「規則本身沒錯，只是看不見新東西」
+ * 正是本專案已經發生過數次的失效形狀。
+ */
+const ROUTE_DECORATORS = 'Get|Post|Patch|Put|Delete|Sse';
+
+/** 由裝飾器名推出 HTTP method；`Sse` 走的是 GET */
+export const methodOfDecorator = (decorator: string): string =>
+  decorator === 'Sse' ? 'GET' : decorator.toUpperCase();
+
 /** OpenAPI 文件中我們用得到的部分 */
 type OpenApiDoc = {
   servers?: Array<{ url?: string }>;
@@ -74,13 +87,13 @@ export const routesFromControllers = (): Set<Route> => {
     const controllerBase = /@Controller\('([^']*)'\)/.exec(source)?.[1] ?? '';
 
     for (const match of source.matchAll(
-      /@(Get|Post|Patch|Put|Delete)\(\s*'?([^')]*)'?\s*\)/g,
+      new RegExp(`@(${ROUTE_DECORATORS})\\(\\s*'?([^')]*)'?\\s*\\)`, 'g'),
     )) {
       const sub = match[2].replace(/'/g, '').trim();
       const path = normalizePath(
         `/api/${[controllerBase, sub].filter(Boolean).join('/')}`,
       ).replace(/:(\w+)/g, '{$1}');
-      routes.add(`${match[1].toUpperCase()} ${path}`);
+      routes.add(`${methodOfDecorator(match[1])} ${path}`);
     }
   }
   return routes;
@@ -147,11 +160,13 @@ export const successStatusFromControllers = (): Map<Route, number> => {
     const controllerBase = /@Controller\('([^']*)'\)/.exec(source)?.[1] ?? '';
 
     const matches = [
-      ...source.matchAll(/@(Get|Post|Patch|Put|Delete)\(\s*'?([^')]*)'?\s*\)/g),
+      ...source.matchAll(
+        new RegExp(`@(${ROUTE_DECORATORS})\\(\\s*'?([^')]*)'?\\s*\\)`, 'g'),
+      ),
     ];
 
     matches.forEach((match, index) => {
-      const method = match[1].toUpperCase();
+      const method = methodOfDecorator(match[1]);
       const sub = match[2].replace(/'/g, '').trim();
       const path = normalizePath(
         `/api/${[controllerBase, sub].filter(Boolean).join('/')}`,

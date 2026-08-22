@@ -1,0 +1,32 @@
+tags: [Dashboard]
+summary: 查詢營運快照
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  **只有聚合數字**——沒有 email、沒有房間名稱、沒有訊息內容。
+  儀表板回答「現在怎麼樣」，要看是誰、是哪個房間都該去對應的列表頁。
+
+  本端點**不寫稽核**：回應不含任何個人或訊息內容。
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              $ref: './_snapshot.yaml'
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

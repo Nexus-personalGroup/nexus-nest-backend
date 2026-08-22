@@ -111,4 +111,7 @@ export interface ChatRoomRepositoryPort {
 
   /** 後台的單一房間概覽，含成員清單；房間不存在時回 null */
   findAdminDetail(roomId: string): Promise<AdminRoomDetail | null>;
+
+  /** 聊天室總數 */
+  countRooms(): Promise<number>;
 }

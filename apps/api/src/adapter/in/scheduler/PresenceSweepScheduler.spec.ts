@@ -16,6 +16,7 @@ jest.mock('@app/infrastructure/validate-env', () => ({
 }));
 
 const makePresence = (): jest.Mocked<PresencePort> => ({
+  countOnlineMembers: jest.fn(),
   markOnline: jest.fn(),
   markOffline: jest.fn(),
   heartbeat: jest.fn(),

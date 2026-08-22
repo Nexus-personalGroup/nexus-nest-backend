@@ -103,6 +103,10 @@ export class PrismaMemberRepository
     return new Map(rows.map((row) => [row.id, row.email]));
   }
 
+  async countMembers(): Promise<number> {
+    return this.prisma.memberRecord.count({ where: { deletedAt: null } });
+  }
+
   async createMember(member: Member): Promise<void> {
     try {
       await this.prisma.memberRecord.create({

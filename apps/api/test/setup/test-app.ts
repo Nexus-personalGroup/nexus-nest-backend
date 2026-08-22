@@ -42,6 +42,8 @@ export const createMockRedis = () => ({
   // presence 走 hash：沒有這一支的話 isOnline() 會炸成 500，
   // 而症狀是「查詢成員概覽回 500」，指不到 mock 少一支方法
   hashGetAll: jest.fn().mockResolvedValue({}),
+  // presence 的全域計數走 SCAN；沒有這一支的話儀表板的線上人數會炸成 500
+  scanKeys: jest.fn().mockResolvedValue([]),
 });
 
 /** 每次呼叫回傳全新的 SaveSystemLog mock 實例 */

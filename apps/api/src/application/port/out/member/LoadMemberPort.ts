@@ -55,4 +55,6 @@ export interface LoadMemberPort {
    * 停權者依然是一個存在的人，審閱要看得到他是誰。
    */
   findEmailsByIds(ids: string[]): Promise<Map<string, string>>;
+  /** 未軟刪除的成員總數 */
+  countMembers(): Promise<number>;
 }

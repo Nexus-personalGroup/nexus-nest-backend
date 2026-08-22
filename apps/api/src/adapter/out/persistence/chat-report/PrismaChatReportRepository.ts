@@ -134,6 +134,10 @@ export class PrismaChatReportRepository implements ChatReportRepositoryPort {
       : { reporterId: memberId };
   }
 
+  async countByStatus(status: ChatReportStatus): Promise<number> {
+    return this.prisma.chatReportRecord.count({ where: { status } });
+  }
+
   async findDetail(reportId: string): Promise<ChatReportDetail | null> {
     const row = await this.prisma.chatReportRecord.findUnique({
       where: { id: reportId },

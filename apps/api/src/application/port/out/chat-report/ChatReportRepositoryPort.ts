@@ -140,4 +140,7 @@ export interface ChatReportRepositoryPort {
    * 因此它絕對不能看得到內容。
    */
   listByMember(params: ListMemberReportsParams): Promise<ListMemberReportsPage>;
+
+  /** 某狀態的檢舉總數；走 `idx_chat_reports_status_time` */
+  countByStatus(status: ChatReportStatus): Promise<number>;
 }

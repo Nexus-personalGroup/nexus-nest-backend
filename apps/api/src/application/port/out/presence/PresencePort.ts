@@ -54,6 +54,14 @@ export interface PresencePort {
   getConnections(memberId: string): Promise<PresenceConnection[]>;
 
   /**
+   * 目前仍有未逾時連線的成員數。
+   *
+   * **算的是「人」不是「連線」**：一個人開三個裝置算一個。
+   * 儀表板問的是「現在有多少人在線上」，而不是「有多少條 socket」。
+   */
+  countOnlineMembers(): Promise<number>;
+
+  /**
    * 清除所有成員的陳舊連線紀錄
    *
    * 讀取時的過濾只是讓陳舊紀錄不被採信，實體資料仍佔著空間；由排程定期實際刪除。

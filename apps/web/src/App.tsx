@@ -16,6 +16,7 @@ import { ReportsPage } from '@/routes/moderation/reports/page';
 import { ReportDetailPage } from '@/routes/moderation/report-detail/page';
 import { MemberProfilePage } from '@/routes/moderation/member-profile/page';
 import { RoomsPage } from '@/routes/moderation/rooms/page';
+import { DashboardPage } from '@/routes/moderation/dashboard/page';
 import { RoomDetailPage } from '@/routes/moderation/room-detail/page';
 import { IpWhitelistPage } from '@/routes/security/ip-whitelist/page';
 import { IpBlacklistPage } from '@/routes/security/ip-blacklist/page';
@@ -51,6 +52,10 @@ export const App = () => {
                 <Route
                   path="/moderation/members/:memberId"
                   element={<MemberProfilePage />}
+                />
+                <Route
+                  path="/moderation/dashboard"
+                  element={<DashboardPage />}
                 />
                 <Route path="/moderation/rooms" element={<RoomsPage />} />
                 <Route
