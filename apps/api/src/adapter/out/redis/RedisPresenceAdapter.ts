@@ -5,6 +5,7 @@ import {
 } from '@app/application/port/out/presence/PresencePort';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
 import {
+  buildOnlineMembersKey,
   buildPresenceKey,
   buildPresenceScanPattern,
 } from '@app/infrastructure/redis/cache-keys';
@@ -46,6 +47,11 @@ export class RedisPresenceAdapter implements PresencePort {
     return `${instanceId}:${socketId}`;
   }
 
+  /** 在線成員索引的 key */
+  private get onlineKey(): string {
+    return buildOnlineMembersKey(this.redis.keyPrefix);
+  }
+
   async markOnline(
     memberId: string,
     instanceId: string,
@@ -59,6 +65,11 @@ export class RedisPresenceAdapter implements PresencePort {
       String(Date.now()),
       this.keyTtlSeconds,
     );
+    // 只在狀態真正轉換時動索引：`wasOffline` 本來就已經算出來了。
+    // 多裝置的第二、第三條連線不需要重複 SADD
+    if (wasOffline) {
+      await this.redis.setAdd(this.onlineKey, [memberId]);
+    }
     return wasOffline;
   }
 
@@ -71,7 +82,11 @@ export class RedisPresenceAdapter implements PresencePort {
     await this.redis.hashDelete(key, [this.field(instanceId, socketId)]);
     // 用「過濾後的連線數」而非 Redis 回報的欄位數：後者包含尚未被 sweep
     // 清掉的陳舊欄位，會讓已經沒人在線的成員被判定為仍在線
-    return (await this.getConnections(memberId)).length === 0;
+    const nowOffline = (await this.getConnections(memberId)).length === 0;
+    if (nowOffline) {
+      await this.redis.setRemove(this.onlineKey, [memberId]);
+    }
+    return nowOffline;
   }
 
   async heartbeat(
@@ -100,21 +115,17 @@ export class RedisPresenceAdapter implements PresencePort {
     return this.parseFresh(raw);
   }
 
+  /**
+   * 目前在線的成員數。
+   *
+   * 讀衍生索引的 `SCARD`，**O(1)**。前一版掃整個 keyspace 再逐一 HGETALL——
+   * 那是一個「使用者越多越糟」的成本，而它掛在每 5 秒一次的儀表板推送上。
+   *
+   * 這個數字有校正延遲（實例被強制終止到下一次 sweep 之間），
+   * **只能用於統計**。需要精確判斷的地方請用 `isOnline()`，它讀的是連線紀錄。
+   */
   async countOnlineMembers(): Promise<number> {
-    const keys = await this.redis.scanKeys(
-      buildPresenceScanPattern(this.redis.keyPrefix),
-    );
-
-    let online = 0;
-    for (const key of keys) {
-      const raw = await this.redis.hashGetAll(key);
-      // 一個 key 是一個成員；只要還有一筆未逾時的連線就算在線。
-      // 讀取時過濾而非信任 key 的存在：陳舊紀錄要等排程才會被實際刪除
-      if (Object.values(raw).some((value) => !this.isStale(value))) {
-        online += 1;
-      }
-    }
-    return online;
+    return this.redis.setCard(this.onlineKey);
   }
 
   async sweepStale(): Promise<number> {
@@ -122,6 +133,9 @@ export class RedisPresenceAdapter implements PresencePort {
       buildPresenceScanPattern(this.redis.keyPrefix),
     );
     let removed = 0;
+    // 遍歷過程中順手記下「還有未逾時連線的成員」——那就是索引的真值。
+    // 這是校正唯一不需要額外掃描的時機
+    const stillOnline = new Set<string>();
 
     for (const key of keys) {
       const raw = await this.redis.hashGetAll(key);
@@ -133,12 +147,55 @@ export class RedisPresenceAdapter implements PresencePort {
         await this.redis.hashDelete(key, stale);
         removed += stale.length;
       }
+
+      if (Object.entries(raw).some(([, value]) => !this.isStale(value))) {
+        stillOnline.add(this.memberIdOf(key));
+      }
     }
+
+    await this.reconcileOnlineIndex(stillOnline);
 
     if (removed > 0) {
       this.logger.log(`清除 ${removed} 筆陳舊連線紀錄`);
     }
     return removed;
+  }
+
+  /**
+   * 以差集校正在線成員索引。
+   *
+   * 需要校正是因為**實例被強制終止時 `markOffline` 不會執行**，
+   * 索引會單向累積漂移（只多不少）。
+   *
+   * **用差集而非整份重建。** `DEL` 之後重建有一個窗口讓 `SCARD` 讀到 0，
+   * 而那個瞬間儀表板會顯示「線上 0 人」——一個看起來像故障的正確操作。
+   *
+   * 一致時完全不發出寫入：sweep 每個心跳週期都跑，白寫一輪的成本會累積。
+   *
+   * @param stillOnline - 掃描得出的真值：仍有未逾時連線的成員
+   */
+  private async reconcileOnlineIndex(stillOnline: Set<string>): Promise<void> {
+    const indexed = new Set(await this.redis.setMembers(this.onlineKey));
+
+    const gone = [...indexed].filter((id) => !stillOnline.has(id));
+    const missing = [...stillOnline].filter((id) => !indexed.has(id));
+
+    if (gone.length > 0) {
+      await this.redis.setRemove(this.onlineKey, gone);
+    }
+    if (missing.length > 0) {
+      await this.redis.setAdd(this.onlineKey, missing);
+    }
+    if (gone.length > 0 || missing.length > 0) {
+      this.logger.log(
+        `校正在線索引：移除 ${gone.length}、補上 ${missing.length}`,
+      );
+    }
+  }
+
+  /** 由 presence key 取回 memberId；key 的形狀是 `<prefix>presence:member:<id>` */
+  private memberIdOf(key: string): string {
+    return key.slice(key.lastIndexOf(':') + 1);
   }
 
   /** 判定一筆紀錄是否已陳舊。無法解析的值一律視為陳舊——壞掉的資料不該被當成在線 */

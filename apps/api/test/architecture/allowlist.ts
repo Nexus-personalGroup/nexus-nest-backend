@@ -129,6 +129,24 @@ export const PUBLIC_MOUNT_EXEMPTIONS: Array<{
   },
 ];
 
+/**
+ * 允許使用 presence 掃描 pattern 的**方法**。
+ *
+ * 以方法為單位而非檔案：presence 的 adapter 同時擁有清理與查詢兩種方法，
+ * 以檔案為單位會讓「查詢方法拿去掃描」這種錯直接漏掉——
+ * 而那正是 `countOnlineMembers` 曾經犯過的錯。
+ */
+export const PRESENCE_SCAN_EXEMPTIONS: Array<{
+  method: string;
+  reason: string;
+}> = [
+  {
+    method: 'sweepStale',
+    reason:
+      '週期性清理陳舊連線紀錄，並順手校正在線索引；由排程觸發，不在請求路徑上',
+  },
+];
+
 export const WS_RESOURCE_ACCESS_EXEMPTIONS: Exemption[] = [
   {
     file: 'src/adapter/in/ws/ChatGateway.ts',

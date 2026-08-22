@@ -168,6 +168,45 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 把成員加入 Set
+   *
+   * Redis 不可用時**拋出**，理由同 `hashSet`：presence 相關的操作靜默失敗，
+   * 會讓呼叫端拿到一個看起來正常的錯誤答案。
+   */
+  async setAdd(key: string, members: string[]): Promise<void> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    if (members.length === 0) return;
+    await this.client.sAdd(key, members);
+  }
+
+  /** 從 Set 移除成員。Redis 不可用時拋出，理由同 `setAdd` */
+  async setRemove(key: string, members: string[]): Promise<void> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    if (members.length === 0) return;
+    await this.client.sRem(key, members);
+  }
+
+  /** Set 的基數。O(1)，與集合大小無關 */
+  async setCard(key: string): Promise<number> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    return this.client.sCard(key);
+  }
+
+  /** Set 的所有成員。僅供校正用——它的成本與集合大小成正比 */
+  async setMembers(key: string): Promise<string[]> {
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    return this.client.sMembers(key);
+  }
+
+  /**
    * 掃描符合 pattern 的 key
    *
    * 用 SCAN 而非 KEYS：後者在 key 數量大時會阻塞整個 Redis 行程。

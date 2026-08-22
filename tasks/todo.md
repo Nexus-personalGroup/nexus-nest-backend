@@ -21,7 +21,7 @@
 | 順序 | Change | 內容 | 狀態 |
 | --- | --- | --- | --- |
 | 1 | `fix-unauthenticated-surface` | 帳號鎖定時效、Swagger 開關、metrics 豁免收窄、`DB_PORT` 預設值 | 待合併 |
-| 2 | `fix-presence-scan-cost` | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | 未開始 |
+| 2 | ~~`fix-presence-scan-cost`~~ | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | **待合併** |
 | 3 | `add-front-user-auth` | `users` 表 + 前台認證（註冊 / 驗證信箱 / 登入 / 重設密碼）+ JWT 側別 claim | 未開始 |
 | 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 未開始 |
 | 5 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
@@ -190,6 +190,25 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-23 — 在線人數改用衍生索引（`fix-presence-scan-cost`）
+
+審查報告的問題 2，也是 `add-admin-dashboard` 留下的錯：`countOnlineMembers()`
+在請求路徑上掃整個 Redis keyspace，還掛在每 5 秒一次的 SSE 推送上——
+而 `cache-keys.ts` 就寫著那個 pattern「不可用於請求路徑」。**註解不會失敗。**
+
+改成 `presence:online-members` 這個衍生 Set，`SCARD` 是 O(1)。
+連線紀錄本身完全不動（仍是帶心跳時間的 Hash），因此不牴觸
+「不得用無時效集合儲存連線」——被禁止的是把**連線**存成集合，不是為統計而建的投影。
+這個區分寫進了 spec，否則日後看到 presence 相關的 Set 會以為規則被打破。
+
+**不用審查報告建議的計數器**：漂移方向是單向累積的（實例當機時 `markOffline` 不執行），
+而「由 sweep 校正」對計數器不成立——要知道正確計數就得先知道正確集合，還是得掃。
+Set 的校正在 sweep **既有的遍歷**裡順手完成，且用**差集**而非整份重建
+（後者有一個窗口讓 `SCARD` 讀到 0，那個瞬間儀表板會顯示「線上 0 人」）。
+
+新守則 `presence-scan.spec.ts` 判定以**方法**為單位而非檔案——
+presence 的 adapter 同時擁有清理與查詢兩種方法，以檔案為單位會讓這次這個錯直接漏掉。
 
 ### 2026-08-23 — 未認證攻擊面修補（`fix-unauthenticated-surface`）
 

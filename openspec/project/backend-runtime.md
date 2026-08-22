@@ -275,6 +275,30 @@ if (this.featureFlags.isEnabled('accountLockEnabled')) { ... }
 那是特權路徑的對價：這是唯一能看到被撤回訊息內容的地方，
 查看不留痕跡的話，它與「任何人都看得到」在事後沒有實質區別。
 
+### 在線人數的衍生索引
+
+presence 的**真相**是 `presence:member:<id>` 的 Hash（每筆連線帶心跳時間、
+由 TTL 與 sweep 回收）。在它之上另有一個 `presence:online-members` 的 Set，
+用途只有一個：讓「在線人數」變成 O(1) 的 `SCARD`。
+
+**這不牴觸「不得用無時效集合儲存連線」那條規則**——被禁止的是把連線本身存成集合
+（實例被 kill 時無法自動恢復），而這裡任何**在線與否的判斷**讀的仍然是 Hash。
+判準是「索引壞掉時系統會不會給出錯的狀態」：不會，只會讓統計數字暫時不準。
+
+維護方式：
+- `markOnline` / `markOffline` 只在**狀態真正轉換**時動它（那兩個布林本來就已經回傳）
+- **`heartbeat` 不動它**——心跳是頻率最高的操作，每次多一個往返會累積
+- `sweepStale` 的既有遍歷順手以**差集**校正（多的 `SREM`、少的 `SADD`）。
+  需要校正是因為實例被強制終止時 `markOffline` 不會執行，索引會單向累積漂移
+
+**校正不得整份重建**：`DEL` 之後重建有一個窗口讓 `SCARD` 讀到 0，
+那個瞬間儀表板會顯示「線上 0 人」——一個看起來像故障的正確操作。
+
+這個數字**只能用於統計**：它有最多一個 sweep 週期的校正延遲。
+需要精確判斷的地方用 `isOnline()`，它讀的是連線紀錄。
+`presence-scan.spec.ts` 守著「掃描 pattern 只能在週期性清理中使用」，
+判定以**方法**為單位——presence 的 adapter 同時有清理與查詢兩種方法。
+
 ### 營運總覽的 SSE
 
 `GET /api/admin/moderation/dashboard/stream` 是專案唯一的 SSE 端點，三個決定值得記住：
