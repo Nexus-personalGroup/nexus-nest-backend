@@ -15,7 +15,9 @@ const envSchema = z.object({
 
   // Database（必填）
   DB_HOST: z.string(),
-  DB_PORT: z.coerce.number().default(3306),
+  // 5432 = PostgreSQL。模板時期是 MySQL，預設值一度留在 3306——
+  // 沒設定 DB_PORT 的環境會去連一個不存在的服務，而錯誤訊息只會說「連不上」
+  DB_PORT: z.coerce.number().default(5432),
   DB_USERNAME: z.string(),
   DB_PASSWORD: z.string().default(''),
   DB_DATABASE: z.string(),
@@ -259,6 +261,22 @@ const envSchema = z.object({
 
   // ─── 帳號鎖定 ───
   APPLICATION_ACCOUNT_LOCK_THRESHOLD: z.coerce.number().int().min(1).default(3),
+  /**
+   * 帳號鎖定的時效（分鐘）。
+   *
+   * **沒有時效的鎖定是一個沒有復原路徑的死結**：鎖定的檢查排在密碼驗證之前，
+   * 被鎖的帳號連「密碼打對」都到不了清除計數那條路；而人工解鎖的端點需要一個
+   * 已登入且具 SUPERADMIN 的管理員。把已知的管理員 email 全鎖一輪，就沒有人能登入解鎖——
+   * 而觸發鎖定完全不需要認證，也不需要猜對密碼。
+   *
+   * 時效**不解決**「持續攻擊者可以每 N 分鐘重鎖一次」，那是 per-IP 限制的職責
+   * （`APPLICATION_IP_BLOCK_THRESHOLD`）。它解決的是「永久且無復原路徑」。
+   */
+  APPLICATION_ACCOUNT_LOCK_DURATION_MIN: z.coerce
+    .number()
+    .int()
+    .min(1)
+    .default(15),
   APPLICATION_IP_BLOCK_THRESHOLD: z.coerce.number().int().min(1).default(5),
 
   // ─── Google reCAPTCHA ───
@@ -378,6 +396,18 @@ const envSchema = z.object({
    * 都當成 false，因此 `CHAT_AUDIT_ENABLED=TRUE`（大寫）會**靜默關閉稽核**。
    * 對預設開啟的安全性開關，寧可在啟動時就失敗。
    */
+  /**
+   * 是否掛載 Swagger UI 與 OpenAPI spec。
+   *
+   * **未設定時的預設值依 `NODE_ENV`**（見 `isSwaggerEnabled()`）：production 為 false、
+   * 其餘為 true。固定預設 true 會讓忘記設定的 production 裸奔——
+   * `/api/admin/docs-json` 是一份完整的後台地圖（所有端點、參數 schema、錯誤碼、權限碼命名），
+   * 而它掛在 `app.use()` 上，**全域 JwtAuthGuard 根本碰不到**（Nest 的 guard 只作用於 Nest 路由）。
+   * 固定預設 false 則會讓開發者第一次跑起來就找不到文件。
+   *
+   * 預設值唯一該有的性質是「什麼都不設就是對的」，而這裡的「對」在兩種環境下不同。
+   */
+  SWAGGER_ENABLED: z.enum(['true', 'false']).optional(),
   CHAT_AUDIT_ENABLED: z
     .enum(['true', 'false'])
     .default('true')
@@ -396,6 +426,29 @@ const envSchema = z.object({
 export type Env = z.infer<typeof envSchema>;
 
 let _env: Env | null = null;
+
+/**
+ * Swagger 文件是否該掛載。
+ *
+ * `SWAGGER_ENABLED` 未設定時依 `NODE_ENV` 推導：production 關、其餘開。
+ * 明確設定永遠優先於推導。
+ *
+ * 判定拆成 `resolveSwaggerEnabled` 這支純函式：測試要 mock `getEnv` 的話，
+ * 模組內部的呼叫仍然指向真正的實作（partial mock 蓋不到自己人），
+ * 而純函式沒有這個問題。
+ *
+ * @returns true 代表 `/docs` 與 `/docs-json` 都該掛載
+ */
+export const resolveSwaggerEnabled = (
+  nodeEnv: string,
+  explicit: 'true' | 'false' | undefined,
+): boolean =>
+  explicit === undefined ? nodeEnv !== 'production' : explicit === 'true';
+
+export const isSwaggerEnabled = (): boolean => {
+  const env = getEnv();
+  return resolveSwaggerEnabled(env.NODE_ENV, env.SWAGGER_ENABLED);
+};
 
 export const getEnv = (): Env => {
   if (_env) return _env;

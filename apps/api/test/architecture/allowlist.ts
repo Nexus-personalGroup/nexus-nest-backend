@@ -101,6 +101,34 @@ export const SWAGGER_EXEMPT_ROUTES: Array<{ route: string; reason: string }> = [
  * 這份清單的門檻要高於其他規則：能列進來的只有「該操作對非成員也無害」，
  * 不包含「暫時還沒接授權」——後者是 TEMPORARY 的用途，而目前沒有。
  */
+/**
+ * `app.use()` 掛載的原生 Express 路徑。
+ *
+ * 這些**完全不經過 Nest 的 guard**——掛載處看起來只是「提供文件 / 靜態檔」，
+ * 而 guard 那邊看起來「所有路由都保護了」，兩邊各自都對，
+ * 合起來有一條沒有人看守的路。
+ */
+export const PUBLIC_MOUNT_EXEMPTIONS: Array<{
+  path: string;
+  reason: string;
+}> = [
+  {
+    path: '`${basePath}/docs-json`',
+    reason:
+      'OpenAPI spec（admin 與 front 各一）。掛載由 SWAGGER_ENABLED 控制，production 預設關閉',
+  },
+  {
+    path: '`${basePath}/docs`',
+    reason:
+      'Swagger UI（admin 與 front 各一）。掛載由 SWAGGER_ENABLED 控制，production 預設關閉',
+  },
+  {
+    path: 'env.LOCAL_MEDIA_BASE_URL',
+    reason:
+      'STORAGE_DRIVER=local 時服務上傳目錄，帶 nosniff + 嚴格 CSP；檔名為 UUID，不可列舉',
+  },
+];
+
 export const WS_RESOURCE_ACCESS_EXEMPTIONS: Exemption[] = [
   {
     file: 'src/adapter/in/ws/ChatGateway.ts',

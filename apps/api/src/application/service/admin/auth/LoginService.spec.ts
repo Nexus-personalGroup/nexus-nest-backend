@@ -1,4 +1,4 @@
-import { ForbiddenException, UnauthorizedException } from '@nestjs/common';
+import { UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { LoginService } from './LoginService';
@@ -13,6 +13,7 @@ import { RecaptchaVerifyPort } from '../../../port/out/auth/RecaptchaVerifyPort'
 import { SessionActivityPort } from '../../../port/out/auth/SessionActivityPort';
 import { Member } from '@app/domain/model/Member';
 import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
+import { AccountLockedException } from '@app/domain/exception/AccountLockedException';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -72,7 +73,7 @@ const mockSaveMember = {
 } as jest.Mocked<SaveMemberPort>;
 
 const mockAccountLock = {
-  isLocked: jest.fn().mockResolvedValue(false),
+  checkLock: jest.fn().mockResolvedValue('NONE'),
   lockAccount: jest.fn(),
   recordFailedLogin: jest.fn().mockResolvedValue(0),
   resetFailedLogin: jest.fn(),
@@ -232,13 +233,78 @@ describe('LoginService', () => {
     ).rejects.toThrow(AccountDisabledException);
   });
 
-  it('帳號鎖定功能啟用且帳號已鎖定 → 拋出 ForbiddenException', async () => {
-    (mockAccountLock.isLocked as jest.Mock).mockResolvedValue(true);
+  /**
+   * 原本這支斷言的是 `ForbiddenException`（403），而 `api-auth` 的 spec 寫的是
+   * `423` + `ACCOUNT_LOCKED`——`AccountLockedException` 一直存在但沒有被用。
+   * 測試把實作的漂移一起釘住了，於是沒有人發現。
+   */
+  it('帳號鎖定功能啟用且仍在時效內 → 拋出 AccountLockedException（423）', async () => {
+    (mockAccountLock.checkLock as jest.Mock).mockResolvedValue('LOCKED');
     const service = makeService(makeFeatureFlags({ accountLockEnabled: true }));
 
     await expect(
       service.execute({ email: 'admin@test.com', password: 'pw' }),
-    ).rejects.toThrow(ForbiddenException);
+    ).rejects.toThrow(AccountLockedException);
     expect(mockLoadMember.loadMemberByEmail).not.toHaveBeenCalled();
+  });
+
+  /**
+   * **到期時必須一併清掉失敗計數。**
+   *
+   * 計數在 Redis 且 TTL（30 分鐘）比預設時效（15 分鐘）長。少了這一步，
+   * 使用者在到期後第一次打錯就會因為「計數還在閾值上」立刻重新被鎖，
+   * 實際鎖定時間變成計數的 TTL 而非設定的時效——而設定的那個數字看起來完全正常。
+   */
+  it('鎖定已到期 → 放行，繼續走正常登入流程', async () => {
+    (mockAccountLock.checkLock as jest.Mock).mockResolvedValue('EXPIRED');
+    (mockLoadMember.loadMemberByEmail as jest.Mock).mockResolvedValue(
+      makeMember(),
+    );
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    const service = makeService(makeFeatureFlags({ accountLockEnabled: true }));
+
+    await service.execute({ email: 'admin@test.com', password: 'Password1!' });
+
+    expect(mockLoadMember.loadMemberByEmail).toHaveBeenCalled();
+  });
+
+  /**
+   * **到期時的清除必須發生在「這次登入成不成功」之前。**
+   *
+   * 用「密碼打錯」來驗，因為登入成功本來就會重置計數——那條路徑會蓋掉真正要驗的東西。
+   * 少了到期時的清除，使用者在鎖定到期後第一次打錯就會因為「計數還在閾值上」
+   * 立刻重新被鎖，實際鎖定時間變成 Redis 計數的 TTL（30 分鐘）而非設定的時效。
+   */
+  it('⭐ 到期後即使密碼又打錯，失敗計數仍已在檢查時被清除', async () => {
+    (mockAccountLock.checkLock as jest.Mock).mockResolvedValue('EXPIRED');
+    (mockLoadMember.loadMemberByEmail as jest.Mock).mockResolvedValue(
+      makeMember(),
+    );
+    (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+    const service = makeService(makeFeatureFlags({ accountLockEnabled: true }));
+
+    await expect(
+      service.execute({ email: 'admin@test.com', password: '錯的密碼' }),
+    ).rejects.toThrow();
+
+    expect(mockAccountLock.resetFailedLogin).toHaveBeenCalledWith(
+      'admin@test.com',
+    );
+  });
+
+  // 從未鎖定的帳號不該被當成「剛到期」而多做一次清除
+  it('從未鎖定且密碼錯誤 → 不清除失敗計數', async () => {
+    (mockAccountLock.checkLock as jest.Mock).mockResolvedValue('NONE');
+    (mockLoadMember.loadMemberByEmail as jest.Mock).mockResolvedValue(
+      makeMember(),
+    );
+    (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+    const service = makeService(makeFeatureFlags({ accountLockEnabled: true }));
+
+    await expect(
+      service.execute({ email: 'admin@test.com', password: '錯的密碼' }),
+    ).rejects.toThrow();
+
+    expect(mockAccountLock.resetFailedLogin).not.toHaveBeenCalled();
   });
 });

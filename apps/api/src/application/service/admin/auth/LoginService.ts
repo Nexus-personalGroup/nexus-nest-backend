@@ -1,5 +1,4 @@
 import {
-  ForbiddenException,
   Inject,
   Injectable,
   Logger,
@@ -8,6 +7,7 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
+import { AccountLockedException } from '@app/domain/exception/AccountLockedException';
 import {
   LoginCommand,
   LoginResult,
@@ -105,7 +105,8 @@ export class LoginService implements LoginUseCase {
 
     // 帳號鎖定檢查
     if (this.featureFlags.isEnabled('accountLockEnabled')) {
-      if (await this.accountLock.isLocked(email)) {
+      const lockStatus = await this.accountLock.checkLock(email);
+      if (lockStatus === 'LOCKED') {
         await this.logAuth(
           email,
           undefined,
@@ -114,7 +115,13 @@ export class LoginService implements LoginUseCase {
           userAgent,
           '帳號已鎖定',
         );
-        throw new ForbiddenException('帳號已被鎖定，請聯繫管理員解鎖');
+        throw new AccountLockedException();
+      }
+      if (lockStatus === 'EXPIRED') {
+        // **到期必須一併清掉失敗計數。** 計數在 Redis 且 TTL（30 分鐘）比鎖定時效長，
+        // 不清的話使用者在到期後第一次打錯就會因為「計數還在閾值上」立刻重新被鎖，
+        // 實際鎖定時間變成計數的 TTL 而非設定的時效——而設定的那個數字看起來完全正常
+        await this.accountLock.resetFailedLogin(email);
       }
     }
 

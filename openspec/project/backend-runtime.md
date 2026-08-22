@@ -211,6 +211,32 @@ if (this.featureFlags.isEnabled('accountLockEnabled')) { ... }
 ### 安全功能細節
 
 - **帳號鎖定**：連續登入失敗達 `APPLICATION_ACCOUNT_LOCK_THRESHOLD` 次後，帳號自動鎖定（DB `lockedAt` 欄位）。失敗計數使用 Redis INCR（30 分鐘 TTL），Redis 不可用時 graceful degradation（不計數，但 DB 鎖定仍有效）。登入成功自動重置計數。
+
+  **鎖定有時效**（`APPLICATION_ACCOUNT_LOCK_DURATION_MIN`，預設 15 分鐘），逾時自動解除。
+  沒有時效的版本是一個**沒有復原路徑的死結**：鎖定的檢查排在密碼驗證之前，
+  被鎖的帳號連「密碼打對」都到不了清除計數那條路；而人工解鎖的端點需要一個
+  已登入且具 SUPERADMIN 的管理員——把已知的管理員 email 全鎖一輪就沒有人能登入解鎖，
+  而觸發鎖定完全不需要認證、也不需要猜對密碼。
+
+  **到期時必須一併清除失敗計數**（`LoginService` 收到 `EXPIRED` 時呼叫 `resetFailedLogin`）。
+  Redis 計數的 TTL（30 分鐘）比時效長，不清的話使用者在到期後第一次打錯就會
+  因為「計數還在閾值上」立刻重新被鎖，實際鎖定時間變成計數的 TTL 而非設定的時效——
+  而設定的那個數字看起來完全正常。`AccountLockPort.checkLock()` 因此回三態
+  （`NONE` / `LOCKED` / `EXPIRED`）而非布林：布林分不出「從未鎖定」與「鎖過但已到期」。
+
+  時效**不解決**「持續攻擊者可以每 N 分鐘重鎖一次」，那是 per-IP 限制的職責
+  （`APPLICATION_IP_BLOCK_THRESHOLD`）。它解決的是「永久且無復原路徑」。
+
+- **API 文件的暴露**：Swagger UI 與 OpenAPI spec 由 `SWAGGER_ENABLED` 控制，
+  **未設定時依 `NODE_ENV`**（production 關、其餘開）。關閉時 `/docs` 與 `/docs-json`
+  兩者都不掛載——`docs-json` 才是有價值的那份，而它沒有介面所以容易被漏掉。
+  這兩條路徑用 `app.use()` 掛原生 Express middleware，**全域 `JwtAuthGuard` 碰不到**
+  （Nest 的 guard 只作用於 Nest 路由）；`public-surface.spec.ts` 要求所有
+  `app.use()` 掛載都列入豁免清單並註明理由。
+
+- **免認證路徑必須精確比對**：`JwtAuthGuard` 對 `/api/metrics` 的豁免用的是
+  精確比對（去除 query string 後）而非 `startsWith`。前綴豁免的性質是
+  「未來新增的任何同前綴路由自動免認證」，而那不會有任何錯誤訊息提醒你。
 - **IP 黑白名單**：`IpBlacklistGuard` / `IpWhitelistGuard` 全域攔截。IP 連續登入失敗達 `APPLICATION_IP_BLOCK_THRESHOLD` 次自動加入黑名單。資料表：`ip_whitelist`、`ip_blacklist`（後者含 `isAutoBlock` 標記）。
 - **密碼策略**：`PasswordPolicyService` 依角色套用不同複雜度（**0–4**，累加式）：0 只檢查長度、1 加英文字母與數字、2 加大小寫各一、3 加特殊符號、4 加禁止 18 組常見弱密碼。**系統管理員預設 4、其他角色預設 1**（`APPLICATION_SYSTEM_ADMIN_PASSWORD_COMPLEXITY` / `APPLICATION_OTHER_ADMIN_PASSWORD_COMPLEXITY`）。
 - **密碼定期更換**：`passwordChangeEnabled` + `APPLICATION_PASSWORD_CHANGE_PERIOD > 0` 時，`JwtAuthGuard` 檢查 `lastPasswordChange`；超期回 `403 { code: 'PASSWORD_CHANGE_REQUIRED' }`。

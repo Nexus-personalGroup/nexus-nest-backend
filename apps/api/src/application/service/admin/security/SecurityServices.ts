@@ -182,8 +182,10 @@ export class UnlockAccountService implements UnlockAccountUseCase {
     if (!member) throw new EmailNotFoundException();
 
     // 2. 確認帳號真的鎖著（避免靜默通過正常帳號的解鎖請求）
-    const locked = await this.accountLock.isLocked(email);
-    if (!locked) throw new AccountNotLockedException();
+    // 只有「仍在時效內」才算鎖著：已到期的帳號下次登入就會自動放行，
+    // 對它執行解鎖是一個沒有效果的操作，靜默通過會讓管理員以為自己做了什麼
+    const lockStatus = await this.accountLock.checkLock(email);
+    if (lockStatus !== 'LOCKED') throw new AccountNotLockedException();
 
     // 3. 解鎖（同時重置 failedLoginCount）
     await this.accountLock.unlockAccount(email);
