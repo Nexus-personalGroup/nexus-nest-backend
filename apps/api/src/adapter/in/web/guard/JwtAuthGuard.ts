@@ -47,7 +47,10 @@ export class JwtAuthGuard implements CanActivate {
 
     // Prometheus /api/metrics 由第三方 controller 提供、無法掛 @Public，以路徑略過
     const url = request.originalUrl ?? request.url ?? '';
-    if (url.startsWith('/api/metrics')) return true;
+    // **精確比對而非前綴**：`startsWith` 的性質是「未來新增的任何 /api/metrics 開頭
+    // 路由自動免認證」，而那不會有任何錯誤訊息提醒你——它是一條會自己長大的豁免。
+    // 去掉 query string：Prometheus 帶參數 scrape 時仍須通過
+    if (url.split('?')[0] === '/api/metrics') return true;
 
     const token = this.extractToken(request);
     if (!token) {

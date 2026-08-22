@@ -36,7 +36,7 @@ const mockLoadMember = {
 const mockAccountLock = {
   recordFailedLogin: jest.fn(),
   resetFailedLogin: jest.fn(),
-  isLocked: jest.fn(),
+  checkLock: jest.fn(),
   lockAccount: jest.fn(),
   unlockAccount: jest.fn(),
 } as jest.Mocked<AccountLockPort>;
@@ -51,29 +51,29 @@ describe('UnlockAccountService', () => {
 
   it('email 存在 + 帳號已鎖 → 呼叫 unlockAccount', async () => {
     mockLoadMember.loadMemberByEmail.mockResolvedValue(makeMember());
-    mockAccountLock.isLocked.mockResolvedValue(true);
+    mockAccountLock.checkLock.mockResolvedValue('LOCKED');
 
     await makeService().execute(EMAIL);
 
     expect(mockLoadMember.loadMemberByEmail).toHaveBeenCalledWith(EMAIL);
-    expect(mockAccountLock.isLocked).toHaveBeenCalledWith(EMAIL);
+    expect(mockAccountLock.checkLock).toHaveBeenCalledWith(EMAIL);
     expect(mockAccountLock.unlockAccount).toHaveBeenCalledWith(EMAIL);
     expect(mockAccountLock.unlockAccount).toHaveBeenCalledTimes(1);
   });
 
-  it('email 不存在 → 拋 EmailNotFoundException，不查 isLocked / 不解鎖', async () => {
+  it('email 不存在 → 拋 EmailNotFoundException，不查鎖定狀態 / 不解鎖', async () => {
     mockLoadMember.loadMemberByEmail.mockResolvedValue(null);
 
     await expect(makeService().execute(EMAIL)).rejects.toBeInstanceOf(
       EmailNotFoundException,
     );
-    expect(mockAccountLock.isLocked).not.toHaveBeenCalled();
+    expect(mockAccountLock.checkLock).not.toHaveBeenCalled();
     expect(mockAccountLock.unlockAccount).not.toHaveBeenCalled();
   });
 
   it('email 存在但未鎖 → 拋 AccountNotLockedException，不解鎖', async () => {
     mockLoadMember.loadMemberByEmail.mockResolvedValue(makeMember());
-    mockAccountLock.isLocked.mockResolvedValue(false);
+    mockAccountLock.checkLock.mockResolvedValue('NONE');
 
     await expect(makeService().execute(EMAIL)).rejects.toBeInstanceOf(
       AccountNotLockedException,

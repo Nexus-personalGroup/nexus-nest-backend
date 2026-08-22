@@ -151,20 +151,37 @@ describe('Dashboard E2E', () => {
   });
 
   /**
-   * 日界依 `APP_TIMEZONE`（測試環境為 Asia/Taipei）。
+   * 日界依 `APP_TIMEZONE`（測試環境為 Asia/Taipei），不是 UTC。
    *
    * 用 UTC 的話這則訊息不會被計入，而症狀只在台灣時間 00:00–08:00 出現——
    * 那種錯誤很難被回報，也很難重現。
+   *
+   * **時間戳必須明確在 UTC+8 的框架下算出來，不能用 `setHours()`。**
+   * 後者走的是**執行機器的本機時區**：在本機時區剛好是 Asia/Taipei 的機器上
+   * 它是對的，在 UTC 的 CI runner 上算出來的卻是 UTC 的凌晨——
+   * 而那正好落在台北今天的界線之前。一支驗「日界不是 UTC」的測試若依賴機器時區，
+   * 就只有在「機器時區 == APP_TIMEZONE」時才會過，**而那正是它要防的 bug 唯一看不見的情況**。
    */
   it('⭐ 今日訊息數依 APP_TIMEZONE 判定日界', async () => {
     const room = await prisma.chatRoomRecord.create({
       data: { roomType: 'GROUP', name: '房', lastSeq: 1 },
     });
-    // 台北今天的 00:30；若日界用 UTC，它會落在「昨天」而不被計入
-    const taipeiEarlyToday = new Date();
-    taipeiEarlyToday.setUTCHours(taipeiEarlyToday.getUTCHours() - 24);
-    const localMidnight = new Date();
-    localMidnight.setHours(0, 30, 0, 0);
+
+    // 台北 = UTC+8 且無日光節約，可以直接位移
+    const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+    const taipeiNow = new Date(Date.now() + TAIPEI_OFFSET_MS);
+    // 台北今天 00:00 對應的 UTC instant
+    const taipeiMidnightUtc = new Date(
+      Date.UTC(
+        taipeiNow.getUTCFullYear(),
+        taipeiNow.getUTCMonth(),
+        taipeiNow.getUTCDate(),
+      ) - TAIPEI_OFFSET_MS,
+    );
+    // 台北今天的 00:30。若日界用 UTC，它在多數時段會落在「昨天」而不被計入
+    const taipeiEarlyToday = new Date(
+      taipeiMidnightUtc.getTime() + 30 * 60 * 1000,
+    );
 
     await prisma.chatMessageRecord.create({
       data: {
@@ -173,22 +190,22 @@ describe('Dashboard E2E', () => {
         content: '凌晨的訊息',
         seq: 1,
         clientMessageId: 'c-early',
-        createdAt: localMidnight,
+        createdAt: taipeiEarlyToday,
       },
     });
 
     const res = await snapshot();
 
     expect((res.body as SnapshotBody).data.messagesToday).toBe(1);
-    expect(taipeiEarlyToday.getTime()).toBeLessThan(Date.now());
   });
 
   it('昨天的訊息不計入今日', async () => {
     const room = await prisma.chatRoomRecord.create({
       data: { roomType: 'GROUP', name: '房', lastSeq: 1 },
     });
-    const yesterday = new Date();
-    yesterday.setDate(yesterday.getDate() - 1);
+    // 26 小時前：任何時區的「今天」起點都在 24 小時內，所以這個時間點必然在界線之前。
+    // 用 setDate() 會走本機時區，在有日光節約的機器上可能只退 23 小時而落進今天
+    const yesterday = new Date(Date.now() - 26 * 60 * 60 * 1000);
 
     await prisma.chatMessageRecord.create({
       data: {

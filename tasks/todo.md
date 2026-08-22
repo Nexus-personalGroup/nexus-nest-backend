@@ -5,55 +5,68 @@
 
 ## 進行中
 
-（無。`add-admin-moderation` 已完成待合併。）
+`fix-unauthenticated-surface`（審查報告的 🔴 + 三個暴露面）——已完成待合併。
+
+## 路線圖
+
+> **2026-08-22 的兩個決定重排了整條路線**：
+> 1. **前台使用者與後台帳號分成兩張表**（前台表名 `users`），前台自己註冊、要完整流程。
+> 2. 先修完審查報告的 🔴 再開分表工程。
+>
+> 分表會動到聊天領域的每一個「member」——那些欄位**指的從頭到尾都是前台使用者**，
+> 不是管理員。已完成的四個審閱頁、停權、WS 認證、presence key 全都要跟著改。
+> 好消息是這些欄位**都沒有外鍵指向 members**（當初為了「帳號刪除不該由 DB 連動」而不建），
+> 所以遷移是語意上的而非結構上的。
+
+| 順序 | Change | 內容 | 狀態 |
+| --- | --- | --- | --- |
+| 1 | `fix-unauthenticated-surface` | 帳號鎖定時效、Swagger 開關、metrics 豁免收窄、`DB_PORT` 預設值 | 待合併 |
+| 2 | `fix-presence-scan-cost` | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | 未開始 |
+| 3 | `add-front-user-auth` | `users` 表 + 前台認證（註冊 / 驗證信箱 / 登入 / 重設密碼）+ JWT 側別 claim | 未開始 |
+| 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 未開始 |
+| 5 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
+| 6 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
+
+**2 排在 3 之前的理由**：`countOnlineMembers` 是我自己剛加的錯（用了明確標注
+「不可用於請求路徑」的 scan pattern），而分表會動到 presence key 的語意——先修乾淨再動。
+
+**3 與 4 不能合併**：3 讓新體系能站著（不動既有資料），4 才切換指向。
+4 一旦開始就不能留半套狀態，所以它自己要一次做完。
 
 ## 待辦
 
-### 近期里程碑（nexus 專屬）
+### 卡在分表（做完 change 4 之後才有意義）
 
-> Phase 1 只做即時聊天，做到 production 等級。前台另開專案，`apps/web` 為純後台管理。
-> M0 骨架、M1 WS 地基已完成，見「已完成」。
-
-- ~~**M2 聊天核心**~~：房間（`add-chat-rooms`）與訊息 + 已讀（`add-chat-messaging`）皆已完成。
-  - 房間的成員資格判斷已有單一來源（`ENSURE_ROOM_MEMBERSHIP_USE_CASE`），送訊息直接複用，不要另寫一份。
-- ~~**撤回／刪除訊息**~~：`add-message-retraction` 已完成。
-- **附件訊息**（確定要做，不在 `add-chat-messaging` 內）：訊息帶圖片／檔案。
-  之後加 `messageType` 欄位（預設 `TEXT`）即可，`content` 維持 `TEXT NOT NULL` 不需改。
-  真正要先想清楚的是**前台的上傳授權與容量限制**——既有 attachment 模組是後台側的，
-  那部分與訊息無關，所以它獨立成一個 change 是對的切法。
-- ~~**M3 監控埋點**~~：`add-chat-observability` 已完成（Prometheus 自訂指標 + `chat_audit_log`）。
-  - 檢舉入口與後台查詢已移到「進行中」。
-- ~~**M4 後台介面**~~：~~檢舉佇列與處置~~（`add-admin-moderation-ui`）、
-  ~~使用者 360 視圖~~（`add-admin-member-profile`）皆已完成。
-  ~~聊天室總覽~~（`add-admin-room-overview`）亦完成。
-  ~~SSE 即時儀表板~~（`add-admin-dashboard`）亦完成。**M4 全部完成。**
-
-### 待辦（近期）
-
-- ~~**資料保留期限**~~：`add-chat-retention` 已完成稽核（180 天）與檢舉（判定後 365 天）。
-- **訊息的保留策略**（`add-chat-retention` 刻意不做）：**卡在 `seq` 缺口的設計，不是卡在清理**。
+- **附件訊息**：訊息帶圖片／檔案。之後加 `messageType` 欄位（預設 `TEXT`）即可，
+  `content` 維持 `TEXT NOT NULL` 不需改。**真正要先想清楚的是前台的上傳授權與容量限制**——
+  而「前台使用者是誰」正是 change 3 才會定下來的事。
+- **訊息的保留策略**：**卡在 `seq` 缺口的設計，不是卡在清理**。
   清訊息會讓 `seq` 重新出現洞，補齊的客戶端無法區分「被清掉」與「我漏收了」，
   唯一合理的反應是反覆嘗試補同一段區間——那正是訊息撤回堅持軟刪除所要避免的問題。
   **要做的話先解這個**：讓 `roomSynced` 帶「本房間最舊的可用 seq」，客戶端才分得開。
-  那會動到 WS 契約與前台（獨立 repo）。另外訊息保留本身是**產品承諾**而非技術清理，
-  刪掉舊對話需要產品決定與使用者告知。`retention-scope.spec.ts` 擋著誤加的清理程式碼。
-- ~~**移除訊息**~~：`add-admin-message-removal` 已完成（含還原，兩者都留稽核）。
-- ~~**停用帳號**~~：`add-account-suspension` 已完成。查現況時發現**一半早就在了**
-  （登入與新請求都擋得住），真正缺的是「既有的 WS 連線不會斷」——
-  那是一個實際存在的漏洞：被停權的人只要連線還開著就能繼續送訊息。
-  處置動作整條線（移除訊息 / 還原 / 停權 / 解除）到此完成。
+  那會動到 WS 契約與前台（獨立 repo）。另外訊息保留本身是**產品承諾**而非技術清理。
+  `retention-scope.spec.ts` 擋著誤加的清理程式碼。
+
+### 前台專案（獨立 repo，尚未開始）
+
+- **三個待同步項**（後端已完成、前端尚未接）：`retractedAt`、`removedAt`、
+  以及 `server:sessionRevoked`——**收到後不可自動重連**，否則被停權者會進入無盡重連迴圈。
+- **change 3 完成後**還要加：註冊 / 驗證信箱 / 重設密碼的畫面，以及前台自己的 token 儲存。
 
 ### 已知缺口（知情，非遺漏）
 
-（無。連線層事件限流已由 `add-ws-connection-throttle` 補上，見「已完成」。）
+（無。連線層事件限流已補上；審查報告的 🔴 在 change 1 修掉。）
 
 ### 技術債（小，隨手可修）
 
 - **布林環境變數的解析不一致**：既有變數用 `z.string().default('false').transform(v => v === 'true')`，
   它把任何非 `'true'` 的值都當成 false——`FOO=TRUE`（大寫）或 `FOO=1` 會**靜默失效**。
-  `CHAT_AUDIT_ENABLED` 改用 `z.enum(['true','false'])` 讓 typo 在啟動時就失敗。
-  其餘變數要不要一起換是獨立決定（換了會讓現有的 `.env` 若有大小寫問題直接啟動失敗，
-  那是好事但需要有人在場處理）。
+  較新的 `CHAT_AUDIT_ENABLED` / `SWAGGER_ENABLED` 已改用 `z.enum(['true','false'])`
+  讓 typo 在啟動時就失敗。**舊的那些還沒改**。
+- **`logger.ts` 直讀 `process.env`**（`NODE_ENV` / `SERVICE_NAME` / `LOG_LEVEL`）。
+  三者**都在 envSchema 裡**（審查報告說不在，那條不成立），
+  直讀的理由是初始化順序——logger 早於 `getEnv()`。現場沒有註解說明這是刻意的，
+  下一個看到的人會以為是漏掉然後「修好」它並引入循環相依。**加兩行註解即可**。
 
 ### 需人工處理（AI 做不到）
 
@@ -177,6 +190,30 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-23 — 未認證攻擊面修補（`fix-unauthenticated-surface`）
+
+專案審查報告（`pr/2026-08-22-09-30-project-review.md`）的 🔴 與三個暴露面。
+
+**帳號鎖定原本是一個沒有復原路徑的死結**：`lockedAt` 只寫入從不比對時效，
+而清除它的兩條路都走不通——鎖定的檢查排在密碼驗證之前（`LoginService:108` vs `:131`），
+被鎖的帳號連「密碼打對」都到不了 `resetFailedLogin`；人工解鎖需要已登入的 SUPERADMIN。
+把管理員 email 全鎖一輪就沒有人能登入解鎖，而觸發鎖定不需要認證也不需要猜對密碼。
+
+**實作中額外抓到兩件審查報告沒提的**：
+1. spec 寫 `423` + `ACCOUNT_LOCKED`，程式丟的卻是 `ForbiddenException`（403）加一句
+   寫死的中文——而**既有的單元測試斷言的正是 403**，測試把漂移一起釘住了。
+2. `isLocked` 的布林分不出「從未鎖定」與「鎖過但已到期」，而後者**必須清失敗計數**
+   （Redis 計數 TTL 30 分鐘 > 時效 15 分鐘，不清的話到期後第一次打錯就立刻重鎖，
+   實際鎖定變成 30 分鐘而設定的數字看起來完全正常）。改成三態 `checkLock()`。
+
+**審查報告有一條不成立**：問題 11 說 `NODE_ENV`/`SERVICE_NAME`/`LOG_LEVEL` 不在 envSchema，
+實際上三個都在。真正的情況是 `logger.ts` 直讀 `process.env`，理由是初始化順序。
+
+新增兩支守則：`public-surface.spec.ts`（免認證路徑必須精確比對；`app.use()` 掛載
+必須列入豁免清單——那些**完全不經過 Nest 的 guard**）、以及 env 三方同步
+（`.env.example` ⊇ envSchema、compose 的 api 區塊 ⊆ envSchema、容器 env ⊆ envSchema）。
+後者上線第一件事就抓到本 change 自己新增的兩個變數還沒進 `.env.example`。
 
 ### 2026-08-22 — 營運總覽（`add-admin-dashboard`）｜**M4 完成**
 

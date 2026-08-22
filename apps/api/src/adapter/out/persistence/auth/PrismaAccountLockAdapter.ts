@@ -1,8 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
-import { AccountLockPort } from '@app/application/port/out/auth/AccountLockPort';
+import {
+  AccountLockPort,
+  AccountLockStatus,
+} from '@app/application/port/out/auth/AccountLockPort';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
 import { buildFailedLoginKey } from '@app/infrastructure/redis/cache-keys';
+import { getEnv } from '@app/infrastructure/validate-env';
 
 /**
  * 帳號鎖定 Adapter：
@@ -54,13 +58,20 @@ export class PrismaAccountLockAdapter implements AccountLockPort {
       });
   }
 
-  async isLocked(email: string): Promise<boolean> {
+  async checkLock(email: string): Promise<AccountLockStatus> {
     // 軟刪 model 的 read path 一律加 deletedAt: null（findUnique 不支援非唯一條件 → 改 findFirst）
     const record = await this.prisma.memberRecord.findFirst({
       where: { email, deletedAt: null },
       select: { lockedAt: true },
     });
-    return record?.lockedAt !== null && record?.lockedAt !== undefined;
+    if (!record?.lockedAt) return 'NONE';
+
+    const expiresAt = new Date(
+      record.lockedAt.getTime() +
+        getEnv().APPLICATION_ACCOUNT_LOCK_DURATION_MIN * 60_000,
+    );
+    // 純比對，不寫入：到期後該清的失敗計數由呼叫端處理
+    return new Date() < expiresAt ? 'LOCKED' : 'EXPIRED';
   }
 
   async lockAccount(email: string): Promise<void> {

@@ -18,7 +18,7 @@ export const ResponseMessages = {
   EMAIL_ALREADY_EXISTS: 'Email 已被使用',
   EMAIL_NOT_FOUND: '找不到該 email 對應的帳號',
   ACCOUNT_DISABLED: '帳號已停用',
-  ACCOUNT_LOCKED: '帳號已被鎖定，請聯繫管理員解鎖',
+  ACCOUNT_LOCKED: '帳號因連續登入失敗被鎖定，請稍後再試',
   ACCOUNT_NOT_LOCKED: '帳號未處於鎖定狀態，無需解鎖',
   CANNOT_DELETE_SELF: '不可刪除登入中的自己帳號',
   CANNOT_DISABLE_SELF: '不可停用登入中的自己帳號',

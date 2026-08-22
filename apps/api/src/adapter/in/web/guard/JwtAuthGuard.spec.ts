@@ -83,6 +83,26 @@ describe('JwtAuthGuard', () => {
       ).resolves.toBe(true);
       expect(mockResolve.resolve).not.toHaveBeenCalled();
     });
+
+    // Prometheus 可能帶參數 scrape，去掉 query string 後仍須通過
+    it('/api/metrics?foo=1 → 直接放行', async () => {
+      await expect(
+        guard.canActivate(makeContext(undefined, '/api/metrics?foo=1')),
+      ).resolves.toBe(true);
+    });
+
+    /**
+     * **這支是這一塊的重點。**
+     *
+     * 原本用 `startsWith('/api/metrics')`，它的性質是「未來新增的任何
+     * /api/metrics 開頭路由自動免認證」——而那不會有任何錯誤訊息提醒你。
+     * 今天沒有這種路由，所以這支測試在改動前也是紅的（豁免範圍過寬）。
+     */
+    it('⭐ /api/metrics-secret → 不得放行', async () => {
+      await expect(
+        guard.canActivate(makeContext(undefined, '/api/metrics-secret')),
+      ).rejects.toThrow();
+    });
   });
 
   it('無 Authorization header → UnauthorizedException', async () => {

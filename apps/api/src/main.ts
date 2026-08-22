@@ -62,7 +62,7 @@ import { join, resolve } from 'path';
 import * as yaml from 'js-yaml';
 import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
-import { getEnv } from './infrastructure/validate-env';
+import { getEnv, isSwaggerEnabled } from './infrastructure/validate-env';
 import { RedisIoAdapter } from './infrastructure/redis-io.adapter';
 import { RedisService } from './infrastructure/redis/redis.service';
 
@@ -183,14 +183,19 @@ const bootstrap = async (): Promise<void> => {
     );
   };
 
-  mountSwagger(
-    '/api/admin',
-    loadSwaggerDocument('docs/swagger/admin/openapi.bundle.yaml'),
-  );
-  mountSwagger(
-    '/api/front',
-    loadSwaggerDocument('docs/swagger/front/openapi.bundle.yaml'),
-  );
+  // 關閉時 /docs 與 /docs-json **兩者都不掛載**。只關 UI 是最容易犯的錯——
+  // docs-json 才是真正有價值的那份（完整結構、可直接餵給工具），而它沒有介面所以不顯眼。
+  // 關掉不影響開發流程：swagger:check 與 api-client codegen 走的是本機檔案而非 HTTP 端點
+  if (isSwaggerEnabled()) {
+    mountSwagger(
+      '/api/admin',
+      loadSwaggerDocument('docs/swagger/admin/openapi.bundle.yaml'),
+    );
+    mountSwagger(
+      '/api/front',
+      loadSwaggerDocument('docs/swagger/front/openapi.bundle.yaml'),
+    );
+  }
 
   app.useLogger(new BootFilteredLogger(app.get(Logger)));
   app.flushLogs();

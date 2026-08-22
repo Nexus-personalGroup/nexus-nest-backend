@@ -572,3 +572,40 @@ SELECT pg_terminate_backend(<pid>);
 ```
 
 不要整個重啟資料庫容器——那會影響其他正在用同一個 Postgres 的專案。
+
+### 2026-08-23 — 測試可能正在釘住 bug，而不是釘住規格
+
+**踩到什麼**：把登入的帳號鎖定改成丟 `AccountLockedException`（423，spec 明訂）之後，既有的單元測試紅了——它斷言的是 `ForbiddenException`（403）。也就是說 spec 寫 423、程式丟 403、**測試站在程式那邊**，三者不一致的狀態穩定存在了很久。
+
+**Why**：測試是照著「當時的實作」寫的，不是照著 spec 寫的。一旦寫完，它就從「驗證規格」變成「凍結現況」——而凍結的如果是 bug，那個 bug 從此有了保護。`AccountLockedException` 一直存在、一直沒被用，也沒有任何東西會指出這件事。
+
+**How to apply**：改動一個有 spec 的行為時，**先讀 spec 再讀測試**，順序不能反。測試紅了要先問「是我改錯了，還是它本來就在釘錯的東西」。另外：`openspec-spec-format.spec.ts` 驗的是 spec 的**格式**，沒有任何守則驗「spec 宣稱的狀態碼與實作一致」——這類漂移目前只能靠人在改到那段程式時發現。
+
+### 2026-08-23 — partial mock 蓋不到模組對自己的呼叫
+
+**踩到什麼**：`isSwaggerEnabled()` 內部呼叫同檔案的 `getEnv()`。測試用 `jest.mock` 搭 `requireActual` 只替換 `getEnv`，結果 mock 完全沒生效——`isSwaggerEnabled` 拿到的仍是真實的環境變數。
+
+**Why**：CommonJS 下，模組內部的呼叫走的是**模組作用域裡的那個 binding**，不是 exports 物件上的屬性。替換 exports 只影響「別的模組怎麼看它」，不影響「它怎麼看自己」。
+
+**How to apply**：把判定抽成**吃參數的純函式**（`resolveSwaggerEnabled(nodeEnv, explicit)`），讓包裝函式只負責取值。純函式沒有這個問題，而且測試讀起來就是一張真值表。這比研究怎麼讓 mock 生效便宜得多，順便讓那段邏輯可以被別處重用。
+
+### 2026-08-23 — 驗「時區處理」的測試，本身不可以依賴機器時區
+
+**踩到什麼**：`dashboard.e2e-spec.ts` 有一支測試專門驗「今日訊息數的日界依 `APP_TIMEZONE` 而非 UTC」。本機全綠，**CI 紅**：`Expected: 1, Received: 0`。
+
+**Why**：測試用 `new Date(); setHours(0, 30, 0, 0)` 造時間戳，而 `setHours` 走的是**執行機器的本機時區**。我的機器本機時區剛好是 `Asia/Taipei`，所以算出來就是台北的凌晨；CI runner 是 UTC，算出來是 UTC 的凌晨，落在台北「今天」的界線（UTC 前一天 16:00）之前，於是不被計入。
+
+諷刺的地方在這裡：**這支測試只有在「機器時區 == APP_TIMEZONE」時才會過，而那正是它要防的 bug 唯一看不見的情況**。它看起來在驗時區處理，實際上是在驗「兩個恰好相等的東西相等」。
+
+**How to apply**：時間相關的測試要**明確在目標時區的框架下算時間戳**，不要用任何走本機時區的 API（`setHours` / `getHours` / `setDate` / `getDate` / `toLocaleString`）。台北是 UTC+8 且無日光節約，可以直接位移：
+
+```ts
+const TAIPEI_OFFSET_MS = 8 * 60 * 60 * 1000;
+const taipeiNow = new Date(Date.now() + TAIPEI_OFFSET_MS);
+const taipeiMidnightUtc = new Date(
+  Date.UTC(taipeiNow.getUTCFullYear(), taipeiNow.getUTCMonth(), taipeiNow.getUTCDate())
+  - TAIPEI_OFFSET_MS,
+);
+```
+
+**寫完用 `TZ=UTC pnpm ... test:e2e` 跑一次**——那是最便宜的 CI 條件重現，本機兩秒就知道測試有沒有偷偷依賴機器時區。「N 小時前」這類相對時間也要小心：`setDate(getDate() - 1)` 在有日光節約的機器上可能只退 23 小時，用 `Date.now() - 26h` 這種明確位移比較安全。
