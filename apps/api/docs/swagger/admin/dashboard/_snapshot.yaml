@@ -1,0 +1,36 @@
+# 營運總覽的一組數字。**只有聚合值，沒有任何識別資訊**
+type: object
+required:
+  [
+    onlineMembers,
+    pendingReports,
+    totalRooms,
+    totalMembers,
+    messagesToday,
+    generatedAt,
+  ]
+properties:
+  onlineMembers:
+    type: integer
+    description: |
+      目前有連線的**成員數**（不是連線數）——一個人開三個裝置算一個。
+      跨實例，來源是 Redis。
+  pendingReports:
+    type: integer
+    description: 待處理的檢舉數
+  totalRooms:
+    type: integer
+  totalMembers:
+    type: integer
+    description: 未軟刪除的成員數
+  messagesToday:
+    type: integer
+    description: |
+      今日訊息數。**日界依 `APP_TIMEZONE` 而非 UTC**——
+      用 UTC 會讓這個數字在台灣時間早上八點莫名其妙歸零。
+  generatedAt:
+    type: string
+    format: date-time
+    description: |
+      產生這組數字的時間。一組沒有時間戳的即時數字，
+      在連線中斷後看起來與即時數字一模一樣——呼叫端要能顯示「最後更新於」。

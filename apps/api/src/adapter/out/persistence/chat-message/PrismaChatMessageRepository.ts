@@ -169,6 +169,12 @@ export class PrismaChatMessageRepository implements ChatMessageRepositoryPort {
     return existing.retractedAt ?? now;
   }
 
+  async countSince(since: Date): Promise<number> {
+    return this.prisma.chatMessageRecord.count({
+      where: { createdAt: { gte: since } },
+    });
+  }
+
   async findForModeration(
     messageId: string,
   ): Promise<MessageModerationTarget | null> {

@@ -1,6 +1,7 @@
 import {
   Flag,
   Home,
+  LayoutDashboard,
   MessagesSquare,
   Shield,
   ShieldBan,
@@ -49,6 +50,13 @@ export const NAV_ITEMS: NavItem[] = [
   },
 
   // 聊天管理
+  {
+    label: '營運總覽',
+    path: '/moderation/dashboard',
+    icon: LayoutDashboard,
+    group: '聊天管理',
+    requiredPermission: 'BACKEND:MODERATION:VIEW',
+  },
   {
     label: '檢舉審閱',
     path: '/moderation/reports',

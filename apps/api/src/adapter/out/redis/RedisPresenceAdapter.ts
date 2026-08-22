@@ -100,6 +100,23 @@ export class RedisPresenceAdapter implements PresencePort {
     return this.parseFresh(raw);
   }
 
+  async countOnlineMembers(): Promise<number> {
+    const keys = await this.redis.scanKeys(
+      buildPresenceScanPattern(this.redis.keyPrefix),
+    );
+
+    let online = 0;
+    for (const key of keys) {
+      const raw = await this.redis.hashGetAll(key);
+      // 一個 key 是一個成員；只要還有一筆未逾時的連線就算在線。
+      // 讀取時過濾而非信任 key 的存在：陳舊紀錄要等排程才會被實際刪除
+      if (Object.values(raw).some((value) => !this.isStale(value))) {
+        online += 1;
+      }
+    }
+    return online;
+  }
+
   async sweepStale(): Promise<number> {
     const keys = await this.redis.scanKeys(
       buildPresenceScanPattern(this.redis.keyPrefix),

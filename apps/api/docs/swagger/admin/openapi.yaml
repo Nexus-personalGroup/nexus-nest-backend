@@ -214,6 +214,14 @@ paths:
     post:
       $ref: './moderation/reinstate-member.yaml'
 
+  /moderation/dashboard:
+    get:
+      $ref: './dashboard/snapshot.yaml'
+
+  /moderation/dashboard/stream:
+    get:
+      $ref: './dashboard/stream.yaml'
+
   /moderation/rooms:
     get:
       $ref: './moderation/list-rooms.yaml'

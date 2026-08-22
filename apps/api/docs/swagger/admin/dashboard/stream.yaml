@@ -1,0 +1,37 @@
+tags: [Dashboard]
+summary: 推送營運快照（SSE）
+description: |
+  需 `BACKEND:MODERATION:VIEW` 權限。
+
+  以 Server-Sent Events 每 `DASHBOARD_STREAM_INTERVAL_SEC` 秒推送一次快照，
+  內容與 `GET /moderation/dashboard` 相同。連線建立時**立即推一次**，
+  不讓客戶端空等一個間隔。
+
+  回應**不套** `{ success, data, timestamp }` 外殼——SSE 的每一筆是獨立事件，
+  而外殼是為「一次請求一次回應」設計的。
+
+  **查詢是實例級的**：同一個實例上不論有 1 個或 10 個訂閱者，
+  每個週期只查一次資料庫。沒有訂閱者時停止查詢。
+
+  **客戶端注意**：原生 `EventSource` 無法帶自訂 header，
+  而本 API 以 `Authorization: Bearer` 認證。請用 `fetch` +
+  `response.body.getReader()` 自行讀取；**不要**把 token 放進 query string。
+
+responses:
+  '200':
+    description: 事件串流
+    content:
+      text/event-stream:
+        schema:
+          type: string
+          description: |
+            每筆事件的形狀為 `data: <snapshot JSON>`，兩個換行分隔。
+            snapshot 的欄位與 `GET /moderation/dashboard` 的 `data` 相同。
+        example: |
+          data: {"onlineMembers":12,"pendingReports":3,"totalRooms":48,"totalMembers":156,"messagesToday":1204,"generatedAt":"2026-08-22T06:00:00.000Z"}
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

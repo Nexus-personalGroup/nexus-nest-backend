@@ -23,11 +23,10 @@
   那部分與訊息無關，所以它獨立成一個 change 是對的切法。
 - ~~**M3 監控埋點**~~：`add-chat-observability` 已完成（Prometheus 自訂指標 + `chat_audit_log`）。
   - 檢舉入口與後台查詢已移到「進行中」。
-- **M4 後台介面**：~~檢舉佇列與處置~~（`add-admin-moderation-ui`）、
+- ~~**M4 後台介面**~~：~~檢舉佇列與處置~~（`add-admin-moderation-ui`）、
   ~~使用者 360 視圖~~（`add-admin-member-profile`）皆已完成。
   ~~聊天室總覽~~（`add-admin-room-overview`）亦完成。
-  **只剩 SSE 即時儀表板**——它與審閱動線沒有共用元件，
-  要自己處理 SSE 連線管理、重連與更新頻率，獨立成一個 change。
+  ~~SSE 即時儀表板~~（`add-admin-dashboard`）亦完成。**M4 全部完成。**
 
 ### 待辦（近期）
 
@@ -178,6 +177,25 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-22 — 營運總覽（`add-admin-dashboard`）｜**M4 完成**
+
+後台原本什麼都查得到，但沒有地方回答「現在怎麼樣」。新增快照端點 + SSE 推送，
+與 `/moderation/dashboard` 頁面。首頁的模板佔位文字**刻意沒改**：
+首頁對所有登入者開放，而營運數字需要 `MODERATION:VIEW`。
+
+**唯一的 migration**：`chat_messages` 加 `created_at` 索引，用 **BRIN** 而非 B-tree——
+這張表 append-only 且 createdAt 單調遞增，物理順序與值天然相關，正是 BRIN 的適用條件。
+實測 Prisma 7 接受 `type: Brin`，產出的 SQL 是 `USING BRIN`。
+
+**三個實作要點**（都在 spec 裡，不只在 tasks）：一個實例只跑一個計時器
+（每連線各自 setInterval 會讓管理員人數乘上資料庫負載）；
+前端不能用 `EventSource`（無法帶 header，而 token 不能放 query string）；
+中斷時數字要看得出來是過期的。
+
+**順手補了一個守則盲點**：`swagger-sync` 的路由掃描器只認
+`@Get|Post|Patch|Put|Delete`，**看不見 `@Sse()`**——SSE 端點對它完全隱形。
+已教它認得（`Sse` 映射成 GET），補完後它立刻抓到兩支缺 yaml 的端點。
 
 ### 2026-08-22 — 聊天室總覽（`add-admin-room-overview`）
 

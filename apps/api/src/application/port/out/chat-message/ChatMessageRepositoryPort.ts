@@ -135,6 +135,15 @@ export interface ChatMessageRepositoryPort {
   findForModeration(messageId: string): Promise<MessageModerationTarget | null>;
 
   /**
+   * 某時間點之後寫入的訊息數。
+   *
+   * **這是唯一不需要 roomId 的計數**，供營運總覽的「今日訊息數」。
+   * 走 `idx_chat_messages_created_at`（BRIN）——這張表是 append-only，
+   * 要掃的正好是最後幾個區塊。
+   */
+  countSince(since: Date): Promise<number>;
+
+  /**
    * 管理員移除。同樣是軟刪除、同樣不碰 `retractedAt`。
    *
    * @returns 移除時間；已移除時回 null（沒有任何改變，呼叫端據此不推播）

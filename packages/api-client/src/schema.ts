@@ -578,6 +578,137 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/moderation/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢營運快照
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     **只有聚合數字**——沒有 email、沒有房間名稱、沒有訊息內容。
+         *     儀表板回答「現在怎麼樣」，要看是誰、是哪個房間都該去對應的列表頁。
+         *
+         *     本端點**不寫稽核**：回應不含任何個人或訊息內容。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            success: boolean;
+                            data: {
+                                /**
+                                 * @description 目前有連線的**成員數**（不是連線數）——一個人開三個裝置算一個。
+                                 *     跨實例，來源是 Redis。
+                                 */
+                                onlineMembers: number;
+                                /** @description 待處理的檢舉數 */
+                                pendingReports: number;
+                                totalRooms: number;
+                                /** @description 未軟刪除的成員數 */
+                                totalMembers: number;
+                                /**
+                                 * @description 今日訊息數。**日界依 `APP_TIMEZONE` 而非 UTC**——
+                                 *     用 UTC 會讓這個數字在台灣時間早上八點莫名其妙歸零。
+                                 */
+                                messagesToday: number;
+                                /**
+                                 * Format: date-time
+                                 * @description 產生這組數字的時間。一組沒有時間戳的即時數字，
+                                 *     在連線中斷後看起來與即時數字一模一樣——呼叫端要能顯示「最後更新於」。
+                                 */
+                                generatedAt: string;
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/moderation/dashboard/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 推送營運快照（SSE）
+         * @description 需 `BACKEND:MODERATION:VIEW` 權限。
+         *
+         *     以 Server-Sent Events 每 `DASHBOARD_STREAM_INTERVAL_SEC` 秒推送一次快照，
+         *     內容與 `GET /moderation/dashboard` 相同。連線建立時**立即推一次**，
+         *     不讓客戶端空等一個間隔。
+         *
+         *     回應**不套** `{ success, data, timestamp }` 外殼——SSE 的每一筆是獨立事件，
+         *     而外殼是為「一次請求一次回應」設計的。
+         *
+         *     **查詢是實例級的**：同一個實例上不論有 1 個或 10 個訂閱者，
+         *     每個週期只查一次資料庫。沒有訂閱者時停止查詢。
+         *
+         *     **客戶端注意**：原生 `EventSource` 無法帶自訂 header，
+         *     而本 API 以 `Authorization: Bearer` 認證。請用 `fetch` +
+         *     `response.body.getReader()` 自行讀取；**不要**把 token 放進 query string。
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 事件串流 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        /** @example data: {"onlineMembers":12,"pendingReports":3,"totalRooms":48,"totalMembers":156,"messagesToday":1204,"generatedAt":"2026-08-22T06:00:00.000Z"} */
+                        "text/event-stream": string;
+                    };
+                };
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/moderation/rooms": {
         parameters: {
             query?: never;

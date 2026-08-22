@@ -146,6 +146,10 @@ export class PrismaChatRoomRepository implements ChatRoomRepositoryPort {
     return { data: rows.map((row) => this.toAdminSummary(row)), total };
   }
 
+  async countRooms(): Promise<number> {
+    return this.prisma.chatRoomRecord.count();
+  }
+
   async findAdminDetail(roomId: string): Promise<AdminRoomDetail | null> {
     const row = await this.prisma.chatRoomRecord.findUnique({
       where: { id: roomId },

@@ -347,6 +347,14 @@ const envSchema = z.object({
    * 設太低會誤傷合理的批次操作（例如重連後連續 join 多個房間），
    * 而那類誤傷會以「偶爾有房間加不進去」的形式出現，很難查。
    */
+  /**
+   * 營運總覽的推送間隔（秒）。
+   *
+   * 查詢是**實例級**的：實例上有 1 個或 10 個管理員在看，資料庫的查詢次數都一樣，
+   * 所以這個值決定的是「每個實例每秒幾次查詢」而不是「每人幾次」。
+   * 調短的代價是資料庫負載，調長的代價是數字更舊——後者對「有沒有事」影響很小。
+   */
+  DASHBOARD_STREAM_INTERVAL_SEC: z.coerce.number().int().min(1).default(5),
   WS_CONNECTION_EVENT_LIMIT: z.coerce.number().int().min(1).default(20),
   /** 連線層事件限流的視窗長度（秒） */
   WS_CONNECTION_EVENT_WINDOW_SEC: z.coerce.number().int().min(1).default(1),
