@@ -15,6 +15,10 @@ import { FrontJwtAuthGuard } from '../../guard/FrontJwtAuthGuard';
  * `@Public()` 是給**全域的後台 Guard** 看的（讓它略過），
  * 實際的認證由 `FrontJwtAuthGuard` 執行——後者刻意不檢查 `@Public()`，
  * 否則兩個 Guard 都會放行而這支端點完全沒有認證。
+ *
+ * **刻意不掛 `EmailVerifiedGuard`**（豁免登記在 `authorization-coverage.spec.ts`）：
+ * 使用者要看得到自己的驗證狀態，才知道自己卡在哪、該去點哪一封信。
+ * 擋掉這一支等於把人關在一個沒有說明的門外。
  */
 @Controller('front/me')
 @Public()

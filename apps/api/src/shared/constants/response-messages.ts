@@ -18,6 +18,9 @@ export const ResponseMessages = {
   EMAIL_ALREADY_EXISTS: 'Email 已被使用',
   EMAIL_NOT_FOUND: '找不到該 email 對應的帳號',
   ACCOUNT_DISABLED: '帳號已停用',
+  EMAIL_NOT_VERIFIED: '請先完成信箱驗證',
+  // 無效／過期／已使用／用途不符一律用同一句：分開講就是一個帳號探測點
+  INVALID_TOKEN: '連結無效或已過期，請重新申請',
   ACCOUNT_LOCKED: '帳號因連續登入失敗被鎖定，請稍後再試',
   ACCOUNT_NOT_LOCKED: '帳號未處於鎖定狀態，無需解鎖',
   CANNOT_DELETE_SELF: '不可刪除登入中的自己帳號',
@@ -63,6 +66,7 @@ export const ResponseMessages = {
   CHAT_ROOM_SELF_DIRECT: '無法與自己建立私聊',
   CHAT_MESSAGE_RATE_LIMITED: '訊息發送過於頻繁，請稍後再試',
   WS_RATE_LIMITED: '操作過於頻繁，請稍後再試',
+  EMAIL_SEND_RATE_LIMITED: '寄送過於頻繁，請稍後再試',
   // 「訊息不存在」與「不是你發的」刻意共用：分開會變成探測任意訊息是否存在的工具
   CHAT_MESSAGE_NOT_FOUND: '訊息不存在或不是你發送的',
   CHAT_MESSAGE_RETRACT_EXPIRED: '超過可撤回的時間',

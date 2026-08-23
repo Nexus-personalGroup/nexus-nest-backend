@@ -79,4 +79,23 @@ describe('TransformInterceptor', () => {
     expect(result).toEqual(rawData);
     expect((result as Record<string, unknown>).success).toBeUndefined();
   });
+
+  /**
+   * 包起來的話 Nest 讀不到回傳值的 `url`，結果是**狀態碼對、
+   * Location header 卻是空的**——瀏覽器停在一個空白頁上，沒有任何錯誤。
+   * 信箱驗證那支端點踩過這個坑。
+   */
+  it('⭐ @Redirect 路由 → 跳過 wrap，url 必須留在頂層', async () => {
+    (mockReflector.get as jest.Mock).mockImplementation((key: string) =>
+      key === '__redirect__' ? { statusCode: 302, url: '' } : undefined,
+    );
+
+    const rawData = { url: 'https://front.example.com/verify?result=success' };
+    const result = await firstValueFrom(
+      interceptor.intercept(makeContext(), makeHandler(rawData)),
+    );
+
+    expect(result).toEqual(rawData);
+    expect((result as Record<string, unknown>).url).toBe(rawData.url);
+  });
 });

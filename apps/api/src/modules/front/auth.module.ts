@@ -7,6 +7,13 @@ import { FrontLogoutService } from '../../application/service/front/auth/FrontLo
 import { FrontRefreshTokenService } from '../../application/service/front/auth/FrontRefreshTokenService';
 import { GetFrontProfileService } from '../../application/service/front/auth/GetFrontProfileService';
 import { ResolveUserContextService } from '../../application/service/front/auth/ResolveUserContextService';
+import { FrontRegisterService } from '../../application/service/front/auth/FrontRegisterService';
+import { VerifyEmailService } from '../../application/service/front/auth/VerifyEmailService';
+import { ResendVerificationService } from '../../application/service/front/auth/ResendVerificationService';
+import { VerificationMailService } from '../../application/service/front/auth/VerificationMailService';
+import { FrontForgotPasswordService } from '../../application/service/front/auth/FrontForgotPasswordService';
+import { FrontResetPasswordService } from '../../application/service/front/auth/FrontResetPasswordService';
+import { PasswordPolicyService } from '../../application/service/shared/PasswordPolicyService';
 import {
   FRONT_LOGIN_USE_CASE,
   FRONT_LOGOUT_USE_CASE,
@@ -14,8 +21,18 @@ import {
   GET_FRONT_PROFILE_USE_CASE,
   RESOLVE_USER_CONTEXT_USE_CASE,
 } from '../../application/port/in/front/auth/FrontAuthUseCases';
+import {
+  FRONT_REGISTER_USE_CASE,
+  RESEND_VERIFICATION_USE_CASE,
+  VERIFY_EMAIL_USE_CASE,
+} from '../../application/port/in/front/auth/FrontRegistrationUseCases';
+import {
+  FRONT_FORGOT_PASSWORD_USE_CASE,
+  FRONT_RESET_PASSWORD_USE_CASE,
+} from '../../application/port/in/front/auth/FrontPasswordResetUseCases';
 import { UserPersistenceModule } from '../user-persistence.module';
 import { JwtModule } from '../jwt.module';
+import { EmailModule } from '../email.module';
 
 /**
  * 前台認證（路由 `/api/front/auth/*` 與 `/api/front/me`）。
@@ -28,7 +45,8 @@ import { JwtModule } from '../jwt.module';
  * 切換到前台帳號時（`migrate-chat-to-front-users`）會需要它。
  */
 @Module({
-  imports: [UserPersistenceModule, JwtModule],
+  // EmailModule 提供 SEND_EMAIL_PORT（驗證信與密碼重設信）
+  imports: [UserPersistenceModule, JwtModule, EmailModule],
   controllers: [FrontAuthController, FrontMeController],
   providers: [
     FrontLoginService,
@@ -36,6 +54,13 @@ import { JwtModule } from '../jwt.module';
     FrontLogoutService,
     GetFrontProfileService,
     ResolveUserContextService,
+    FrontRegisterService,
+    VerifyEmailService,
+    ResendVerificationService,
+    VerificationMailService,
+    FrontForgotPasswordService,
+    FrontResetPasswordService,
+    PasswordPolicyService,
     { provide: FRONT_LOGIN_USE_CASE, useExisting: FrontLoginService },
     {
       provide: FRONT_REFRESH_TOKEN_USE_CASE,
@@ -49,6 +74,20 @@ import { JwtModule } from '../jwt.module';
     {
       provide: RESOLVE_USER_CONTEXT_USE_CASE,
       useExisting: ResolveUserContextService,
+    },
+    { provide: FRONT_REGISTER_USE_CASE, useExisting: FrontRegisterService },
+    { provide: VERIFY_EMAIL_USE_CASE, useExisting: VerifyEmailService },
+    {
+      provide: RESEND_VERIFICATION_USE_CASE,
+      useExisting: ResendVerificationService,
+    },
+    {
+      provide: FRONT_FORGOT_PASSWORD_USE_CASE,
+      useExisting: FrontForgotPasswordService,
+    },
+    {
+      provide: FRONT_RESET_PASSWORD_USE_CASE,
+      useExisting: FrontResetPasswordService,
     },
     FrontAuthFacade,
   ],

@@ -104,6 +104,7 @@ export class FrontRefreshTokenService implements FrontRefreshTokenUseCase {
         email: user.email,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        emailVerified: user.emailVerifiedAt !== null,
       },
     };
   }

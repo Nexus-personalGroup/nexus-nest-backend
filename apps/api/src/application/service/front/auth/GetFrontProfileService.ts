@@ -33,6 +33,7 @@ export class GetFrontProfileService implements GetFrontProfileUseCase {
       email: user.email,
       displayName: user.displayName,
       avatarUrl: user.avatarUrl,
+      emailVerified: user.emailVerifiedAt !== null,
       emailVerifiedAt: user.emailVerifiedAt,
       createdAt: user.createdAt,
     };

@@ -92,6 +92,7 @@ describe('Front Auth E2E', () => {
         email: 'user1@test.com',
         displayName: '小明',
         avatarUrl: null,
+        emailVerified: true,
       });
     });
 
@@ -203,6 +204,7 @@ describe('Front Auth E2E', () => {
         'createdAt',
         'displayName',
         'email',
+        'emailVerified',
         'emailVerifiedAt',
         'id',
       ]);

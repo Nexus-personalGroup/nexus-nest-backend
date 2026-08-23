@@ -25,20 +25,41 @@ const TEST_USERS = [
     displayName: '小明',
     password: 'User1234!',
     status: true,
+    verified: true,
   },
   {
     email: 'user2@test.com',
     displayName: '小華',
     password: 'User1234!',
     status: true,
+    verified: true,
   },
   {
     email: 'suspended@test.com',
     displayName: '被停權的人',
     password: 'User1234!',
     status: false,
+    verified: true,
+  },
+  // 刻意保留一個未驗證的：那個狀態需要有東西可以驗
+  {
+    email: 'unverified@test.com',
+    displayName: '還沒驗信箱的人',
+    password: 'User1234!',
+    status: true,
+    verified: false,
   },
 ];
+
+/**
+ * **每次都跑。**
+ *
+ * `add-front-user-registration` 之後這幾個帳號多了 `emailVerifiedAt`——
+ * 只跑一次的話，既有的資料庫會跳過它，那三個帳號永遠是未驗證狀態，
+ * 而症狀是「seed 出來的人聊不了天」。
+ * 全部是 upsert，重跑沒有副作用。
+ */
+export const alwaysRun = true;
 
 export default async function seed(prisma: PrismaClient): Promise<void> {
   log.info('插入前台測試使用者...');
@@ -52,12 +73,14 @@ export default async function seed(prisma: PrismaClient): Promise<void> {
         displayName: u.displayName,
         password: passwordHash,
         status: u.status,
+        emailVerifiedAt: u.verified ? new Date() : null,
       },
       create: {
         email: u.email,
         displayName: u.displayName,
         password: passwordHash,
         status: u.status,
+        emailVerifiedAt: u.verified ? new Date() : null,
       },
     });
 

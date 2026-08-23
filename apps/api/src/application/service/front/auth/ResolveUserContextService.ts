@@ -88,6 +88,8 @@ export class ResolveUserContextService implements ResolveUserContextUseCase {
       email: user.email,
       displayName: user.displayName,
       status: user.status,
+      // 每次解析都重算：驗證完之後同一個 token 就該立刻能聊天
+      emailVerified: user.emailVerifiedAt !== null,
       tokenVersion: user.tokenVersion,
     };
   }

@@ -1,0 +1,59 @@
+tags: [FrontAuth]
+summary: 重發驗證信
+description: |
+  對尚未驗證的帳號重發驗證信。無需認證。
+
+  **無論信箱是否存在、是否已驗證，一律回 204。** 這一支與註冊不同：
+  註冊揭露信箱狀態是為了給使用者有用的回饋，而重發沒有那個需求——
+  它若依帳號狀態回不同的東西，就是一個乾淨的帳號探測點。
+
+  已驗證的帳號不會收到信（沒有意義），但回應仍是 204。
+
+  新的 token 會**作廢先前未使用的驗證 token**：使用者手上永遠只有最後一封有效，
+  否則重發三次之後有三個同時有效的 token，而他只會用最新那個。
+
+  限流的額度**無論帳號存不存在都會扣**——只對存在的帳號計數的話，
+  Redis 的計數狀態就變成「這個信箱有沒有註冊」的旁通道。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [email]
+        properties:
+          email:
+            type: string
+            format: email
+            maxLength: 255
+      example:
+        email: user@example.com
+
+responses:
+  '204':
+    description: 已受理（無回應內容）。帳號不存在或已驗證時同樣回 204
+  '400':
+    description: 欄位不符 schema
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 資料驗證失敗
+          code: VALIDATION_ERROR
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '429':
+    description: 對該信箱的寄送過於頻繁
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 寄送過於頻繁，請稍後再試
+          code: EMAIL_SEND_RATE_LIMITED
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

@@ -259,6 +259,7 @@ paths:
                           - email
                           - displayName
                           - avatarUrl
+                          - emailVerified
                         properties:
                           id:
                             type: string
@@ -271,6 +272,12 @@ paths:
                           avatarUrl:
                             type: string
                             nullable: true
+                          emailVerified:
+                            type: boolean
+                            description: |
+                              信箱是否已驗證。**false 時登得進來但聊不了天**——
+                              客戶端要據此決定是引導去聊天室還是引導去收驗證信。
+                              少了它，前台只能等第一次聊天請求被 403 才知道
                   timestamp:
                     type: string
                     format: date-time
@@ -302,6 +309,361 @@ paths:
                 message: 帳號已停用
                 code: ACCOUNT_DISABLED
                 timestamp: '2026-08-23T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/register:
+    post:
+      tags:
+        - FrontAuth
+      summary: 前台註冊
+      description: |
+        建立一個**信箱尚未驗證**的前台使用者，並寄出驗證信。無需認證。
+
+        **本端點刻意會揭露「這個信箱是否已註冊」（409）**，與底下的重發驗證信
+        和忘記密碼不同——那兩支一律回 204。不這樣做的話使用者收不到任何有用的回饋，
+        他會以為註冊成功然後永遠等不到信。而「這個信箱能不能註冊」本來就是
+        註冊表單必須回答的問題，藏不住。要擋的是**把它自動化**，那是限流的工作。
+
+        **已註冊但尚未驗證的信箱再次註冊**：回 409 並**重發一次驗證信到原信箱**，
+        不覆蓋既有帳號的任何欄位（尤其是密碼）。這是最常見的真實情境——
+        信進了垃圾信匣，於是使用者重新註冊一次。擋掉他等於逼他換信箱。
+
+        **回應不含 token**：註冊不等於登入，使用者要自己走登入流程。
+
+        信箱在比對與儲存前會正規化（去空白、轉小寫），
+        因此 `Foo@X.com` 與 `foo@x.com` 是同一個帳號。
+
+        寄信**不阻塞回應**：SMTP 連不上時走滿逾時會讓註冊看起來當掉。
+        寄送失敗只寫 log，不讓註冊本身失敗。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+                - displayName
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+                password:
+                  type: string
+                  maxLength: 128
+                  description: 複雜度由密碼政策判定
+                displayName:
+                  type: string
+                  minLength: 1
+                  maxLength: 50
+            example:
+              email: user@example.com
+              password: User1234!
+              displayName: 小明
+      responses:
+        '201':
+          description: 註冊成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - id
+                      - email
+                      - displayName
+                      - avatarUrl
+                      - emailVerified
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+                      displayName:
+                        type: string
+                      avatarUrl:
+                        type: string
+                        nullable: true
+                      emailVerified:
+                        type: boolean
+                        description: 註冊當下必然為 false
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: 欄位不符 schema，或密碼未通過政策
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 資料驗證失敗
+                code: VALIDATION_ERROR
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '409':
+          description: 該信箱已註冊（未驗證者會順便重發驗證信）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 此 Email 已被使用
+                code: EMAIL_ALREADY_EXISTS
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '429':
+          description: 對該信箱的寄送過於頻繁
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 寄送過於頻繁，請稍後再試
+                code: EMAIL_SEND_RATE_LIMITED
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/verify-email:
+    get:
+      tags:
+        - FrontAuth
+      summary: 信箱驗證
+      description: |
+        驗證信裡的連結指向這裡。驗完 **302 導回前台**：
+        `{APP_FRONT_URL}{APP_FRONT_VERIFY_REDIRECT_PATH}?result=success|invalid|expired`。
+
+        **GET 且帶副作用，這是刻意的**——信件裡只能放連結，而連結只有 GET。
+        代價是**預抓（prefetch）與郵件安全掃描會提前把 token 用掉**，
+        因此**驗證成功是冪等的**：已驗證的帳號再次帶同一個 token 進來仍回
+        `result=success`，而不是失敗。使用者什麼都沒做錯，不該看到失敗。
+
+        **本端點不回 JSON 錯誤**：使用者是從信件點進來的，看到一段 JSON
+        只會不知道發生什麼事。失敗一樣是 302，只是 `result` 不同。
+
+        無效、過期、用途不符（拿密碼重設的 token 來驗證信箱）一律導向失敗，
+        且不透露帳號是否存在。
+      parameters:
+        - name: token
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 255
+          description: 信件連結帶入的明文 token
+      responses:
+        '302':
+          description: |
+            一律導回前台，以 query 的 `result` 表示結果：
+
+            - `success` — 驗證完成（或本來就已驗證）
+            - `expired` — token 過期
+            - `invalid` — token 不存在、用途不符，或帳號已不存在
+          headers:
+            Location:
+              schema:
+                type: string
+              description: '例：https://front.example.com/verify-email?result=success'
+        '400':
+          description: 未帶 token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 資料驗證失敗
+                code: VALIDATION_ERROR
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/resend-verification:
+    post:
+      tags:
+        - FrontAuth
+      summary: 重發驗證信
+      description: |
+        對尚未驗證的帳號重發驗證信。無需認證。
+
+        **無論信箱是否存在、是否已驗證，一律回 204。** 這一支與註冊不同：
+        註冊揭露信箱狀態是為了給使用者有用的回饋，而重發沒有那個需求——
+        它若依帳號狀態回不同的東西，就是一個乾淨的帳號探測點。
+
+        已驗證的帳號不會收到信（沒有意義），但回應仍是 204。
+
+        新的 token 會**作廢先前未使用的驗證 token**：使用者手上永遠只有最後一封有效，
+        否則重發三次之後有三個同時有效的 token，而他只會用最新那個。
+
+        限流的額度**無論帳號存不存在都會扣**——只對存在的帳號計數的話，
+        Redis 的計數狀態就變成「這個信箱有沒有註冊」的旁通道。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+            example:
+              email: user@example.com
+      responses:
+        '204':
+          description: 已受理（無回應內容）。帳號不存在或已驗證時同樣回 204
+        '400':
+          description: 欄位不符 schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 資料驗證失敗
+                code: VALIDATION_ERROR
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '429':
+          description: 對該信箱的寄送過於頻繁
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 寄送過於頻繁，請稍後再試
+                code: EMAIL_SEND_RATE_LIMITED
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/forgot-password:
+    post:
+      tags:
+        - FrontAuth
+      summary: 前台忘記密碼
+      description: |
+        產生密碼重設 token 並寄出重設信。無需認證。
+
+        **無論信箱是否存在一律回 204**，判準與重發驗證信相同——
+        這一支沒有「給使用者有用的回饋」這個需求可以拿來抵消帳號列舉的風險：
+        使用者本來就只會看到「信寄出去了，請去收信」。
+
+        **未驗證信箱的帳號也可以用**：忘記密碼與信箱驗證是兩件事，
+        而重設信本身就會送到那個信箱——能收到就證明他擁有它。
+        擋掉未驗證者只會讓「註冊完忘記密碼」變成一個死結。
+
+        新的 token 會作廢先前未使用的重設 token。
+
+        限流的額度**無論帳號存不存在都會扣**，理由同重發驗證信。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 255
+            example:
+              email: user@example.com
+      responses:
+        '204':
+          description: 已受理（無回應內容）。帳號不存在時同樣回 204
+        '400':
+          description: 欄位不符 schema
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 資料驗證失敗
+                code: VALIDATION_ERROR
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '429':
+          description: 對該信箱的寄送過於頻繁
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 寄送過於頻繁，請稍後再試
+                code: EMAIL_SEND_RATE_LIMITED
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/reset-password:
+    post:
+      tags:
+        - FrontAuth
+      summary: 前台重設密碼
+      description: |
+        以重設信裡的 token 設定新密碼。無需認證。
+
+        成功會**遞增 `tokenVersion`，讓所有裝置立即登出**。那不是附加功能：
+        會走到「忘記密碼」的情境本來就包含「帳號可能正被別人用著」，
+        改完密碼卻讓對方的既有 session 繼續有效，等於只重設了一半。
+        使用者需要用新密碼重新登入。
+
+        **無效、過期、已使用、用途不符（例如拿驗證信的 token 來改密碼）
+        一律回同一個錯誤**，四者不可區分——可區分的話就足以確認某個 token 曾經存在。
+
+        密碼政策在消費 token 之前驗：反過來的話，密碼不合格時 token 已經沒了，
+        使用者得回去重新申請一次。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - token
+                - password
+              properties:
+                token:
+                  type: string
+                  maxLength: 255
+                password:
+                  type: string
+                  maxLength: 128
+                  description: 複雜度由密碼政策判定
+            example:
+              token: 3f6c1b2a8d4e4a9fb1c72e5d9a0f7b31
+              password: NewPass1234!
+      responses:
+        '204':
+          description: 已重設（無回應內容）。舊的 access token 同時失效
+        '400':
+          description: token 無效／過期／已使用／用途不符，或新密碼未通過政策
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 連結無效或已過期，請重新申請
+                code: INVALID_TOKEN
+                timestamp: '2026-08-24T06:00:00.000Z'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /auth/refresh:
@@ -416,6 +778,7 @@ paths:
                       - email
                       - displayName
                       - avatarUrl
+                      - emailVerified
                       - emailVerifiedAt
                       - createdAt
                     properties:
@@ -430,11 +793,16 @@ paths:
                       avatarUrl:
                         type: string
                         nullable: true
+                      emailVerified:
+                        type: boolean
+                        description: |
+                          信箱是否已驗證。**本端點刻意不受驗證門檻限制**——
+                          使用者要看得到自己的狀態才知道卡在哪、該去點哪一封信
                       emailVerifiedAt:
                         type: string
                         format: date-time
                         nullable: true
-                        description: null 表示信箱尚未驗證
+                        description: 驗證的時間；null 表示尚未驗證
                       createdAt:
                         type: string
                         format: date-time

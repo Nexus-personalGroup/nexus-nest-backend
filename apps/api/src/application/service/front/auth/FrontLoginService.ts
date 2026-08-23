@@ -109,6 +109,7 @@ export class FrontLoginService implements FrontLoginUseCase {
         email: user.email,
         displayName: user.displayName,
         avatarUrl: user.avatarUrl,
+        emailVerified: user.emailVerifiedAt !== null,
       },
     };
   }

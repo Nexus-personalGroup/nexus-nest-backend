@@ -139,6 +139,51 @@ export class PrismaUserRepository implements LoadUserPort, SaveUserPort {
     return count > 0;
   }
 
+  async existsByEmail(email: string): Promise<boolean> {
+    const found = await this.prisma.userRecord.findFirst({
+      where: { email, deletedAt: null },
+      select: { id: true },
+    });
+    return found !== null;
+  }
+
+  async create(input: {
+    email: string;
+    passwordHash: string;
+    displayName: string;
+  }): Promise<string> {
+    // emailVerifiedAt 刻意不出現在這裡：沒有任何路徑可以在建立當下就標成已驗證
+    const created = await this.prisma.userRecord.create({
+      data: {
+        email: input.email,
+        password: input.passwordHash,
+        displayName: input.displayName,
+      },
+      select: { id: true },
+    });
+    return created.id;
+  }
+
+  async markEmailVerified(id: string): Promise<boolean> {
+    // where 帶 emailVerifiedAt: null——已驗證的再標一次要回 false，
+    // 呼叫端才分得出「剛剛驗證成功」與「本來就驗證過了」
+    const { count } = await this.prisma.userRecord.updateMany({
+      where: { id, emailVerifiedAt: null, deletedAt: null },
+      data: { emailVerifiedAt: new Date() },
+    });
+    return count > 0;
+  }
+
+  async updatePassword(id: string, passwordHash: string): Promise<boolean> {
+    // 密碼與 tokenVersion 一起寫：會走到改密碼的情境本來就包含
+    // 「帳號可能正被別人用著」，讓所有裝置登出是那個情境的一部分
+    const { count } = await this.prisma.userRecord.updateMany({
+      where: { id, deletedAt: null },
+      data: { password: passwordHash, tokenVersion: { increment: 1 } },
+    });
+    return count > 0;
+  }
+
   async bumpTokenVersion(id: string): Promise<boolean> {
     // where 不帶 status——強制登出與停權互相獨立，
     // 對已停權的帳號再次強制登出仍然應該生效

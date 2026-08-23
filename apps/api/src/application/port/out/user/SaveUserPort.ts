@@ -34,4 +34,27 @@ export interface SaveUserPort {
    * 因為「再登出一次」是一個有意義的重複動作（第一次之後對方又登入了）。
    */
   bumpTokenVersion(id: string): Promise<boolean>;
+  /**
+   * 建立一個**信箱尚未驗證**的前台使用者。
+   *
+   * `emailVerifiedAt` 一律為 null——沒有任何路徑可以在建立當下就標成已驗證，
+   * 那必須由使用者點信裡的連結完成。
+   *
+   * @returns 新建的使用者 ID
+   */
+  create(input: {
+    email: string;
+    passwordHash: string;
+    displayName: string;
+  }): Promise<string>;
+  /** 標記信箱已驗證。回傳是否真的改變了狀態（已驗證的再標一次回 false） */
+  markEmailVerified(id: string): Promise<boolean>;
+  /**
+   * 寫入新的密碼雜湊，並**同時遞增 `tokenVersion`**。
+   *
+   * 兩件事綁在同一個方法而非讓呼叫端各做一次：會走到改密碼的情境
+   * 本來就包含「帳號可能正被別人用著」，讓所有裝置登出是那個情境的一部分，
+   * 不是一個可以忘記的附加步驟。
+   */
+  updatePassword(id: string, passwordHash: string): Promise<boolean>;
 }

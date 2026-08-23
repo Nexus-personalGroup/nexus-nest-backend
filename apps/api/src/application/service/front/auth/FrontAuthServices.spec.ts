@@ -31,7 +31,7 @@ const makeUser = (over: Partial<Record<string, unknown>> = {}) => ({
   password: '$2b$10$hashed',
   displayName: '小明',
   avatarUrl: null,
-  emailVerifiedAt: null,
+  emailVerifiedAt: new Date('2026-01-01T00:00:00.000Z'),
   status: true,
   tokenVersion: 0,
   lastSeenAt: null,
@@ -84,6 +84,7 @@ describe('FrontLoginService', () => {
       id: 'user-1',
       email: 'user1@test.com',
       displayName: '小明',
+      emailVerified: true,
       avatarUrl: null,
     });
     expect(result.accessToken).toBe('signed-token');
@@ -218,8 +219,28 @@ describe('ResolveUserContextService', () => {
       email: 'user1@test.com',
       displayName: '小明',
       status: true,
+      emailVerified: true,
       tokenVersion: 0,
     });
+  });
+
+  /**
+   * 驗證狀態每次解析都重算，**不快取在 token 裡**——
+   * 快取的話使用者驗證完還得重新登入才能聊天。
+   */
+  it('⭐ 未驗證的帳號 → emailVerified 為 false，但仍解析成功', async () => {
+    loadUser.loadById.mockResolvedValue(makeUser({ emailVerifiedAt: null }));
+    jwt.verify.mockReturnValue({
+      sub: 'user-1',
+      type: 'access',
+      side: 'front',
+      tokenVersion: 0,
+    });
+
+    const context = await service.resolve('token');
+
+    expect(context.emailVerified).toBe(false);
+    expect(context.sub).toBe('user-1');
   });
 
   it('⭐ 用前台的 secret 驗證', async () => {

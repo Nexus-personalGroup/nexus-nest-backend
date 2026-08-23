@@ -12,6 +12,14 @@ export interface FrontUserSummary {
   email: string;
   displayName: string;
   avatarUrl: string | null;
+  /**
+   * 信箱是否已驗證。
+   *
+   * 登入回應必須帶它——未驗證的帳號登得進來但聊不了天，
+   * 客戶端要據此決定是引導去聊天室還是引導去收驗證信。
+   * 少了它，前台只能等第一次聊天請求被 403 才知道。
+   */
+  emailVerified: boolean;
 }
 
 export interface FrontTokenPair {
