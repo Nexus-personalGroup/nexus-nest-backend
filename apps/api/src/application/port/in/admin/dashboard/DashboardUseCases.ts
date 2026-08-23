@@ -8,12 +8,12 @@ export const GET_DASHBOARD_SNAPSHOT_USE_CASE =
  * 儀表板回答的是「現在怎麼樣」，要看是誰、是哪個房間都該去對應的列表頁。
  */
 export interface DashboardSnapshot {
-  /** 目前有連線的成員數（跨實例，來自 Redis） */
+  /** 目前有連線的**前台使用者**數（跨實例，來自 Redis） */
   onlineMembers: number;
   /** 待處理的檢舉數 */
   pendingReports: number;
   totalRooms: number;
-  /** 未軟刪除的成員數 */
+  /** 未軟刪除的**前台使用者**數；MUST NOT 計入後台管理員 */
   totalMembers: number;
   /** 今日訊息數；日界依 `APP_TIMEZONE` 而非 UTC */
   messagesToday: number;

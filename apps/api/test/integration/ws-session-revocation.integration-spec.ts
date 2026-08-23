@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { CLIENT_EVENTS, SERVER_EVENTS } from '@app/adapter/in/ws/events';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedUser } from '../helpers/db';
 import {
   signAccessToken,
   startInstance,
@@ -75,17 +75,16 @@ describe('WebSocket 連線撤銷（整合）', () => {
 
   beforeEach(async () => {
     await resetDb(prisma);
-    const target = await seedMember(prisma, {
+    const target = await seedUser(prisma, {
       email: 'target@example.com',
       password: 'Passw0rd!',
     });
-    const other = await seedMember(prisma, {
+    const other = await seedUser(prisma, {
       email: 'other@example.com',
       password: 'Passw0rd!',
-      roleName: 'other',
     });
-    targetId = target.memberId;
-    otherId = other.memberId;
+    targetId = target.userId;
+    otherId = other.userId;
     targetToken = signAccessToken(instanceA.jwt, targetId);
     otherToken = signAccessToken(instanceA.jwt, otherId);
 
@@ -99,12 +98,17 @@ describe('WebSocket 連線撤銷（整合）', () => {
     roomId = room.id;
   });
 
-  /** 由實例 A 觸發停權——被停權者的連線在實例 B */
+  /**
+   * 由實例 A 觸發停權——被停權者的連線在實例 B。
+   *
+   * 走**審閱側**的 use case（停的是前台使用者）。`moderatorId` 隨便填一個 ID 即可：
+   * 它只會被寫進稽核，不參與任何判斷——審閱側沒有「不可停權自己」的檢查，
+   * 因為管理員與前台使用者是兩個不相交的身分空間。
+   */
   const suspendFromA = (): Promise<void> =>
-    instanceA.updateMember.execute({
-      id: targetId,
-      actorId: otherId,
-      status: false,
+    instanceA.suspendFrontUser.execute({
+      userId: targetId,
+      moderatorId: otherId,
     });
 
   it('⭐ 被停權者在另一個實例上的連線被斷開', async () => {
@@ -180,9 +184,9 @@ describe('WebSocket 連線撤銷（整合）', () => {
   it('沒有連線時停權照常完成', async () => {
     await expect(suspendFromA()).resolves.toBeUndefined();
 
-    const member = await prisma.memberRecord.findUniqueOrThrow({
+    const user = await prisma.userRecord.findUniqueOrThrow({
       where: { id: targetId },
     });
-    expect(member.status).toBe(false);
+    expect(user.status).toBe(false);
   });
 });

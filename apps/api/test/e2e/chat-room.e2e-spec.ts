@@ -3,8 +3,12 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { ResponseCodes } from '@app/shared/constants/response-codes';
 import { createE2EApp, createMockRedis } from '../setup/test-app';
-import { resetDb, seedMember } from '../helpers/db';
-import { describeUnauthorized, expectApiError } from '../helpers/assertions';
+import { resetDb, seedMember, seedUser } from '../helpers/db';
+import {
+  describeUnauthorized,
+  expectApiError,
+  expectUnauthorized,
+} from '../helpers/assertions';
 
 const PASSWORD = 'TestPass123!';
 const MISSING_ID = '00000000-0000-4000-8000-0000000000ff';
@@ -28,10 +32,12 @@ describe('ChatRoom E2E', () => {
   let idA = '';
   let idB = '';
   let tokenC = '';
+  let adminToken = '';
 
+  /** 前台登入——聊天的參與者是前台使用者，不是後台管理員 */
   const login = async (email: string): Promise<string> => {
     const res = await request(app.getHttpServer())
-      .post('/api/admin/auth/login')
+      .post('/api/front/auth/login')
       .send({ email, password: PASSWORD });
     return (res.body as { data: { accessToken: string } }).data.accessToken;
   };
@@ -57,24 +63,53 @@ describe('ChatRoom E2E', () => {
     mockRedis.throttleIncrement.mockResolvedValue(1);
     await resetDb(prisma);
 
-    const a = await seedMember(prisma, {
+    const a = await seedUser(prisma, {
       email: 'a@test.com',
       password: PASSWORD,
     });
-    const b = await seedMember(prisma, {
+    const b = await seedUser(prisma, {
       email: 'b@test.com',
       password: PASSWORD,
-      roleName: 'member-b',
     });
-    await seedMember(prisma, {
-      email: 'c@test.com',
-      password: PASSWORD,
-      roleName: 'member-c',
-    });
-    idA = a.memberId;
-    idB = b.memberId;
+    await seedUser(prisma, { email: 'c@test.com', password: PASSWORD });
+    idA = a.userId;
+    idB = b.userId;
     tokenA = await login('a@test.com');
     tokenC = await login('c@test.com');
+
+    // 後台帳號：只用來證明它的 token 打不進前台聊天
+    await seedMember(prisma, {
+      email: 'admin@test.com',
+      password: PASSWORD,
+    });
+    const adminRes = await request(app.getHttpServer())
+      .post('/api/admin/auth/login')
+      .send({ email: 'admin@test.com', password: PASSWORD });
+    adminToken = (adminRes.body as { data: { accessToken: string } }).data
+      .accessToken;
+  });
+
+  /**
+   * 切換到前台身分的直接證據。
+   *
+   * `migrate-chat-to-front-users` 之前這四支端點吃的是**後台 token**（會回 200）；
+   * 之後必須一律 401——而且不是因為權限不足，是簽章根本驗不過。
+   */
+  describe('⭐ 後台 token 打前台聊天端點', () => {
+    it('列出房間 → 401', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/front/chat-rooms')
+        .set('Authorization', `Bearer ${adminToken}`);
+      expectUnauthorized(res);
+    });
+
+    it('建立私聊 → 401', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/front/chat-rooms/direct')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ targetMemberId: idB });
+      expectUnauthorized(res);
+    });
   });
 
   describe('未授權存取', () => {

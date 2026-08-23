@@ -3,7 +3,7 @@ import { CHAT_AUDIT_PORT } from '@app/application/port/out/ChatAuditPort';
 import type { PresencePort } from '@app/application/port/out/presence/PresencePort';
 import type { ChatReportRepositoryPort } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 import type { ChatRoomRepositoryPort } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
-import type { LoadMemberPort } from '@app/application/port/out/member/LoadMemberPort';
+import type { LoadUserPort } from '@app/application/port/out/user/LoadUserPort';
 import type { ChatMessageRepositoryPort } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
 
 jest.mock('@app/infrastructure/validate-env', () => ({
@@ -20,8 +20,8 @@ const roomRepo = {
   countRooms: jest.fn(),
 } as unknown as jest.Mocked<ChatRoomRepositoryPort>;
 const memberRepo = {
-  countMembers: jest.fn(),
-} as unknown as jest.Mocked<LoadMemberPort>;
+  countUsers: jest.fn(),
+} as unknown as jest.Mocked<LoadUserPort>;
 const messageRepo = {
   countSince: jest.fn(),
 } as unknown as jest.Mocked<ChatMessageRepositoryPort>;
@@ -34,7 +34,7 @@ describe('GetDashboardSnapshotService', () => {
     presence.countOnlineMembers.mockResolvedValue(0);
     reportRepo.countByStatus.mockResolvedValue(0);
     roomRepo.countRooms.mockResolvedValue(0);
-    memberRepo.countMembers.mockResolvedValue(0);
+    memberRepo.countUsers.mockResolvedValue(0);
     messageRepo.countSince.mockResolvedValue(0);
     service = new GetDashboardSnapshotService(
       presence,
@@ -53,7 +53,7 @@ describe('GetDashboardSnapshotService', () => {
     presence.countOnlineMembers.mockResolvedValue(12);
     reportRepo.countByStatus.mockResolvedValue(3);
     roomRepo.countRooms.mockResolvedValue(48);
-    memberRepo.countMembers.mockResolvedValue(156);
+    memberRepo.countUsers.mockResolvedValue(156);
     messageRepo.countSince.mockResolvedValue(1204);
 
     const result = await service.execute();

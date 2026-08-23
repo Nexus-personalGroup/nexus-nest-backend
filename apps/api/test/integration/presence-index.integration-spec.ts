@@ -6,7 +6,7 @@ import {
   buildPresenceKey,
   buildPresenceScanPattern,
 } from '@app/infrastructure/redis/cache-keys';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedUser } from '../helpers/db';
 import {
   signAccessToken,
   startInstance,
@@ -64,17 +64,16 @@ describe('在線成員索引（整合）', () => {
 
   beforeEach(async () => {
     await resetDb(prisma);
-    const member = await seedMember(prisma, {
+    const member = await seedUser(prisma, {
       email: 'presence@example.com',
       password: 'Passw0rd!',
     });
-    const other = await seedMember(prisma, {
+    const other = await seedUser(prisma, {
       email: 'other@example.com',
       password: 'Passw0rd!',
-      roleName: 'other',
     });
-    memberId = member.memberId;
-    otherId = other.memberId;
+    memberId = member.userId;
+    otherId = other.userId;
     token = signAccessToken(instance.jwt, memberId);
     otherToken = signAccessToken(instance.jwt, otherId);
     // **整合測試共用同一個 Redis**（prefix `integration:`），而其他 spec 的連線

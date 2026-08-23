@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { CLIENT_EVENTS, SERVER_EVENTS } from '@app/adapter/in/ws/events';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedUser } from '../helpers/db';
 import {
   signAccessToken,
   startInstance,
@@ -106,11 +106,11 @@ describe('WebSocket 跨實例（整合）', () => {
     prisma = instanceA.prisma;
 
     await resetDb(prisma);
-    const seeded = await seedMember(prisma, {
+    const seeded = await seedUser(prisma, {
       email: 'ws@example.com',
       password: 'Passw0rd!',
     });
-    memberId = seeded.memberId;
+    memberId = seeded.userId;
     token = signAccessToken(instanceA.jwt, memberId);
     roomId = await seedRoom(prisma, [memberId]);
   });
@@ -227,12 +227,11 @@ describe('WebSocket 跨實例（整合）', () => {
     let outsiderToken: string;
 
     beforeAll(async () => {
-      const outsider = await seedMember(prisma, {
+      const outsider = await seedUser(prisma, {
         email: 'outsider@example.com',
         password: 'Passw0rd!',
-        roleName: 'outsider',
       });
-      outsiderToken = signAccessToken(instanceA.jwt, outsider.memberId);
+      outsiderToken = signAccessToken(instanceA.jwt, outsider.userId);
     });
 
     it('非成員加入房間 → 收到 CHAT_ROOM_NOT_FOUND', async () => {
@@ -283,12 +282,11 @@ describe('WebSocket 跨實例（整合）', () => {
     });
 
     it('成員離開房間 → 其他實例上的成員收得到 roomMemberChanged', async () => {
-      const other = await seedMember(prisma, {
+      const other = await seedUser(prisma, {
         email: 'leaver@example.com',
         password: 'Passw0rd!',
-        roleName: 'leaver',
       });
-      const sharedRoom = await seedRoom(prisma, [memberId, other.memberId]);
+      const sharedRoom = await seedRoom(prisma, [memberId, other.userId]);
 
       const watcher = await connectTo(instanceA);
       await joinRoom(watcher, sharedRoom);
@@ -300,7 +298,7 @@ describe('WebSocket 跨實例（整合）', () => {
       // 由實例 B 觸發：跨實例送達才是這裡要證明的事
       await instanceB.leaveRoom.execute({
         roomId: sharedRoom,
-        memberId: other.memberId,
+        memberId: other.userId,
       });
 
       const payload = await changed;

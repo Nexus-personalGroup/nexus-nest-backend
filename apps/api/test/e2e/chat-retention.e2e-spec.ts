@@ -2,7 +2,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { ChatRetentionService } from '@app/application/service/shared/ChatRetentionService';
 import { createE2EApp, createMockRedis } from '../setup/test-app';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedUser } from '../helpers/db';
 
 const PASSWORD = 'TestPass123!';
 const DAY_MS = 86_400_000;
@@ -34,11 +34,11 @@ describe('ChatRetention E2E', () => {
     jest.clearAllMocks();
     await resetDb(prisma);
 
-    const member = await seedMember(prisma, {
+    const member = await seedUser(prisma, {
       email: 'a@test.com',
       password: PASSWORD,
     });
-    memberId = member.memberId;
+    memberId = member.userId;
 
     const room = await prisma.chatRoomRecord.create({
       data: { roomType: 'GROUP', name: '保留測試房間', lastSeq: 1 },

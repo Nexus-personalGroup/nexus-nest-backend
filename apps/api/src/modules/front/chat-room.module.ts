@@ -19,7 +19,8 @@ import { MarkRoomReadService } from '../../application/service/front/chat-messag
 import { RetractMessageService } from '../../application/service/front/chat-message/RetractMessageService';
 import { PrismaChatRoomReadRepository } from '../../adapter/out/persistence/chat-message/PrismaChatRoomReadRepository';
 import { CHAT_ROOM_READ_REPOSITORY_PORT } from '../../application/port/out/chat-message/ChatRoomReadRepositoryPort';
-import { MemberPersistenceModule } from '../member-persistence.module';
+import { UserPersistenceModule } from '../user-persistence.module';
+import { FrontAuthModule } from './auth.module';
 import { ChatWsModule } from '../chat-ws.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { MetricsModule } from '../metrics.module';
@@ -31,8 +32,11 @@ import { MetricsModule } from '../metrics.module';
  * 那個切割是為了打斷循環相依（見該模組的說明）。
  */
 @Module({
+  // FrontAuthModule 提供 RESOLVE_USER_CONTEXT_USE_CASE：controller 掛的
+  // FrontJwtAuthGuard 需要它。UserPersistenceModule 供建房間時檢查對方是否存在且啟用
   imports: [
-    MemberPersistenceModule,
+    FrontAuthModule,
+    UserPersistenceModule,
     ChatWsModule,
     ChatRoomCoreModule,
     MetricsModule,

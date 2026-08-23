@@ -2,15 +2,16 @@ import { CreateDirectRoomService } from './CreateDirectRoomService';
 import { ChatRoomSelfDirectException } from '@app/domain/exception/ChatRoomSelfDirectException';
 import { MemberNotFoundException } from '@app/domain/exception/MemberNotFoundException';
 import type { ChatRoomRepositoryPort } from '../../../port/out/chat-room/ChatRoomRepositoryPort';
-import type { LoadMemberPort } from '../../../port/out/member/LoadMemberPort';
+import type { LoadUserPort } from '../../../port/out/user/LoadUserPort';
 
 const mockRepo = {
   findOrCreateDirect: jest.fn(),
 } as unknown as jest.Mocked<ChatRoomRepositoryPort>;
 
-const mockMember = {
-  findActiveMemberIds: jest.fn(),
-} as unknown as jest.Mocked<LoadMemberPort>;
+// 房間的參與者是**前台使用者**，因此檢查的是 users 而非 members
+const mockUser = {
+  findActiveUserIds: jest.fn(),
+} as unknown as jest.Mocked<LoadUserPort>;
 
 const room = {
   id: 'r1',
@@ -25,9 +26,9 @@ describe('CreateDirectRoomService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockMember.findActiveMemberIds.mockResolvedValue(['b']);
+    mockUser.findActiveUserIds.mockResolvedValue(['b']);
     mockRepo.findOrCreateDirect.mockResolvedValue(room);
-    service = new CreateDirectRoomService(mockRepo, mockMember);
+    service = new CreateDirectRoomService(mockRepo, mockUser);
   });
 
   it('以排序後的 directKey 建立房間', async () => {
@@ -39,7 +40,7 @@ describe('CreateDirectRoomService', () => {
 
   // 兩個方向必須落到同一個 directKey，否則 unique index 擋不住重複房間
   it('A→B 與 B→A 產生同一個 directKey', async () => {
-    mockMember.findActiveMemberIds.mockResolvedValue(['x']);
+    mockUser.findActiveUserIds.mockResolvedValue(['x']);
     await service.execute({ memberId: 'a', targetMemberId: 'b' });
     await service.execute({ memberId: 'b', targetMemberId: 'a' });
     const [first, second] = mockRepo.findOrCreateDirect.mock.calls;
@@ -54,7 +55,7 @@ describe('CreateDirectRoomService', () => {
   });
 
   it('對象不存在或已停用時拋 MemberNotFoundException', async () => {
-    mockMember.findActiveMemberIds.mockResolvedValue([]);
+    mockUser.findActiveUserIds.mockResolvedValue([]);
     await expect(
       service.execute({ memberId: 'a', targetMemberId: 'ghost' }),
     ).rejects.toThrow(MemberNotFoundException);

@@ -4,7 +4,7 @@ import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { ResponseCodes } from '@app/shared/constants/response-codes';
 import { PermissionCode } from '@app/domain/value-object/Role';
 import { createE2EApp, createMockRedis } from '../setup/test-app';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedMember, seedUser } from '../helpers/db';
 import {
   describeUnauthorized,
   expectApiError,
@@ -17,6 +17,7 @@ const SNAPSHOT = '被檢舉時的訊息內容';
 
 type ListItem = {
   reportId: string;
+  reporterId: string;
   reporterEmail: string | null;
   targetMemberEmail: string | null;
 };
@@ -42,7 +43,10 @@ describe('Moderation E2E', () => {
   /** 帳號管理側的權限——用來驗證兩個入口效果一致 */
   let tokenAccount = '';
   let tokenNone = '';
+  // 後台管理員：稽核裡的**執行者**永遠是他
   let adminId = '';
+  // 前台使用者：檢舉人。當事人一律是前台使用者，不是管理員
+  let reporterId = '';
   let offenderId = '';
   let reportId = '';
 
@@ -97,18 +101,29 @@ describe('Moderation E2E', () => {
       roleName: 'viewer',
       permissionCodes: [PermissionCode.BACKEND_MODERATION_VIEW],
     });
-    const offender = await seedMember(prisma, {
-      email: 'offender@test.com',
+    // 只有帳號權限、沒有審閱權限的後台帳號——用來驗 403
+    await seedMember(prisma, {
+      email: 'nopriv@test.com',
       password: PASSWORD,
-      roleName: 'offender',
+      roleName: 'nopriv',
       permissionCodes: ['BACKEND:ACCOUNT:VIEW'],
     });
+    // 檢舉的兩造都是**前台使用者**
+    const offender = await seedUser(prisma, {
+      email: 'offender@test.com',
+      password: PASSWORD,
+    });
+    const reporter = await seedUser(prisma, {
+      email: 'reporter@test.com',
+      password: PASSWORD,
+    });
     adminId = admin.memberId;
-    offenderId = offender.memberId;
+    offenderId = offender.userId;
+    reporterId = reporter.userId;
     tokenFull = await login('admin@test.com');
     tokenViewOnly = await login('viewer@test.com');
     tokenAccount = await login('accountadmin@test.com');
-    tokenNone = await login('offender@test.com');
+    tokenNone = await login('nopriv@test.com');
 
     const room = await prisma.chatRoomRecord.create({
       data: { roomType: 'GROUP', name: '審閱測試房間', lastSeq: 1 },
@@ -124,7 +139,7 @@ describe('Moderation E2E', () => {
     });
     const report = await prisma.chatReportRecord.create({
       data: {
-        reporterId: adminId,
+        reporterId,
         targetMessageId: message.id,
         targetMemberId: offenderId,
         roomId: room.id,
@@ -176,13 +191,47 @@ describe('Moderation E2E', () => {
       const res = await asFull('get', '/api/admin/moderation/reports');
 
       const [row] = (res.body as ListBody).data.list;
-      expect(row.reporterEmail).toBe('admin@test.com');
+      expect(row.reporterEmail).toBe('reporter@test.com');
       expect(row.targetMemberEmail).toBe('offender@test.com');
+    });
+
+    /**
+     * 補 email 查的是 `users`，不是 `members`。
+     *
+     * 用「拿一個只存在於 `members` 的 ID 當檢舉人」來證明：如果實作查錯表，
+     * 這裡會回那個管理員的 email。這是本 change 在審閱側最直接的證據——
+     * 而查錯表的症狀是**所有 email 都變成 null**，看起來像「帳號全被刪了」，
+     * 不會有任何錯誤。
+     */
+    it('⭐ 檢舉人是只存在於 members 的 ID → email 為 null', async () => {
+      const message = await prisma.chatMessageRecord.findFirstOrThrow({
+        where: { senderId: offenderId },
+      });
+      await prisma.chatReportRecord.create({
+        data: {
+          reporterId: adminId,
+          targetMessageId: message.id,
+          targetMemberId: offenderId,
+          roomId: message.roomId,
+          reason: 'SPAM',
+          contentSnapshot: SNAPSHOT,
+        },
+      });
+
+      const res = await asFull('get', '/api/admin/moderation/reports');
+
+      const rows = (res.body as ListBody).data.list;
+      const byAdmin = rows.find((row) => row.reporterId === adminId);
+      expect(byAdmin?.reporterEmail).toBeNull();
+      // 對照組：同一份回應裡，前台使用者的 email 補得出來
+      expect(
+        rows.find((row) => row.reporterId === reporterId)?.reporterEmail,
+      ).toBe('reporter@test.com');
     });
 
     // chat_reports 刻意不建外鍵，正是為了帳號消失後檢舉仍可審閱
     it('⭐ 被檢舉人的帳號已刪除 → email 為 null，該筆仍在列表中', async () => {
-      await prisma.memberRecord.update({
+      await prisma.userRecord.update({
         where: { id: offenderId },
         data: { deletedAt: new Date() },
       });
@@ -191,7 +240,7 @@ describe('Moderation E2E', () => {
 
       const [row] = (res.body as ListBody).data.list;
       expect(row.targetMemberEmail).toBeNull();
-      expect(row.reporterEmail).toBe('admin@test.com');
+      expect(row.reporterEmail).toBe('reporter@test.com');
     });
 
     /**
@@ -271,7 +320,7 @@ describe('Moderation E2E', () => {
       );
 
       expect((res.body as DetailBody).data.reporterEmail).toBe(
-        'admin@test.com',
+        'reporter@test.com',
       );
       expect((res.body as DetailBody).data.targetMemberEmail).toBe(
         'offender@test.com',
@@ -426,9 +475,9 @@ describe('Moderation E2E', () => {
       prisma.chatRoomRecord.create({
         data: {
           roomType: 'DIRECT',
-          directKey: `${adminId}:${offenderId}`,
+          directKey: `${reporterId}:${offenderId}`,
           members: {
-            create: [{ memberId: adminId }, { memberId: offenderId }],
+            create: [{ memberId: reporterId }, { memberId: offenderId }],
           },
         },
       });
@@ -517,15 +566,15 @@ describe('Moderation E2E', () => {
       const { members } = (res.body as RoomDetailBody).data;
       expect(members).toHaveLength(2);
       expect(members.map((member) => member.email).sort()).toEqual([
-        'admin@test.com',
         'offender@test.com',
+        'reporter@test.com',
       ]);
     });
 
     // 帳號刪除不該讓成員從房間裡消失——那會讓成員數與清單長度對不起來
     it('成員的帳號已刪除 → email 為 null 且仍在清單中', async () => {
       const direct = await seedDirect();
-      await prisma.memberRecord.update({
+      await prisma.userRecord.update({
         where: { id: offenderId },
         data: { deletedAt: new Date() },
       });
@@ -583,7 +632,7 @@ describe('Moderation E2E', () => {
 
     it('回傳被檢舉與提出檢舉的次數', async () => {
       const target = await profile(offenderId);
-      const reporter = await profile(adminId);
+      const reporter = await profile(reporterId);
 
       expect(target.status).toBe(200);
       expect((target.body as ProfileBody).data.reportedCount).toBe(1);
@@ -616,7 +665,7 @@ describe('Moderation E2E', () => {
     });
 
     it('反映停權狀態', async () => {
-      await prisma.memberRecord.update({
+      await prisma.userRecord.update({
         where: { id: offenderId },
         data: { status: false },
       });
@@ -644,7 +693,7 @@ describe('Moderation E2E', () => {
     // 回應不含任何訊息內容，記了會讓稽核量與「點了幾下」對齊
     it('⭐ 查概覽不寫任何稽核', async () => {
       await profile(offenderId);
-      await profile(adminId);
+      await profile(reporterId);
 
       expect(await auditRows()).toHaveLength(0);
     });
@@ -656,7 +705,7 @@ describe('Moderation E2E', () => {
     });
 
     it('已軟刪除的成員 → 404', async () => {
-      await prisma.memberRecord.update({
+      await prisma.userRecord.update({
         where: { id: offenderId },
         data: { deletedAt: new Date() },
       });
@@ -707,7 +756,7 @@ describe('Moderation E2E', () => {
       await prisma.chatRoomRecord.create({
         data: {
           roomType: 'DIRECT',
-          directKey: `${adminId}:${offenderId}`,
+          directKey: `${reporterId}:${offenderId}`,
           members: { create: [{ memberId: offenderId }] },
         },
       });
@@ -754,11 +803,11 @@ describe('Moderation E2E', () => {
       expect(res.status).toBe(200);
       const { list } = (res.body as MemberReportsBody).data;
       expect(list).toHaveLength(1);
-      expect(list[0].counterpartEmail).toBe('admin@test.com');
+      expect(list[0].counterpartEmail).toBe('reporter@test.com');
     });
 
     it('role=REPORTER 回提出的檢舉，對造是被檢舉人', async () => {
-      const res = await memberReports(adminId, 'REPORTER');
+      const res = await memberReports(reporterId, 'REPORTER');
 
       const { list } = (res.body as MemberReportsBody).data;
       expect(list).toHaveLength(1);
@@ -774,15 +823,13 @@ describe('Moderation E2E', () => {
       expect((asReporter.body as MemberReportsBody).data.meta.total).toBe(0);
     });
 
-    // 刪被檢舉人而非檢舉人：檢舉人是本測試的呼叫者（admin），
-    // 軟刪除他會讓自己的 token 失效，失敗訊息會變成「data 是 undefined」而指不到原因
     it('對造帳號已刪除 → counterpartEmail 為 null，該筆仍在列表中', async () => {
-      await prisma.memberRecord.update({
+      await prisma.userRecord.update({
         where: { id: offenderId },
         data: { deletedAt: new Date() },
       });
 
-      const res = await memberReports(adminId, 'REPORTER');
+      const res = await memberReports(reporterId, 'REPORTER');
 
       const { list } = (res.body as MemberReportsBody).data;
       expect(list).toHaveLength(1);
@@ -876,7 +923,7 @@ describe('Moderation E2E', () => {
       // 讓被檢舉者成為房間成員，才查得到歷史
       await prisma.chatRoomMemberRecord.createMany({
         data: [
-          { roomId: message.roomId, memberId: adminId },
+          { roomId: message.roomId, memberId: reporterId },
           { roomId: message.roomId, memberId: offenderId },
         ],
         skipDuplicates: true,
@@ -1000,8 +1047,9 @@ describe('Moderation E2E', () => {
   /**
    * 停權與解除（審閱側入口）。
    *
-   * 與帳號管理的 `PATCH /api/admin/members/:id` 呼叫**同一個 use case**——
-   * 各自實作會讓斷線與稽核的行為分歧，而分歧的那一邊不會有人發現。
+   * **停的是前台使用者（`users`），與帳號管理的 `PATCH /api/admin/members/:id`
+   * 是兩支不同的 use case。** 兩者停的東西不同：審閱處理的是聊天裡的違規行為，
+   * 而聊天的參與者是前台使用者——停一個管理員的後台帳號對違規行為沒有作用。
    */
   describe('停權', () => {
     const suspend = (id = offenderId, token = tokenFull) =>
@@ -1014,14 +1062,14 @@ describe('Moderation E2E', () => {
         .post(`/api/admin/moderation/members/${id}/reinstate`)
         .set('Authorization', `Bearer ${token}`);
 
-    const memberRow = () =>
-      prisma.memberRecord.findUniqueOrThrow({ where: { id: offenderId } });
+    const userRow = () =>
+      prisma.userRecord.findUniqueOrThrow({ where: { id: offenderId } });
 
     it('停權 → 204 且帳號停用', async () => {
       const res = await suspend();
 
       expect(res.status).toBe(204);
-      expect((await memberRow()).status).toBe(false);
+      expect((await userRow()).status).toBe(false);
     });
 
     it('停權留下 MEMBER_SUSPENDED 稽核', async () => {
@@ -1038,7 +1086,7 @@ describe('Moderation E2E', () => {
       const res = await reinstate();
 
       expect(res.status).toBe(204);
-      expect((await memberRow()).status).toBe(true);
+      expect((await userRow()).status).toBe(true);
       const rows = await prisma.chatAuditLogRecord.findMany({
         orderBy: { createdAt: 'asc' },
       });
@@ -1068,14 +1116,21 @@ describe('Moderation E2E', () => {
       const res = await suspend(offenderId, tokenViewOnly);
 
       expectForbidden(res);
-      expect((await memberRow()).status).toBe(true);
+      expect((await userRow()).status).toBe(true);
     });
 
-    // 沿用帳號管理既有的保護（既有的 CannotDisableSelfException 回 409）
-    it('停權自己 → 409', async () => {
+    /**
+     * **行為已改變**：`migrate-chat-to-front-users` 之前這裡回 409
+     * （沿用帳號管理的 CannotDisableSelfException）。
+     *
+     * 現在管理員的 ID 在 `users` 裡查不到，所以它就只是一個不存在的 ID。
+     * 「不可停權自己」的保護在這一側已經沒有意義——兩個身分空間不相交，
+     * 管理員不可能是自己要停權的那個前台使用者。帳號管理側的保護保留不動。
+     */
+    it('⭐ 傳入自己（管理員）的 ID → 404 而非 409，且後台帳號不受影響', async () => {
       const res = await suspend(adminId);
 
-      expect(res.status).toBe(409);
+      expect(res.status).toBe(404);
       const admin = await prisma.memberRecord.findUniqueOrThrow({
         where: { id: adminId },
       });
@@ -1087,16 +1142,46 @@ describe('Moderation E2E', () => {
       expect(res.status).toBe(404);
     });
 
-    // 兩個入口效果一致：帳號管理側停用也會寫同一筆稽核
-    it('⭐ 帳號管理側停用產生相同的稽核', async () => {
+    /**
+     * 兩個入口停的是**兩張不同的表**。
+     *
+     * 這是本 change 最直接的證據：同一個 email 在兩張表各有一個帳號時，
+     * 審閱側停的是 `users` 那個，帳號管理側停的是 `members` 那個。
+     * 共用一支 use case 再用參數分流的話，傳錯參數就會停錯人而且沒有任何錯誤訊息。
+     */
+    it('⭐ 審閱側停權不影響同名的後台帳號', async () => {
+      const twin = await seedMember(prisma, {
+        email: 'offender@test.com',
+        password: PASSWORD,
+        roleName: 'twin',
+      });
+
+      await suspend().expect(204);
+
+      expect((await userRow()).status).toBe(false);
+      const member = await prisma.memberRecord.findUniqueOrThrow({
+        where: { id: twin.memberId },
+      });
+      expect(member.status).toBe(true);
+    });
+
+    // 帳號管理側停的是後台帳號，寫的是同一種稽核動作但對象不同
+    it('帳號管理側停用後台帳號 → 同樣寫 MEMBER_SUSPENDED', async () => {
+      const twin = await seedMember(prisma, {
+        email: 'twin@test.com',
+        password: PASSWORD,
+        roleName: 'twin2',
+      });
+
       await request(app.getHttpServer())
-        .patch(`/api/admin/members/${offenderId}`)
+        .patch(`/api/admin/members/${twin.memberId}`)
         .set('Authorization', `Bearer ${tokenAccount}`)
         .send({ status: false })
         .expect(204);
 
       const rows = await prisma.chatAuditLogRecord.findMany();
       expect(rows.map((r) => r.action)).toEqual(['MEMBER_SUSPENDED']);
+      expect(rows[0].targetMemberId).toBe(twin.memberId);
     });
   });
 });

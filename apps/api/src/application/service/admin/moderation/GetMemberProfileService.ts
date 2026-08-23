@@ -13,9 +13,9 @@ import {
   ChatRoomRepositoryPort,
 } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
 import {
-  LOAD_MEMBER_PORT,
-  LoadMemberPort,
-} from '@app/application/port/out/member/LoadMemberPort';
+  LOAD_USER_PORT,
+  LoadUserPort,
+} from '@app/application/port/out/user/LoadUserPort';
 import {
   PRESENCE_PORT,
   PresencePort,
@@ -25,7 +25,8 @@ import { MemberNotFoundException } from '@app/domain/exception/MemberNotFoundExc
 export { GET_MEMBER_PROFILE_USE_CASE };
 
 /**
- * 審閱視角的成員概覽。
+ * 審閱視角的成員概覽。**對象是前台使用者（`users`）**——
+ * 聊天的參與者不會是後台管理員，拿管理員的 ID 進來只會查不到。
  *
  * **本 service 刻意不注入稽核 port**——回應不含任何訊息內容，
  * 記了會讓稽核量與「點了幾下」對齊，而不是與「看到了什麼」對齊。
@@ -37,8 +38,8 @@ export { GET_MEMBER_PROFILE_USE_CASE };
 @Injectable()
 export class GetMemberProfileService implements GetMemberProfileUseCase {
   constructor(
-    @Inject(LOAD_MEMBER_PORT)
-    private readonly memberRepo: LoadMemberPort,
+    @Inject(LOAD_USER_PORT)
+    private readonly userRepo: LoadUserPort,
     @Inject(CHAT_REPORT_REPOSITORY_PORT)
     private readonly reportRepo: ChatReportRepositoryPort,
     @Inject(CHAT_ROOM_REPOSITORY_PORT)
@@ -48,15 +49,15 @@ export class GetMemberProfileService implements GetMemberProfileUseCase {
   ) {}
 
   /**
-   * 取某成員的審閱概覽
+   * 取某前台使用者的審閱概覽
    *
-   * @param memberId - 成員 ID
+   * @param memberId - 前台使用者 ID
    * @returns 概覽資料
-   * @throws MemberNotFoundException 成員不存在或已被軟刪除
+   * @throws MemberNotFoundException 該前台使用者不存在或已被軟刪除
    */
   async execute(memberId: string): Promise<MemberProfile> {
-    const member = await this.memberRepo.loadMemberById(memberId);
-    if (!member) throw new MemberNotFoundException(memberId);
+    const user = await this.userRepo.loadById(memberId);
+    if (!user) throw new MemberNotFoundException(memberId);
 
     // 四個查詢彼此獨立，沒有必要排隊等
     const [reportedCount, submittedReportCount, rooms, isOnline] =
@@ -70,10 +71,10 @@ export class GetMemberProfileService implements GetMemberProfileUseCase {
       ]);
 
     return {
-      memberId: member.id,
-      email: member.email,
-      status: member.status,
-      joinedAt: member.createdAt,
+      memberId: user.id,
+      email: user.email,
+      status: user.status,
+      joinedAt: user.createdAt,
       isOnline,
       reportedCount,
       submittedReportCount,

@@ -17,9 +17,9 @@ import {
   ChatRoomRepositoryPort,
 } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
 import {
-  LOAD_MEMBER_PORT,
-  LoadMemberPort,
-} from '@app/application/port/out/member/LoadMemberPort';
+  LOAD_USER_PORT,
+  LoadUserPort,
+} from '@app/application/port/out/user/LoadUserPort';
 import {
   PRESENCE_PORT,
   PresencePort,
@@ -41,7 +41,7 @@ export class GetDashboardSnapshotService implements GetDashboardSnapshotUseCase 
     private readonly reportRepo: ChatReportRepositoryPort,
     @Inject(CHAT_ROOM_REPOSITORY_PORT)
     private readonly roomRepo: ChatRoomRepositoryPort,
-    @Inject(LOAD_MEMBER_PORT) private readonly memberRepo: LoadMemberPort,
+    @Inject(LOAD_USER_PORT) private readonly userRepo: LoadUserPort,
     @Inject(CHAT_MESSAGE_REPOSITORY_PORT)
     private readonly messageRepo: ChatMessageRepositoryPort,
   ) {}
@@ -58,7 +58,7 @@ export class GetDashboardSnapshotService implements GetDashboardSnapshotUseCase 
       this.presence.countOnlineMembers(),
       this.reportRepo.countByStatus('PENDING'),
       this.roomRepo.countRooms(),
-      this.memberRepo.countMembers(),
+      this.userRepo.countUsers(),
       this.messageRepo.countSince(this.todayStart()),
     ]);
 

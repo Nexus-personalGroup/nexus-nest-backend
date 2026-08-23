@@ -5,7 +5,10 @@
 
 ## 進行中
 
-`fix-unauthenticated-surface`（審查報告的 🔴 + 三個暴露面）——已完成待合併。
+`migrate-chat-to-front-users`（路線圖第 4 項）——聊天領域從 `members` 切到 `users`。
+目標：WS 連線認證、三支前台 chat controller、後台審閱的四支補 email、
+成員概覽、儀表板成員數、停權拆兩支，全部改指向前台使用者，
+並把聊天相關的 e2e／整合測試改用 `seedUser` + 前台 token。
 
 ## 路線圖
 
@@ -20,13 +23,14 @@
 
 | 順序 | Change | 內容 | 狀態 |
 | --- | --- | --- | --- |
-| 1 | `fix-unauthenticated-surface` | 帳號鎖定時效、Swagger 開關、metrics 豁免收窄、`DB_PORT` 預設值 | 待合併 |
-| 2 | ~~`fix-presence-scan-cost`~~ | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | **待合併** |
-| 3a | ~~`add-front-user-account`~~ | `users` 表 + 前台登入／更新／登出／me + 兩側各自的 secret | **待合併** |
-| 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設。建立在 3a 之上，可與 4 平行 | 未開始 |
-| 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者）。3a 已完成，可以開始 | 未開始 |
-| 5 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
-| 6 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
+| 1 | ~~`fix-unauthenticated-surface`~~ | 帳號鎖定時效、Swagger 開關、metrics 豁免收窄、`DB_PORT` 預設值 | 已合併（#20） |
+| 2 | ~~`fix-presence-scan-cost`~~ | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | 已合併（#21） |
+| 3a | ~~`add-front-user-account`~~ | `users` 表 + 前台登入／更新／登出／me + 兩側各自的 secret | 已合併（#22） |
+| 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | **待合併** |
+| 5 | `add-admin-front-user-management` | 後台的前台使用者管理：列表／搜尋／詳情／主動停權。**它解除了「進入點只有檢舉」的限制**——在它之前，後台只能從檢舉點進某個前台使用者，找不到沒被檢舉過的人 | 未開始 |
+| 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設。建立在 3a 之上，可與 5 平行 | 未開始 |
+| 6 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
+| 7 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
 
 **2 排在 3 之前的理由**：`countOnlineMembers` 是我自己剛加的錯（用了明確標注
 「不可用於請求路徑」的 scan pattern），而分表會動到 presence key 的語意——先修乾淨再動。
@@ -34,9 +38,15 @@
 **3 與 4 不能合併**：3 讓新體系能站著（不動既有資料），4 才切換指向。
 4 一旦開始就不能留半套狀態，所以它自己要一次做完。
 
+**5 排在 3b 之前**：分表之後，後台**沒有任何一支端點能列出前台使用者**——
+只能從檢舉點進去。那讓「找一個沒被檢舉過的人」與「主動停權」都做不到，
+而註冊（3b）會讓這個缺口變大（帳號會開始自己長出來）。
+
 ## 待辦
 
 ### 卡在分表（做完 change 4 之後才有意義）
+
+> change 4 已完成，以下兩項的前置條件已解除。
 
 - **附件訊息**：訊息帶圖片／檔案。之後加 `messageType` 欄位（預設 `TEXT`）即可，
   `content` 維持 `TEXT NOT NULL` 不需改。**真正要先想清楚的是前台的上傳授權與容量限制**——
@@ -53,6 +63,8 @@
 - **三個待同步項**（後端已完成、前端尚未接）：`retractedAt`、`removedAt`、
   以及 `server:sessionRevoked`——**收到後不可自動重連**，否則被停權者會進入無盡重連迴圈。
 - **change 3 完成後**還要加：註冊 / 驗證信箱 / 重設密碼的畫面，以及前台自己的 token 儲存。
+- **一開始就要走前台的認證端點**：聊天現在只吃 `/api/front/auth/login` 簽出的 token；
+  後台 token 打前台端點會 401、開 WS 連線會被拒。
 
 ### 已知缺口（知情，非遺漏）
 

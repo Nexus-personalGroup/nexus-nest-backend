@@ -16,9 +16,12 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: |
-        使用 Access Token 進行身份驗證
+        使用**前台**的 Access Token 進行身份驗證（`POST /front/auth/login` 取得）
 
         格式: Bearer {accessToken}
+
+        後台（`/api/admin/*`）簽出的 token 在這裡一律無效：
+        兩側各自使用不同的 secret，簽章驗證就會失敗。
   schemas:
     SuccessResponse:
       type: object

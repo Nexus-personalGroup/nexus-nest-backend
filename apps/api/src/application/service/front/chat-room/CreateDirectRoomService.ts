@@ -10,9 +10,9 @@ import {
   ChatRoomSummary,
 } from '../../../port/out/chat-room/ChatRoomRepositoryPort';
 import {
-  LOAD_MEMBER_PORT,
-  LoadMemberPort,
-} from '../../../port/out/member/LoadMemberPort';
+  LOAD_USER_PORT,
+  LoadUserPort,
+} from '../../../port/out/user/LoadUserPort';
 import { directKeyOf } from '@app/domain/chat/direct-key';
 import { ChatRoomSelfDirectException } from '@app/domain/exception/ChatRoomSelfDirectException';
 import { MemberNotFoundException } from '@app/domain/exception/MemberNotFoundException';
@@ -24,15 +24,15 @@ export class CreateDirectRoomService implements CreateDirectRoomUseCase {
   constructor(
     @Inject(CHAT_ROOM_REPOSITORY_PORT)
     private readonly chatRoomRepo: ChatRoomRepositoryPort,
-    @Inject(LOAD_MEMBER_PORT)
-    private readonly memberRepo: LoadMemberPort,
+    @Inject(LOAD_USER_PORT)
+    private readonly userRepo: LoadUserPort,
   ) {}
 
   async execute(command: CreateDirectRoomCommand): Promise<ChatRoomSummary> {
     const { memberId, targetMemberId } = command;
     if (memberId === targetMemberId) throw new ChatRoomSelfDirectException();
 
-    const active = await this.memberRepo.findActiveMemberIds([targetMemberId]);
+    const active = await this.userRepo.findActiveUserIds([targetMemberId]);
     if (active.length === 0) throw new MemberNotFoundException();
 
     // 不先查「有沒有既有房間」——那個查詢與後續建立之間有空窗，兩邊同時開啟對話

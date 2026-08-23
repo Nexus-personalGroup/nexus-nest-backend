@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { PrismaUserRepository } from '../adapter/out/persistence/user/PrismaUserRepository';
 import { LOAD_USER_PORT } from '../application/port/out/user/LoadUserPort';
+import { SAVE_USER_PORT } from '../application/port/out/user/SaveUserPort';
 
 /**
  * 前台使用者的持久層 out port。
@@ -14,7 +15,8 @@ import { LOAD_USER_PORT } from '../application/port/out/user/LoadUserPort';
   providers: [
     PrismaUserRepository,
     { provide: LOAD_USER_PORT, useExisting: PrismaUserRepository },
+    { provide: SAVE_USER_PORT, useExisting: PrismaUserRepository },
   ],
-  exports: [LOAD_USER_PORT],
+  exports: [LOAD_USER_PORT, SAVE_USER_PORT],
 })
 export class UserPersistenceModule {}

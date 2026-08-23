@@ -271,6 +271,169 @@ describe('架構守則：接受任意資源識別碼的端點必須表態授權'
   });
 });
 
+/** 前台 controller 的認證接線判定結果 */
+type FrontWiring = {
+  usesUserContext: boolean;
+  usesMemberContext: boolean;
+  hasFrontGuard: boolean;
+  hasPublic: boolean;
+};
+
+/**
+ * 判定一份前台 controller 的認證接線。
+ *
+ * 抽成吃字串的純函式，理由同上方兩條：這支規則出錯是**靜默的**，
+ * 而它擋的正是「看起來完全正常的無認證端點」。
+ */
+export const auditFrontWiring = (source: string): FrontWiring => {
+  const code = stripComments(source);
+  const classSection = classDecorators(source);
+  return {
+    usesUserContext: code.includes('@CurrentUser('),
+    usesMemberContext: code.includes('@CurrentMember('),
+    hasFrontGuard: classSection.includes('@UseGuards(FrontJwtAuthGuard)'),
+    hasPublic: classSection.includes('@Public('),
+  };
+};
+
+/**
+ * 前台 controller 的認證必須由 `FrontJwtAuthGuard` 執行，且必定與 `@Public()` 成對。
+ *
+ * 這是一個**兩邊各自都對、合起來有洞**的接線：
+ *
+ * - `@Public()` 是給**全域的後台 Guard** 看的（讓它略過這條路由）。
+ *   只標它而漏掛 `FrontJwtAuthGuard`，結果是**兩個 Guard 都放行**——
+ *   端點完全沒有認證，而且它看起來與正常的端點一模一樣。
+ * - 反過來只掛 `FrontJwtAuthGuard` 而沒標 `@Public()`，全域的後台 Guard 會先跑，
+ *   拿著有效前台 token 的請求一律 401——端點是死的，但沒有任何東西會報錯。
+ *
+ * `@CurrentUser()` 是「這支端點需要前台身分」的訊號：它在 `request.frontUser`
+ * 沒設定時才拋錯，也就是**只有真的被呼叫到才會發現**。因此這裡改成靜態檢查。
+ *
+ * 第三條規則釘住 `migrate-chat-to-front-users` 的結果：前台不得再出現
+ * `@CurrentMember()`。聊天的參與者是前台使用者，一支吃後台 token 的前台端點
+ * 不會有任何錯誤徵兆——它只是讓錯的人進得來。
+ */
+describe('架構守則：前台 controller 的認證接線', () => {
+  const controllers = collectSourceFiles(['src/adapter/in/web/front'], {
+    exclude: ['.spec.ts'],
+  }).filter((file) => file.endsWith('Controller.ts'));
+
+  it('掃描範圍有效', () => {
+    expect(controllers.length).toBeGreaterThan(0);
+    // 必須有「需要認證」的前台 controller，否則規則會空轉
+    expect(
+      controllers.filter((f) => auditFrontWiring(readSource(f)).usesUserContext)
+        .length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('用了 @CurrentUser() 就必須掛 @UseGuards(FrontJwtAuthGuard)', () => {
+    const offenders = controllers
+      .filter((file) => {
+        const wiring = auditFrontWiring(readSource(file));
+        return wiring.usesUserContext && !wiring.hasFrontGuard;
+      })
+      .map((file) => `  ${file}`);
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下前台 controller 讀取 @CurrentUser() 卻沒有掛 FrontJwtAuthGuard：\n${offenders.join(
+            '\n',
+          )}\n若同時標了 @Public()，結果是兩個 Guard 都放行——端點完全沒有認證。`,
+    ).toBe('');
+  });
+
+  it('掛了 FrontJwtAuthGuard 就必須同時標 @Public()', () => {
+    const offenders = controllers
+      .filter((file) => {
+        const wiring = auditFrontWiring(readSource(file));
+        return wiring.hasFrontGuard && !wiring.hasPublic;
+      })
+      .map((file) => `  ${file}`);
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下前台 controller 掛了 FrontJwtAuthGuard 卻沒標 @Public()：\n${offenders.join(
+            '\n',
+          )}\n全域的後台 Guard 會先跑，有效的前台 token 一律被判 401。`,
+    ).toBe('');
+  });
+
+  it('前台不得使用 @CurrentMember()（那是後台身分）', () => {
+    const offenders = controllers
+      .filter((file) => auditFrontWiring(readSource(file)).usesMemberContext)
+      .map((file) => `  ${file}`);
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下前台 controller 使用了後台的 @CurrentMember()：\n${offenders.join(
+            '\n',
+          )}\n聊天的參與者是前台使用者；吃錯 token 的端點不會有任何錯誤徵兆。`,
+    ).toBe('');
+  });
+
+  describe('判定邏輯（合成輸入）', () => {
+    const wrap = (classPart: string, body: string): string =>
+      `${classPart}\nexport class T {\n${body}\n}\n`;
+
+    it('A：@Public + FrontJwtAuthGuard + @CurrentUser → 全部通過', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `@Public()\n@UseGuards(FrontJwtAuthGuard)\n@Controller('front/x')`,
+          `  @Get()\n  list(@CurrentUser() u: unknown) {}`,
+        ),
+      );
+      expect(wiring.usesUserContext && wiring.hasFrontGuard).toBe(true);
+      expect(wiring.hasPublic).toBe(true);
+    });
+
+    it('B：只有 @Public 而漏掛 Guard → 抓得出來', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `@Public()\n@Controller('front/x')`,
+          `  @Get()\n  list(@CurrentUser() u: unknown) {}`,
+        ),
+      );
+      expect(wiring.usesUserContext).toBe(true);
+      expect(wiring.hasFrontGuard).toBe(false);
+    });
+
+    it('C：只有註解提到 FrontJwtAuthGuard → 不算掛上（不得被說明文字餵飽）', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `/**\n * 認證由 @UseGuards(FrontJwtAuthGuard) 執行\n */\n@Public()\n@Controller('front/x')`,
+          `  @Get()\n  list(@CurrentUser() u: unknown) {}`,
+        ),
+      );
+      expect(wiring.hasFrontGuard).toBe(false);
+    });
+
+    it('D：登入這類真的公開的端點（不讀 @CurrentUser）→ 不需要 Guard', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `@Public()\n@Controller('front/auth')`,
+          `  @Post('login')\n  login(@Body() dto: unknown) {}`,
+        ),
+      );
+      expect(wiring.usesUserContext).toBe(false);
+    });
+
+    it('E：前台用了 @CurrentMember → 抓得出來', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `@Public()\n@UseGuards(FrontJwtAuthGuard)\n@Controller('front/x')`,
+          `  @Get()\n  list(@CurrentMember() m: unknown) {}`,
+        ),
+      );
+      expect(wiring.usesMemberContext).toBe(true);
+    });
+  });
+});
+
 /**
  * WebSocket 事件 handler 必須表態認證。
  *

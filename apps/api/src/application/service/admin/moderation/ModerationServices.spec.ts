@@ -14,7 +14,7 @@ import { ChatReportNotFoundException } from '@app/domain/exception/ChatReportNot
 import { ChatReportInvalidTransitionException } from '@app/domain/exception/ChatReportInvalidTransitionException';
 import type { ChatReportRepositoryPort } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 import type { ChatAuditPort } from '@app/application/port/out/ChatAuditPort';
-import type { LoadMemberPort } from '@app/application/port/out/member/LoadMemberPort';
+import type { LoadUserPort } from '@app/application/port/out/user/LoadUserPort';
 import type { ChatMessageRepositoryPort } from '@app/application/port/out/chat-message/ChatMessageRepositoryPort';
 import { CHAT_AUDIT_PORT } from '@app/application/port/out/ChatAuditPort';
 
@@ -41,9 +41,11 @@ const mockAudit = {
   listByMember: jest.fn(),
 } as unknown as jest.Mocked<ChatAuditPort>;
 
-const mockMemberRepo = {
+// 補 email 與成員概覽查的都是**前台使用者**（`users`），不是後台管理員
+const mockUserRepo = {
   findEmailsByIds: jest.fn(),
-} as unknown as jest.Mocked<LoadMemberPort>;
+  loadById: jest.fn(),
+} as unknown as jest.Mocked<LoadUserPort>;
 
 const mockMessageRepo = {
   findForModeration: jest.fn(),
@@ -85,8 +87,8 @@ describe('ListReportsService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockReportRepo.list.mockResolvedValue({ data: [], total: 0 });
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(new Map());
-    service = new ListReportsService(mockReportRepo, mockMemberRepo);
+    mockUserRepo.findEmailsByIds.mockResolvedValue(new Map());
+    service = new ListReportsService(mockReportRepo, mockUserRepo);
   });
 
   it('預設只查待處理', async () => {
@@ -141,7 +143,7 @@ describe('ListReportsService', () => {
     await service.execute({});
 
     // 逐列查在 15 筆的測試資料上跑起來完全正常，只有計次抓得到
-    expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
+    expect(mockUserRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
   });
 
   it('查詢前先去重：同一人在多筆檢舉中只送一次 id', async () => {
@@ -155,7 +157,7 @@ describe('ListReportsService', () => {
 
     await service.execute({});
 
-    const ids: string[] = mockMemberRepo.findEmailsByIds.mock.calls[0][0];
+    const ids: string[] = mockUserRepo.findEmailsByIds.mock.calls[0][0];
     expect([...ids].sort()).toEqual(['alice', 'bob', 'carol']);
   });
 
@@ -164,7 +166,7 @@ describe('ListReportsService', () => {
       data: [makeRow({ reporterId: 'alice', targetMemberId: 'bob' })],
       total: 1,
     });
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+    mockUserRepo.findEmailsByIds.mockResolvedValue(
       new Map([
         ['alice', 'alice@example.com'],
         ['bob', 'bob@example.com'],
@@ -183,7 +185,7 @@ describe('ListReportsService', () => {
       data: [makeRow({ reporterId: 'alice', targetMemberId: 'ghost' })],
       total: 1,
     });
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+    mockUserRepo.findEmailsByIds.mockResolvedValue(
       new Map([['alice', 'alice@example.com']]),
     );
 
@@ -197,7 +199,7 @@ describe('ListReportsService', () => {
   it('空列表不發出 email 查詢的無效呼叫', async () => {
     await service.execute({});
 
-    const ids: string[] = mockMemberRepo.findEmailsByIds.mock.calls[0][0];
+    const ids: string[] = mockUserRepo.findEmailsByIds.mock.calls[0][0];
     expect(ids).toEqual([]);
   });
 });
@@ -209,12 +211,12 @@ describe('GetReportDetailService', () => {
     jest.clearAllMocks();
     mockReportRepo.findDetail.mockResolvedValue(detail);
     mockAudit.record.mockResolvedValue(undefined);
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(new Map());
+    mockUserRepo.findEmailsByIds.mockResolvedValue(new Map());
     mockMessageRepo.findForModeration.mockResolvedValue(null);
     service = new GetReportDetailService(
       mockReportRepo,
       mockAudit,
-      mockMemberRepo,
+      mockUserRepo,
       mockMessageRepo,
     );
   });
@@ -250,7 +252,7 @@ describe('GetReportDetailService', () => {
   });
 
   it('補上兩造的 email', async () => {
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+    mockUserRepo.findEmailsByIds.mockResolvedValue(
       new Map([
         ['reporter', 'alice@example.com'],
         ['offender', 'bob@example.com'],
@@ -413,27 +415,27 @@ describe('ReviewReportService', () => {
 describe('GetMemberProfileService', () => {
   let service: GetMemberProfileService;
 
-  const memberRow = {
+  const userRow = {
     id: 'member-1',
     email: 'bob@example.com',
-    member: 'Bob',
-    roleId: 'role-1',
-    roleName: '一般成員',
+    password: 'hashed',
+    displayName: 'Bob',
+    avatarUrl: null,
+    emailVerifiedAt: null,
     status: true,
-    isDefault: false,
+    tokenVersion: 0,
+    lastSeenAt: null,
     createdAt: new Date('2026-01-15T02:30:00.000Z'),
-    updatedAt: new Date(0),
-    lastLoginAt: new Date(0),
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockMemberRepo.loadMemberById = jest.fn().mockResolvedValue(memberRow);
+    mockUserRepo.loadById = jest.fn().mockResolvedValue(userRow);
     mockReportRepo.countByMember.mockResolvedValue(0);
     mockRoomRepo.listByMember.mockResolvedValue({ data: [], total: 0 });
     mockPresence.isOnline.mockResolvedValue(false);
     service = new GetMemberProfileService(
-      mockMemberRepo,
+      mockUserRepo,
       mockReportRepo,
       mockRoomRepo,
       mockPresence,
@@ -453,7 +455,7 @@ describe('GetMemberProfileService', () => {
       memberId: 'member-1',
       email: 'bob@example.com',
       status: true,
-      joinedAt: memberRow.createdAt,
+      joinedAt: userRow.createdAt,
       isOnline: true,
       reportedCount: 3,
       submittedReportCount: 1,
@@ -512,7 +514,7 @@ describe('GetMemberProfileService', () => {
   });
 
   it('成員不存在 → MemberNotFoundException', async () => {
-    mockMemberRepo.loadMemberById = jest.fn().mockResolvedValue(null);
+    mockUserRepo.loadById = jest.fn().mockResolvedValue(null);
 
     await expect(service.execute('ghost')).rejects.toThrow(
       MemberNotFoundException,
@@ -554,8 +556,8 @@ describe('ListMemberReportsService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockReportRepo.listByMember.mockResolvedValue({ data: [row], total: 1 });
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(new Map());
-    service = new ListMemberReportsService(mockReportRepo, mockMemberRepo);
+    mockUserRepo.findEmailsByIds.mockResolvedValue(new Map());
+    service = new ListMemberReportsService(mockReportRepo, mockUserRepo);
   });
 
   it('預設查「被檢舉」的方向', async () => {
@@ -575,7 +577,7 @@ describe('ListMemberReportsService', () => {
   });
 
   it('補上對造的 email', async () => {
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+    mockUserRepo.findEmailsByIds.mockResolvedValue(
       new Map([['alice', 'alice@example.com']]),
     );
 
@@ -603,7 +605,7 @@ describe('ListMemberReportsService', () => {
 
     await service.execute({ memberId: 'bob' });
 
-    expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
+    expect(mockUserRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -686,10 +688,10 @@ describe('GetRoomDetailService', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockRoomRepo.findAdminDetail.mockResolvedValue(detail);
-    mockMemberRepo.findEmailsByIds.mockResolvedValue(
+    mockUserRepo.findEmailsByIds.mockResolvedValue(
       new Map([['alice', 'alice@example.com']]),
     );
-    service = new GetRoomDetailService(mockRoomRepo, mockMemberRepo);
+    service = new GetRoomDetailService(mockRoomRepo, mockUserRepo);
   });
 
   it('補上成員的 email', async () => {
@@ -709,7 +711,7 @@ describe('GetRoomDetailService', () => {
   it('⭐ 補 email 只查一次', async () => {
     await service.execute('room-1');
 
-    expect(mockMemberRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
+    expect(mockUserRepo.findEmailsByIds).toHaveBeenCalledTimes(1);
   });
 
   it('房間不存在 → ChatRoomNotFoundException', async () => {

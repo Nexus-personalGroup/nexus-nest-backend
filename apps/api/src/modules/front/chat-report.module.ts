@@ -6,6 +6,7 @@ import { SubmitReportService } from '../../application/service/front/chat-report
 import { PrismaChatReportRepository } from '../../adapter/out/persistence/chat-report/PrismaChatReportRepository';
 import { CHAT_REPORT_REPOSITORY_PORT } from '../../application/port/out/chat-report/ChatReportRepositoryPort';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
+import { FrontAuthModule } from './auth.module';
 
 /**
  * 前台檢舉模組（路由 `/api/front/chat-reports`）。
@@ -14,7 +15,8 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
  * 因此本模組也不需要。檢舉沒有任何推播：被檢舉者不得知情。
  */
 @Module({
-  imports: [ChatRoomCoreModule],
+  // FrontAuthModule 提供 RESOLVE_USER_CONTEXT_USE_CASE（controller 的 FrontJwtAuthGuard）
+  imports: [ChatRoomCoreModule, FrontAuthModule],
   controllers: [ChatReportController],
   providers: [
     PrismaChatReportRepository,
