@@ -18,9 +18,9 @@ import {
 import { Namespace, Socket } from 'socket.io';
 import { SocketIoEventPublisher } from '@app/adapter/out/socketio/SocketIoEventPublisher';
 import {
-  RESOLVE_MEMBER_CONTEXT_USE_CASE,
-  ResolveMemberContextUseCase,
-} from '@app/application/port/in/shared/ResolveMemberContextUseCase';
+  RESOLVE_USER_CONTEXT_USE_CASE,
+  ResolveUserContextUseCase,
+} from '@app/application/port/in/front/auth/FrontAuthUseCases';
 import {
   METRICS_PORT,
   MetricsPort,
@@ -41,7 +41,7 @@ import {
   PRESENCE_PORT,
   PresencePort,
 } from '@app/application/port/out/presence/PresencePort';
-import { MemberContext } from '@app/application/port/member-context';
+import { UserContext } from '@app/application/port/user-context';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
 import { getEnv } from '@app/infrastructure/validate-env';
 import { INSTANCE_ID } from '@app/infrastructure/instance-id';
@@ -57,9 +57,15 @@ import {
 import { SendMessageRequest, sendMessageSchema } from './SendMessageRequest';
 import { SyncRoomRequest, syncRoomSchema } from './SyncRoomRequest';
 
-/** 已完成認證的連線。member 由 `handleConnection` 保證設定 */
+/**
+ * 已完成認證的連線。`member` 由 `handleConnection` 保證設定。
+ *
+ * **型別是 `UserContext`（前台使用者），欄位名保留 `member`**：聊天領域裡的
+ * 「member」指的一直都是聊天的參與者，而那就是前台使用者。改名會波及每一個
+ * handler 與所有測試，換來的只是命名更精確——那筆債留著，但型別上已經不可能弄錯。
+ */
 export interface AuthenticatedSocket extends Socket {
-  member: MemberContext;
+  member: UserContext;
 }
 
 /**
@@ -105,8 +111,8 @@ export class ChatGateway
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
   constructor(
-    @Inject(RESOLVE_MEMBER_CONTEXT_USE_CASE)
-    private readonly resolveMemberContext: ResolveMemberContextUseCase,
+    @Inject(RESOLVE_USER_CONTEXT_USE_CASE)
+    private readonly resolveUserContext: ResolveUserContextUseCase,
     @Inject(PRESENCE_PORT) private readonly presence: PresencePort,
     @Inject(JOIN_ROOM_USE_CASE)
     private readonly joinRoom: JoinRoomUseCase,
@@ -175,6 +181,10 @@ export class ChatGateway
    * 認證放在連線階段而非每個事件：連線本身是長期存在的資源，讓未認證的連線
    * 先掛著再逐事件檢查，等於把判斷散落到每個 handler，漏一個就是漏洞。
    *
+   * **只接受前台使用者的 token。** 後台簽出的 token 用的是另一組 secret，
+   * 在 `ResolveUserContextUseCase` 的簽章驗證就過不了——擋下它的不是權限判斷，
+   * 而是它根本不屬於這一側。
+   *
    * @param client - 尚未認證的連線
    */
   async handleConnection(client: Socket): Promise<void> {
@@ -185,7 +195,7 @@ export class ChatGateway
         return;
       }
 
-      const member = await this.resolveMemberContext.resolve(token);
+      const member = await this.resolveUserContext.resolve(token);
       (client as AuthenticatedSocket).member = member;
 
       const connections = await this.presence.getConnections(member.sub);

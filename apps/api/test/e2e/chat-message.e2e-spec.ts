@@ -3,7 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { ResponseCodes } from '@app/shared/constants/response-codes';
 import { createE2EApp, createMockRedis } from '../setup/test-app';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedUser } from '../helpers/db';
 import { describeUnauthorized, expectApiError } from '../helpers/assertions';
 
 const PASSWORD = 'TestPass123!';
@@ -26,7 +26,7 @@ describe('ChatMessage E2E', () => {
 
   const login = async (email: string): Promise<string> => {
     const res = await request(app.getHttpServer())
-      .post('/api/admin/auth/login')
+      .post('/api/front/auth/login')
       .send({ email, password: PASSWORD });
     return (res.body as { data: { accessToken: string } }).data.accessToken;
   };
@@ -64,22 +64,20 @@ describe('ChatMessage E2E', () => {
     mockRedis.throttleIncrement.mockResolvedValue(1);
     await resetDb(prisma);
 
-    const a = await seedMember(prisma, {
+    const a = await seedUser(prisma, {
       email: 'a@test.com',
       password: PASSWORD,
     });
-    const b = await seedMember(prisma, {
+    const b = await seedUser(prisma, {
       email: 'b@test.com',
       password: PASSWORD,
-      roleName: 'member-b',
     });
-    await seedMember(prisma, {
+    await seedUser(prisma, {
       email: 'c@test.com',
       password: PASSWORD,
-      roleName: 'member-c',
     });
-    idA = a.memberId;
-    idB = b.memberId;
+    idA = a.userId;
+    idB = b.userId;
     tokenA = await login('a@test.com');
     tokenC = await login('c@test.com');
 

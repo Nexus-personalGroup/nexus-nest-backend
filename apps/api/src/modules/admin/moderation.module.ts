@@ -27,11 +27,17 @@ import {
   REMOVE_MESSAGE_USE_CASE,
   RESTORE_MESSAGE_USE_CASE,
 } from '../../application/port/in/admin/moderation/MessageModerationUseCases';
+import {
+  REINSTATE_FRONT_USER_USE_CASE,
+  SUSPEND_FRONT_USER_USE_CASE,
+} from '../../application/port/in/admin/moderation/FrontUserSuspensionUseCases';
+import { SuspendFrontUserService } from '../../application/service/admin/moderation/SuspendFrontUserService';
+import { ReinstateFrontUserService } from '../../application/service/admin/moderation/ReinstateFrontUserService';
 import { PrismaChatReportRepository } from '../../adapter/out/persistence/chat-report/PrismaChatReportRepository';
 import { CHAT_REPORT_REPOSITORY_PORT } from '../../application/port/out/chat-report/ChatReportRepositoryPort';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { ChatWsModule } from '../chat-ws.module';
-import { MemberModule } from './member.module';
+import { UserPersistenceModule } from '../user-persistence.module';
 
 /**
  * 後台檢舉審閱模組（路由 `/api/admin/moderation`）。
@@ -41,9 +47,11 @@ import { MemberModule } from './member.module';
  * 同一個實作，但兩者的相依方向不同，各自 provide 比開一個共用模組單純。
  */
 @Module({
-  // ChatWsModule 提供 EVENT_PUBLISHER_PORT：移除與還原要推播讓畫面同步
-  // MemberModule 提供 UPDATE_MEMBER_USE_CASE：停權與帳號管理走同一個 use case
-  imports: [ChatRoomCoreModule, ChatWsModule, MemberModule],
+  // ChatWsModule 提供 EVENT_PUBLISHER_PORT（移除與還原要推播讓畫面同步）
+  // 與 REVOKE_MEMBER_SESSIONS_USE_CASE（停權要中止既有連線）
+  // UserPersistenceModule 提供前台使用者的讀寫：審閱看到的當事人一律是前台使用者，
+  // 因此本模組**不再相依 MemberModule**
+  imports: [ChatRoomCoreModule, ChatWsModule, UserPersistenceModule],
   controllers: [ModerationController],
   providers: [
     PrismaChatReportRepository,
@@ -68,6 +76,11 @@ import { MemberModule } from './member.module';
     { provide: GET_ROOM_DETAIL_USE_CASE, useClass: GetRoomDetailService },
     { provide: REMOVE_MESSAGE_USE_CASE, useClass: RemoveMessageService },
     { provide: RESTORE_MESSAGE_USE_CASE, useClass: RestoreMessageService },
+    { provide: SUSPEND_FRONT_USER_USE_CASE, useClass: SuspendFrontUserService },
+    {
+      provide: REINSTATE_FRONT_USER_USE_CASE,
+      useClass: ReinstateFrontUserService,
+    },
     ModerationFacade,
   ],
 })

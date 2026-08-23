@@ -3,7 +3,7 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { PermissionCode } from '@app/domain/value-object/Role';
 import { createE2EApp, createMockRedis } from '../setup/test-app';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedMember, seedUser } from '../helpers/db';
 import { describeUnauthorized, expectForbidden } from '../helpers/assertions';
 
 const PASSWORD = 'TestPass123!';
@@ -27,7 +27,8 @@ describe('Dashboard E2E', () => {
 
   let tokenFull = '';
   let tokenNone = '';
-  let memberId = '';
+  // 聊天資料的當事人一律是前台使用者
+  let userId = '';
 
   const login = async (email: string): Promise<string> => {
     const res = await request(app.getHttpServer())
@@ -59,7 +60,7 @@ describe('Dashboard E2E', () => {
     mockRedis.hashGetAll.mockResolvedValue({});
     await resetDb(prisma);
 
-    const admin = await seedMember(prisma, {
+    await seedMember(prisma, {
       email: 'admin@test.com',
       password: PASSWORD,
       permissionCodes: [PermissionCode.BACKEND_MODERATION_VIEW],
@@ -70,7 +71,11 @@ describe('Dashboard E2E', () => {
       roleName: 'nobody',
       permissionCodes: ['BACKEND:ACCOUNT:VIEW'],
     });
-    memberId = admin.memberId;
+    const user = await seedUser(prisma, {
+      email: 'user@test.com',
+      password: PASSWORD,
+    });
+    userId = user.userId;
     tokenFull = await login('admin@test.com');
     tokenNone = await login('nobody@test.com');
   });
@@ -99,7 +104,7 @@ describe('Dashboard E2E', () => {
     ]);
   });
 
-  it('空資料庫 → 數字為 0（成員數除外，種子有兩個帳號）', async () => {
+  it('空資料庫 → 數字為 0（成員數除外，種子有一個前台使用者）', async () => {
     const res = await snapshot();
 
     const { data } = res.body as SnapshotBody;
@@ -109,6 +114,20 @@ describe('Dashboard E2E', () => {
     expect(data.messagesToday).toBe(0);
   });
 
+  /**
+   * `totalMembers` 計的是**前台使用者**，不含後台管理員。
+   *
+   * 種子有 2 個 `members`（admin / nobody）與 1 個 `users`。查錯表的話這裡會是 2——
+   * 一個看起來完全合理的數字，只是回答的是另一個問題。
+   */
+  it('⭐ 成員數只計前台使用者，不含後台管理員', async () => {
+    await seedUser(prisma, { email: 'user2@test.com', password: PASSWORD });
+
+    const res = await snapshot();
+
+    expect((res.body as SnapshotBody).data.totalMembers).toBe(2);
+  });
+
   it('只算待處理的檢舉', async () => {
     const room = await prisma.chatRoomRecord.create({
       data: { roomType: 'GROUP', name: '房', lastSeq: 1 },
@@ -116,7 +135,7 @@ describe('Dashboard E2E', () => {
     const message = await prisma.chatMessageRecord.create({
       data: {
         roomId: room.id,
-        senderId: memberId,
+        senderId: userId,
         content: '內容',
         seq: 1,
         clientMessageId: 'c-1',
@@ -125,18 +144,18 @@ describe('Dashboard E2E', () => {
     await prisma.chatReportRecord.createMany({
       data: [
         {
-          reporterId: memberId,
+          reporterId: userId,
           targetMessageId: message.id,
-          targetMemberId: memberId,
+          targetMemberId: userId,
           roomId: room.id,
           reason: 'SPAM',
           contentSnapshot: '內容',
           status: 'PENDING',
         },
         {
-          reporterId: memberId,
+          reporterId: userId,
           targetMessageId: `${message.id}-other`,
-          targetMemberId: memberId,
+          targetMemberId: userId,
           roomId: room.id,
           reason: 'SPAM',
           contentSnapshot: '內容',
@@ -186,7 +205,7 @@ describe('Dashboard E2E', () => {
     await prisma.chatMessageRecord.create({
       data: {
         roomId: room.id,
-        senderId: memberId,
+        senderId: userId,
         content: '凌晨的訊息',
         seq: 1,
         clientMessageId: 'c-early',
@@ -210,7 +229,7 @@ describe('Dashboard E2E', () => {
     await prisma.chatMessageRecord.create({
       data: {
         roomId: room.id,
-        senderId: memberId,
+        senderId: userId,
         content: '昨天的訊息',
         seq: 1,
         clientMessageId: 'c-yesterday',

@@ -2,7 +2,7 @@ import { randomUUID } from 'crypto';
 import { io, Socket } from 'socket.io-client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { CLIENT_EVENTS, SERVER_EVENTS } from '@app/adapter/in/ws/events';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedUser } from '../helpers/db';
 import {
   signAccessToken,
   startInstance,
@@ -78,23 +78,22 @@ describe('WebSocket 連線層限流（整合）', () => {
 
   beforeEach(async () => {
     await resetDb(prisma);
-    const member = await seedMember(prisma, {
+    const member = await seedUser(prisma, {
       email: 'throttle@example.com',
       password: 'Passw0rd!',
     });
-    const other = await seedMember(prisma, {
+    const other = await seedUser(prisma, {
       email: 'other@example.com',
       password: 'Passw0rd!',
-      roleName: 'other',
     });
-    memberId = member.memberId;
+    memberId = member.userId;
     token = signAccessToken(instance.jwt, memberId);
 
     const room = await prisma.chatRoomRecord.create({
       data: {
         roomType: 'GROUP',
         name: '限流測試房間',
-        members: { create: [{ memberId }, { memberId: other.memberId }] },
+        members: { create: [{ memberId }, { memberId: other.userId }] },
       },
     });
     roomId = room.id;

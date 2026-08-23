@@ -20,9 +20,15 @@ MUST 以兩個實際運行的實例驗證，單一實例內的行為不構成證
 
 WebSocket 連線 SHALL 於 handshake 階段取得並驗證 access token，未通過者 MUST NOT 收送任何事件。
 
-token 的解析與判定 MUST 呼叫與 HTTP 認證相同的 application service，MUST NOT 在 WS 層重寫一份。
-兩條路徑允許不同的**取 token 方式**與**失敗表現形式**，但「這個 token 是否有效、對應哪個成員」
-的判定 MUST 只有一個實作。
+**連線的身分是前台使用者（`users`），不是後台管理員（`members`）。**
+聊天是前台的功能，而後台帳號沒有理由出現在聊天室裡。
+以後台 token 建立連線 MUST 被拒絕——不是因為權限不足，而是簽章驗不過
+（兩側各自的 secret，見 `platform-token-scope`）。
+
+token 的解析與判定 MUST 呼叫與**前台 HTTP** 認證相同的 application service
+（`ResolveUserContextUseCase`），MUST NOT 在 WS 層重寫一份。
+兩條路徑允許不同的**取 token 方式**與**失敗表現形式**，但「這個 token 是否有效、
+對應哪個使用者」的判定 MUST 只有一個實作。
 
 重寫一份的代價已有前例：舊專案的 WS 認證漏掉 `tokenVersion` 比對，導致帳號被強制登出後
 既有的 WS 連線仍然有效，且沒有任何徵兆。
@@ -35,10 +41,15 @@ MUST NOT 接受 query string——query 會出現在伺服器日誌與 Referer h
 - **WHEN** 連線的 handshake 不含 token
 - **THEN** 伺服器送出認證失敗事件後主動斷線，該連線 MUST NOT 進入任何群組
 
+#### Scenario: 以後台 token 連線
+
+- **WHEN** 客戶端以 `/api/admin/auth/login` 簽出的 token 建立 WS 連線
+- **THEN** 連線 MUST 被拒絕——聊天是前台的功能
+
 #### Scenario: token 已被撤銷
 
 - **WHEN** 使用者的 `tokenVersion` 已因改密碼或強制登出而遞增，客戶端仍持舊 token 連線
-- **THEN** 連線被拒絕——與同一個 token 打 HTTP API 的結果一致
+- **THEN** 連線被拒絕——與同一個 token 打前台 HTTP API 的結果一致
 
 #### Scenario: 以 query string 夾帶 token
 
@@ -296,4 +307,26 @@ MUST NOT 對每個成員各發一次查詢。
 
 - **WHEN** 有程式碼把在線人數用於授權、計費或任何需要精確值的判斷
 - **THEN** 違反本需求的意圖——這個數字有校正延遲，精確的判斷 MUST 讀連線紀錄
+
+### Requirement: presence 的身分是前台使用者
+
+presence 紀錄的 key 中的識別碼 SHALL 是前台使用者的 ID。
+
+key 的格式**維持** `presence:member:<id>` 不變：改成 `presence:user:<id>` 更精確，
+但要同時改 sweep 的 scan pattern、在線成員索引、以及所有相關測試——
+換來的只是命名更好看。`cache-keys.ts` 的註解 MUST 寫明
+「這裡的 member 指的是前台使用者」，讓命名的債至少是**有標記的**債。
+
+切換當下 MUST 清除既有的 presence 紀錄（`presence:member:*` 與
+`presence:online-members`）：格式雖然沒變，但那些 ID 指向的身分已經不存在了。
+
+#### Scenario: 前台使用者連線後的 presence
+
+- **WHEN** 前台使用者建立 WS 連線
+- **THEN** presence 紀錄以該使用者的 ID 為鍵，`isOnline()` 與在線人數都反映他
+
+#### Scenario: 切換後殘留的舊紀錄
+
+- **WHEN** 切換前的 presence 紀錄仍在 Redis 中
+- **THEN** MUST 於切換時清除——那些 ID 已不對應任何前台使用者
 

@@ -34,9 +34,10 @@ import {
   RemoveMessageUseCase,
 } from '@app/application/port/in/admin/moderation/MessageModerationUseCases';
 import {
-  UPDATE_MEMBER_USE_CASE,
-  UpdateMemberUseCase,
-} from '@app/application/port/in/admin/member/UpdateMemberUseCase';
+  SUSPEND_FRONT_USER_USE_CASE,
+  SuspendFrontUserUseCase,
+} from '@app/application/port/in/admin/moderation/FrontUserSuspensionUseCases';
+import { getEnv } from '@app/infrastructure/validate-env';
 
 export interface WsInstance {
   app: NestExpressApplication;
@@ -54,8 +55,8 @@ export interface WsInstance {
   retractMessage: RetractMessageUseCase;
   /** 同上，用於管理員移除的通知 */
   removeMessage: RemoveMessageUseCase;
-  /** 停權：用來驗證既有連線會被跨實例斷開 */
-  updateMember: UpdateMemberUseCase;
+  /** 停權（前台使用者）：用來驗證既有連線會被跨實例斷開 */
+  suspendFrontUser: SuspendFrontUserUseCase;
   prisma: PrismaService;
   jwt: JwtService;
   /** 正常關閉：走 shutdown hooks，presence 會被清乾淨 */
@@ -97,7 +98,9 @@ export const startInstance = async (port: number): Promise<WsInstance> => {
     markRoomRead: app.get<MarkRoomReadUseCase>(MARK_ROOM_READ_USE_CASE),
     retractMessage: app.get<RetractMessageUseCase>(RETRACT_MESSAGE_USE_CASE),
     removeMessage: app.get<RemoveMessageUseCase>(REMOVE_MESSAGE_USE_CASE),
-    updateMember: app.get<UpdateMemberUseCase>(UPDATE_MEMBER_USE_CASE),
+    suspendFrontUser: app.get<SuspendFrontUserUseCase>(
+      SUSPEND_FRONT_USER_USE_CASE,
+    ),
     prisma: app.get(PrismaService),
     jwt: app.get(JwtService),
     close: async () => {
@@ -107,10 +110,32 @@ export const startInstance = async (port: number): Promise<WsInstance> => {
 };
 
 /**
- * 簽一個可用於 WebSocket 連線的 access token
+ * 簽一個可用於 WebSocket 連線的 access token（**前台使用者**）
  *
  * 直接簽發而非走登入 API：這支測試要驗的是 WS 層，讓它相依登入流程等於
  * 多一個與本測試無關的失敗來源。
+ *
+ * 用 `FRONT_ACCESS_SECRET` 並帶 `side: 'front'`——聊天的連線只接受前台身分，
+ * 後台 secret 簽出來的 token 在 handshake 就過不了簽章驗證。
  */
-export const signAccessToken = (jwt: JwtService, memberId: string): string =>
-  jwt.sign({ sub: memberId, type: 'access', tokenVersion: 0 });
+export const signAccessToken = (
+  jwt: JwtService,
+  userId: string,
+  tokenVersion = 0,
+): string =>
+  jwt.sign(
+    { sub: userId, type: 'access', side: 'front', tokenVersion },
+    { secret: getEnv().FRONT_ACCESS_SECRET },
+  );
+
+/**
+ * 簽一個**後台**的 access token。
+ *
+ * 只有一個用途：證明它連不上 WS。留在這裡而不是寫在測試裡，
+ * 是為了讓「兩側各自用自己的 secret」這件事在 helper 層就看得見。
+ */
+export const signAdminAccessToken = (
+  jwt: JwtService,
+  memberId: string,
+): string =>
+  jwt.sign({ sub: memberId, type: 'access', side: 'admin', tokenVersion: 0 });

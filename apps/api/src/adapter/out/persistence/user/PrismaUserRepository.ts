@@ -5,12 +5,16 @@ import {
   LoadUserPort,
   UserRecordDto,
 } from '@app/application/port/out/user/LoadUserPort';
+import {
+  SAVE_USER_PORT,
+  SaveUserPort,
+} from '@app/application/port/out/user/SaveUserPort';
 
-export { LOAD_USER_PORT };
+export { LOAD_USER_PORT, SAVE_USER_PORT };
 
 /** 前台使用者的持久層。與 `members` 完全獨立——兩者是不同的帳號體系 */
 @Injectable()
-export class PrismaUserRepository implements LoadUserPort {
+export class PrismaUserRepository implements LoadUserPort, SaveUserPort {
   private readonly logger = new Logger(PrismaUserRepository.name);
 
   constructor(private readonly prisma: PrismaService) {}
@@ -46,6 +50,49 @@ export class PrismaUserRepository implements LoadUserPort {
           }`,
         );
       });
+  }
+
+  async findEmailsByIds(ids: string[]): Promise<Map<string, string>> {
+    // 空陣列直接回：`in: []` 是一個必然無結果的查詢，送出去只是浪費一次往返
+    if (ids.length === 0) return new Map();
+
+    const rows = await this.prisma.userRecord.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      select: { id: true, email: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.email]));
+  }
+
+  async findActiveUserIds(ids: string[]): Promise<string[]> {
+    if (ids.length === 0) return [];
+
+    const rows = await this.prisma.userRecord.findMany({
+      where: { id: { in: ids }, status: true, deletedAt: null },
+      select: { id: true },
+    });
+    return rows.map((row) => row.id);
+  }
+
+  async countUsers(): Promise<number> {
+    return this.prisma.userRecord.count({ where: { deletedAt: null } });
+  }
+
+  async suspend(id: string): Promise<boolean> {
+    // where 帶 status: true——條件式更新讓「是否真的改變了」由 DB 回答，
+    // 而不是先讀再寫（那有兩個請求同時通過的窗口，結果是重複稽核）
+    const { count } = await this.prisma.userRecord.updateMany({
+      where: { id, status: true, deletedAt: null },
+      data: { status: false, tokenVersion: { increment: 1 } },
+    });
+    return count > 0;
+  }
+
+  async reinstate(id: string): Promise<boolean> {
+    const { count } = await this.prisma.userRecord.updateMany({
+      where: { id, status: false, deletedAt: null },
+      data: { status: true },
+    });
+    return count > 0;
   }
 
   private readonly selectFields = {

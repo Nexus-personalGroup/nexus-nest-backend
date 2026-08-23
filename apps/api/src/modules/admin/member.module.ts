@@ -24,13 +24,11 @@ import { JwtModule } from '../jwt.module';
 import { MemberPersistenceModule } from '../member-persistence.module';
 import { ChatWsModule } from '../chat-ws.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
-import { REVOKE_MEMBER_SESSIONS_USE_CASE } from '../../application/port/in/shared/RevokeMemberSessionsUseCase';
-import { RevokeMemberSessionsService } from '../../application/service/shared/RevokeMemberSessionsService';
 import { RoleModule } from './role.module';
 import { getEnv } from '../../infrastructure/validate-env';
 
 @Module({
-  // ChatWsModule 提供 EVENT_PUBLISHER_PORT（撤銷連線）、
+  // ChatWsModule 提供 REVOKE_MEMBER_SESSIONS_USE_CASE（撤銷連線）、
   // ChatRoomCoreModule 提供 CHAT_AUDIT_PORT（停權／解除的稽核）
   imports: [
     JwtModule,
@@ -47,10 +45,6 @@ import { getEnv } from '../../infrastructure/validate-env';
     { provide: GET_MEMBER_USE_CASE, useClass: GetMemberService },
     { provide: CREATE_MEMBER_USE_CASE, useClass: CreateMemberService },
     { provide: UPDATE_MEMBER_USE_CASE, useClass: UpdateMemberService },
-    {
-      provide: REVOKE_MEMBER_SESSIONS_USE_CASE,
-      useClass: RevokeMemberSessionsService,
-    },
     { provide: DELETE_MEMBER_USE_CASE, useClass: DeleteMemberService },
     { provide: LIST_ROLE_OPTIONS_USE_CASE, useClass: ListRoleOptionsService },
     { provide: GET_ROLE_OPTION_USE_CASE, useClass: GetRoleOptionService },
@@ -58,8 +52,6 @@ import { getEnv } from '../../infrastructure/validate-env';
   ],
   // 轉出整個模組而非個別 token：Nest 不允許 export 非本模組提供的 provider，
   // 而既有的 import 方仍是向 MemberModule 要這些 port
-  // UPDATE_MEMBER_USE_CASE 對外 export：審閱側的停權走同一個 use case，
-  // 各自實作會讓斷線與稽核的行為分歧，而分歧的那一邊不會有人發現
-  exports: [MemberPersistenceModule, UPDATE_MEMBER_USE_CASE],
+  exports: [MemberPersistenceModule],
 })
 export class MemberModule {}

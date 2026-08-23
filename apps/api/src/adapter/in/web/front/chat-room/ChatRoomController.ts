@@ -9,13 +9,16 @@ import {
   ParseUUIDPipe,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ChatRoomFacade } from '@app/application/facade/front/ChatRoomFacade';
 import type { ChatRoomSummary } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
 import type { ListMyRoomsResult } from '@app/application/port/in/front/chat-room/ListMyRoomsUseCase';
-import type { MemberContext } from '@app/application/port/member-context';
+import type { UserContext } from '@app/application/port/user-context';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
-import { CurrentMember } from '../../decorator/current-member.decorator';
+import { CurrentUser } from '../../decorator/current-user.decorator';
+import { Public } from '../../decorator/public.decorator';
+import { FrontJwtAuthGuard } from '../../guard/FrontJwtAuthGuard';
 import { MemberScoped } from '../../decorator/member-scoped.decorator';
 import {
   createDirectRoomSchema,
@@ -30,19 +33,25 @@ import { listMyRoomsQuerySchema, ListMyRoomsQuery } from './ListMyRoomsQuery';
 /**
  * 前台聊天室。
  *
- * 四支端點的資源範圍都由 `@CurrentMember()` 決定，沒有任何「指定他人」的入口——
+ * 四支端點的資源範圍都由 `@CurrentUser()` 決定，沒有任何「指定他人」的入口——
  * 房間清單看自己的、離開房間離開自己的。這讓授權判斷落在
  * 「呼叫者是不是這個房間的成員」單一問題上，由 application 層回答——
  * `@MemberScoped()` 就是這個決定的宣告。
+ *
+ * `@Public()` 是給**全域的後台 Guard** 看的（讓它略過這些路由），
+ * 實際的認證由 `FrontJwtAuthGuard` 執行——它刻意不檢查 `@Public()`，
+ * 兩者合起來才是「這支端點吃前台 token」。
  */
 @MemberScoped()
+@Public()
+@UseGuards(FrontJwtAuthGuard)
 @Controller('front/chat-rooms')
 export class ChatRoomController {
   constructor(private readonly chatRoomFacade: ChatRoomFacade) {}
 
   @Get()
   listMyRooms(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Query(new ZodValidationPipe(listMyRoomsQuerySchema))
     query: ListMyRoomsQuery,
   ): Promise<ListMyRoomsResult> {
@@ -52,7 +61,7 @@ export class ChatRoomController {
   @Post('direct')
   @HttpCode(HttpStatus.OK)
   createDirectRoom(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Body(new ZodValidationPipe(createDirectRoomSchema))
     dto: CreateDirectRoomRequest,
   ): Promise<ChatRoomSummary> {
@@ -66,7 +75,7 @@ export class ChatRoomController {
   @Post('group')
   @HttpCode(HttpStatus.CREATED)
   createGroupRoom(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Body(new ZodValidationPipe(createGroupRoomSchema))
     dto: CreateGroupRoomRequest,
   ): Promise<ChatRoomSummary> {
@@ -80,7 +89,7 @@ export class ChatRoomController {
   @Delete(':roomId/members/me')
   @HttpCode(HttpStatus.NO_CONTENT)
   async leaveRoom(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Param('roomId', ParseUUIDPipe) roomId: string,
   ): Promise<void> {
     await this.chatRoomFacade.leaveRoom({ roomId, memberId: member.sub });

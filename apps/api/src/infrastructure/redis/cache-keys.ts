@@ -27,6 +27,12 @@ export const buildPasswordResetKey = (prefix: string, token: string): string =>
  *
  * 用 Hash 而非 Set：Set 的成員沒有各自的時效，實例被強制終止時來不及清理，
  * 該成員會被永遠顯示為在線。把心跳時間存在 value 才能過濾掉陳舊的連線。
+ *
+ * ⚠️ **key 裡的 `member` 指的是「前台使用者」（`users`），不是後台管理員。**
+ * WS 只服務前台，這個 id 不可能是 `members` 的。格式沒有跟著改成
+ * `presence:user:` 是因為那要同時動 sweep 的 scan pattern、在線索引與所有測試，
+ * 換來的只是命名更精確——這是一筆**有標記的**命名債。
+ * 若日後 presence 要涵蓋後台（例如「哪些管理員在線」），那時再改才有實質理由。
  */
 export const buildPresenceKey = (prefix: string, memberId: string): string =>
   `${prefix}presence:member:${memberId}`;

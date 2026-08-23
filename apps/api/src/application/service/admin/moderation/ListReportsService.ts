@@ -7,9 +7,9 @@ import {
   ReportListItemView,
 } from '@app/application/port/in/admin/moderation/ModerationUseCases';
 import {
-  LOAD_MEMBER_PORT,
-  LoadMemberPort,
-} from '@app/application/port/out/member/LoadMemberPort';
+  LOAD_USER_PORT,
+  LoadUserPort,
+} from '@app/application/port/out/user/LoadUserPort';
 import type { ChatReportListItem } from '@app/application/port/out/chat-report/ChatReportRepositoryPort';
 import {
   CHAT_REPORT_REPOSITORY_PORT,
@@ -27,8 +27,8 @@ export class ListReportsService implements ListReportsUseCase {
   constructor(
     @Inject(CHAT_REPORT_REPOSITORY_PORT)
     private readonly reportRepo: ChatReportRepositoryPort,
-    @Inject(LOAD_MEMBER_PORT)
-    private readonly memberRepo: LoadMemberPort,
+    @Inject(LOAD_USER_PORT)
+    private readonly userRepo: LoadUserPort,
   ) {}
 
   async execute(query: ListReportsQuery): Promise<ListReportsResult> {
@@ -63,7 +63,7 @@ export class ListReportsService implements ListReportsUseCase {
   private async attachEmails(
     rows: ChatReportListItem[],
   ): Promise<ReportListItemView[]> {
-    const emails = await this.memberRepo.findEmailsByIds([
+    const emails = await this.userRepo.findEmailsByIds([
       ...new Set(rows.flatMap((row) => [row.reporterId, row.targetMemberId])),
     ]);
 

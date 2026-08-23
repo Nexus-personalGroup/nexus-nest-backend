@@ -3,9 +3,10 @@ import { io, Socket } from 'socket.io-client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { CLIENT_EVENTS, SERVER_EVENTS } from '@app/adapter/in/ws/events';
 import { SYNC_BATCH_LIMIT } from '@app/application/service/shared/SyncRoomService';
-import { resetDb, seedMember } from '../helpers/db';
+import { resetDb, seedMember, seedUser } from '../helpers/db';
 import {
   signAccessToken,
+  signAdminAccessToken,
   startInstance,
   type WsInstance,
 } from '../helpers/ws-instance';
@@ -169,17 +170,16 @@ describe('WebSocket 訊息（整合）', () => {
 
   beforeEach(async () => {
     await resetDb(prisma);
-    const a = await seedMember(prisma, {
+    const a = await seedUser(prisma, {
       email: 'a@example.com',
       password: 'Passw0rd!',
     });
-    const b = await seedMember(prisma, {
+    const b = await seedUser(prisma, {
       email: 'b@example.com',
       password: 'Passw0rd!',
-      roleName: 'member-b',
     });
-    idA = a.memberId;
-    idB = b.memberId;
+    idA = a.userId;
+    idB = b.userId;
     tokenA = signAccessToken(instanceA.jwt, idA);
     tokenB = signAccessToken(instanceA.jwt, idB);
 
@@ -191,6 +191,38 @@ describe('WebSocket 訊息（整合）', () => {
       },
     });
     roomId = room.id;
+  });
+
+  /**
+   * **連線的身分是前台使用者。**
+   *
+   * `migrate-chat-to-front-users` 之前，這條連線用的是後台帳號的 token 而且會成功。
+   * 之後必須被拒——擋下它的不是權限判斷，而是兩側各自的 secret：
+   * 後台簽出的 token 在 handshake 的簽章驗證就過不了。
+   */
+  describe('⭐ 連線的身分', () => {
+    it('後台 token 建立連線 → 被拒並斷線', async () => {
+      const admin = await seedMember(prisma, {
+        email: 'admin@example.com',
+        password: 'Passw0rd!',
+      });
+      const socket = io(`http://127.0.0.1:${PORT_A}/chat`, {
+        transports: ['websocket'],
+        auth: { token: signAdminAccessToken(instanceA.jwt, admin.memberId) },
+        reconnection: false,
+      });
+      sockets.push(socket);
+
+      const failure = await waitForEvent<WsError>(socket, SERVER_EVENTS.ERROR);
+
+      expect(failure.code).toBe('UNAUTHORIZED');
+      // 拒絕不是「不回應」——連線必須真的被斷開，否則它會一直掛著
+      await new Promise<void>((resolve) => {
+        if (!socket.connected) return resolve();
+        socket.once('disconnect', () => resolve());
+      });
+      expect(socket.connected).toBe(false);
+    });
   });
 
   describe('送收', () => {
@@ -226,14 +258,13 @@ describe('WebSocket 訊息（整合）', () => {
     });
 
     it('非成員送訊息 → CHAT_ROOM_NOT_FOUND，且不落庫', async () => {
-      const outsider = await seedMember(prisma, {
+      const outsider = await seedUser(prisma, {
         email: 'outsider@example.com',
         password: 'Passw0rd!',
-        roleName: 'outsider',
       });
       const socket = await connect(
         `http://127.0.0.1:${PORT_A}`,
-        signAccessToken(instanceA.jwt, outsider.memberId),
+        signAccessToken(instanceA.jwt, outsider.userId),
       );
       sockets.push(socket);
 
@@ -412,14 +443,13 @@ describe('WebSocket 訊息（整合）', () => {
     });
 
     it('非成員無法補齊', async () => {
-      const outsider = await seedMember(prisma, {
+      const outsider = await seedUser(prisma, {
         email: 'outsider2@example.com',
         password: 'Passw0rd!',
-        roleName: 'outsider2',
       });
       const socket = await connect(
         `http://127.0.0.1:${PORT_A}`,
-        signAccessToken(instanceA.jwt, outsider.memberId),
+        signAccessToken(instanceA.jwt, outsider.userId),
       );
       sockets.push(socket);
 

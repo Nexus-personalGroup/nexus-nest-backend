@@ -42,9 +42,11 @@ import {
   RestoreMessageUseCase,
 } from '@app/application/port/in/admin/moderation/MessageModerationUseCases';
 import {
-  UPDATE_MEMBER_USE_CASE,
-  UpdateMemberUseCase,
-} from '@app/application/port/in/admin/member/UpdateMemberUseCase';
+  REINSTATE_FRONT_USER_USE_CASE,
+  ReinstateFrontUserUseCase,
+  SUSPEND_FRONT_USER_USE_CASE,
+  SuspendFrontUserUseCase,
+} from '@app/application/port/in/admin/moderation/FrontUserSuspensionUseCases';
 
 @Injectable()
 export class ModerationFacade {
@@ -61,10 +63,13 @@ export class ModerationFacade {
     private readonly removeMessageUseCase: RemoveMessageUseCase,
     @Inject(RESTORE_MESSAGE_USE_CASE)
     private readonly restoreMessageUseCase: RestoreMessageUseCase,
-    // 停權走與帳號管理**同一個 use case**：各自實作會讓斷線與稽核的行為分歧，
-    // 而分歧的那一邊不會有人發現
-    @Inject(UPDATE_MEMBER_USE_CASE)
-    private readonly updateMemberUseCase: UpdateMemberUseCase,
+    // 停權走**前台使用者專屬的 use case**，與帳號管理的 UPDATE_MEMBER_USE_CASE 分開：
+    // 兩者停的是不同的東西（`users` vs `members`），共用一支再用參數分流，
+    // 傳錯的後果是停錯人而且沒有任何錯誤訊息
+    @Inject(SUSPEND_FRONT_USER_USE_CASE)
+    private readonly suspendFrontUserUseCase: SuspendFrontUserUseCase,
+    @Inject(REINSTATE_FRONT_USER_USE_CASE)
+    private readonly reinstateFrontUserUseCase: ReinstateFrontUserUseCase,
     @Inject(GET_MEMBER_PROFILE_USE_CASE)
     private readonly getMemberProfileUseCase: GetMemberProfileUseCase,
     @Inject(LIST_MEMBER_REPORTS_USE_CASE)
@@ -126,18 +131,16 @@ export class ModerationFacade {
   }
 
   suspendMember(memberId: string, actorId: string): Promise<void> {
-    return this.updateMemberUseCase.execute({
-      id: memberId,
-      actorId,
-      status: false,
+    return this.suspendFrontUserUseCase.execute({
+      userId: memberId,
+      moderatorId: actorId,
     });
   }
 
   reinstateMember(memberId: string, actorId: string): Promise<void> {
-    return this.updateMemberUseCase.execute({
-      id: memberId,
-      actorId,
-      status: true,
+    return this.reinstateFrontUserUseCase.execute({
+      userId: memberId,
+      moderatorId: actorId,
     });
   }
 }

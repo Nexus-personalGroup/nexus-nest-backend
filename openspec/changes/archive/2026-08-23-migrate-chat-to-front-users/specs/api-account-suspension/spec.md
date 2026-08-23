@@ -1,24 +1,5 @@
-# api-account-suspension Specification
+## MODIFIED Requirements
 
-## Purpose
-審閱側的停權與解除契約。**對象是前台使用者（`users`）。**
-
-**與帳號管理的 `PATCH /api/admin/members/:id { status: false }` 停的是不同的東西**：
-這裡停的是聊天的參與者，那裡停的是後台管理員。兩者因此是**兩個不同的 use case**，
-而不是同一支加一個側別參數——後者會讓每個呼叫端都要記得傳對，
-而傳錯的後果是停錯人且沒有任何錯誤訊息。
-
-兩個入口並存也是因為角色不同：「能管帳號的人」與「能做審閱處置的人」
-在真實團隊裡經常不是同一群（客服能停權違規者，但不該改後台帳號的角色與密碼；
-HR 能停用離職員工，但不該看檢舉內容）。
-
-停權會做四件事：帳號停用、`tokenVersion` 遞增（讓所有裝置立即失效）、
-**既有的 WebSocket 連線被斷開**、寫入稽核。第三項是關鍵——
-連線層的認證只在 handshake 執行一次，見 `platform-websocket-transport`。
-
-停權與解除**都留稽核**：`users.status` 只留下「現在是什麼狀態」，
-留不下「誰在什麼時候改的」，而反覆停權再解除本身就是可疑行為。
-## Requirements
 ### Requirement: 從審閱側停權成員
 
 `POST /api/admin/moderation/members/:memberId/suspend` SHALL 停用該**前台使用者**的帳號，
@@ -57,7 +38,7 @@ HR 能停用離職員工，但不該看檢舉內容）。
 - `401`、`code: "UNAUTHORIZED"`：未帶或帶了無效的 Bearer Token
 - `403`、`code: "FORBIDDEN"`：缺少 `BACKEND:MODERATION:EDIT` 權限
 - `404`、`code: "MEMBER_NOT_FOUND"`：該前台使用者不存在
-  （**包含傳入管理員 ID 的情況**——`409 SELF_DISABLE_FORBIDDEN` 不適用於本端點）
+  （**包含傳入管理員 ID 的情況**——原本的 `409 SELF_DISABLE_FORBIDDEN` 不再適用）
 
 #### Scenario: 停權違規成員
 
@@ -78,10 +59,10 @@ HR 能停用離職員工，但不該看檢舉內容）。
 #### Scenario: 停權自己
 
 - **WHEN** `memberId` 等於呼叫者自己的**管理員** ID
-- **THEN** 回 `404`。管理員與前台使用者是兩個不相交的身分空間，
-  管理員的 ID 在 `users` 裡查不到，所以它就只是一個不存在的 ID——
-  `409 SELF_DISABLE_FORBIDDEN` 不適用於本端點。
-  帳號管理側（`PATCH /members/:id`）的同名保護則仍然成立
+- **THEN** 回 `404`——**行為已改變**。管理員與前台使用者是兩個不相交的身分空間，
+  管理員的 ID 在 `users` 裡查不到，所以它就只是一個不存在的 ID。
+  原本的 `409 SELF_DISABLE_FORBIDDEN` 不再適用於本端點；
+  帳號管理側（`PATCH /members/:id`）的同名保護**保留不動**
 
 #### Scenario: 傳入後台管理員的 ID
 
@@ -131,4 +112,3 @@ HR 能停用離職員工，但不該看檢舉內容）。
 
 - **WHEN** 解除完成
 - **THEN** MUST NOT 推播任何事件——被停權者沒有活著的連線可以收
-

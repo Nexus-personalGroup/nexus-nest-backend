@@ -9,12 +9,15 @@ import {
   ParseUUIDPipe,
   Patch,
   Query,
+  UseGuards,
 } from '@nestjs/common';
 import { ChatMessageFacade } from '@app/application/facade/front/ChatMessageFacade';
 import type { ListMessagesResult } from '@app/application/port/in/front/chat-message/ListMessagesUseCase';
-import type { MemberContext } from '@app/application/port/member-context';
+import type { UserContext } from '@app/application/port/user-context';
 import { ZodValidationPipe } from '@app/infrastructure/zod-validation.pipe';
-import { CurrentMember } from '../../decorator/current-member.decorator';
+import { CurrentUser } from '../../decorator/current-user.decorator';
+import { Public } from '../../decorator/public.decorator';
+import { FrontJwtAuthGuard } from '../../guard/FrontJwtAuthGuard';
 import { MemberScoped } from '../../decorator/member-scoped.decorator';
 import {
   listMessagesQuerySchema,
@@ -29,16 +32,21 @@ import { markRoomReadSchema, MarkRoomReadRequest } from './MarkRoomReadRequest';
  * 房間的生命週期與房間內的內容是兩件事，混在一支 controller 裡會讓它隨著
  * 訊息功能（撤回、附件、搜尋）持續長大。
  *
- * 授權同樣是「呼叫者是不是這個房間的成員」，由 application 層回答。
+ * 授權同樣是「呼叫者是不是這個房間的成員」，由 application 層回答。 *
+ * `@Public()` 是給**全域的後台 Guard** 看的（讓它略過這些路由），
+ * 實際的認證由 `FrontJwtAuthGuard` 執行——它刻意不檢查 `@Public()`，
+ * 兩者合起來才是「這支端點吃前台 token」。
  */
 @MemberScoped()
+@Public()
+@UseGuards(FrontJwtAuthGuard)
 @Controller('front/chat-rooms')
 export class ChatMessageController {
   constructor(private readonly chatMessageFacade: ChatMessageFacade) {}
 
   @Get(':roomId/messages')
   listMessages(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Query(new ZodValidationPipe(listMessagesQuerySchema))
     query: ListMessagesQuery,
@@ -60,7 +68,7 @@ export class ChatMessageController {
   @Delete(':roomId/messages/:messageId')
   @HttpCode(HttpStatus.NO_CONTENT)
   async retractMessage(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Param('messageId', ParseUUIDPipe) messageId: string,
   ): Promise<void> {
@@ -74,7 +82,7 @@ export class ChatMessageController {
   @Patch(':roomId/read')
   @HttpCode(HttpStatus.NO_CONTENT)
   async markRead(
-    @CurrentMember() member: MemberContext,
+    @CurrentUser() member: UserContext,
     @Param('roomId', ParseUUIDPipe) roomId: string,
     @Body(new ZodValidationPipe(markRoomReadSchema)) dto: MarkRoomReadRequest,
   ): Promise<void> {

@@ -9,9 +9,9 @@ import {
   ChatRoomRepositoryPort,
 } from '@app/application/port/out/chat-room/ChatRoomRepositoryPort';
 import {
-  LOAD_MEMBER_PORT,
-  LoadMemberPort,
-} from '@app/application/port/out/member/LoadMemberPort';
+  LOAD_USER_PORT,
+  LoadUserPort,
+} from '@app/application/port/out/user/LoadUserPort';
 import { ChatRoomNotFoundException } from '@app/domain/exception/ChatRoomNotFoundException';
 
 export { GET_ROOM_DETAIL_USE_CASE };
@@ -27,8 +27,8 @@ export class GetRoomDetailService implements GetRoomDetailUseCase {
   constructor(
     @Inject(CHAT_ROOM_REPOSITORY_PORT)
     private readonly roomRepo: ChatRoomRepositoryPort,
-    @Inject(LOAD_MEMBER_PORT)
-    private readonly memberRepo: LoadMemberPort,
+    @Inject(LOAD_USER_PORT)
+    private readonly userRepo: LoadUserPort,
   ) {}
 
   /**
@@ -41,8 +41,9 @@ export class GetRoomDetailService implements GetRoomDetailUseCase {
     const room = await this.roomRepo.findAdminDetail(roomId);
     if (!room) throw new ChatRoomNotFoundException();
 
-    // 一次批次補齊；成員關係只存 memberId（不建外鍵，帳號刪除的處置屬於業務決定）
-    const emails = await this.memberRepo.findEmailsByIds(
+    // 一次批次補齊。成員關係只存 ID（不建外鍵，帳號刪除的處置屬於業務決定），
+    // 而那個 ID 一律是**前台使用者**——聊天的參與者不會是後台管理員
+    const emails = await this.userRepo.findEmailsByIds(
       room.members.map((member) => member.memberId),
     );
 

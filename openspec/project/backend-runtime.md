@@ -306,14 +306,22 @@ if (this.featureFlags.isEnabled('accountLockEnabled')) { ... }
 部署時間超過 refresh token 效期（預設 7 天）之後，所有流通中的 token 都會帶 `side`，
 屆時可把 `?? 'admin'` 改成 `!== 'admin'`。前台不需要這個相容——前台 secret 是新的。
 
-**目前的半套狀態**：`/api/front/chat-*` 與 WS 連線**仍然吃 admin token**。
-切換到前台帳號是 `migrate-chat-to-front-users` 的事，那一步一旦開始就不能留半套
-（`chat_messages.senderId`、presence key、後台四個審閱頁、停權要一起改）。
+**聊天的參與者一律是前台使用者。** `/api/front/chat-*` 三支 controller
+掛的是 `FrontJwtAuthGuard`，WS 連線走 `ResolveUserContextUseCase`——
+兩者都只吃前台 token。後台 token 打進來會 401 / 連線被拒，
+而且不是因為權限不足，是簽章根本驗不過。
+
+前台受保護的 controller 必須**同時**標 `@Public()` 與掛 `@UseGuards(FrontJwtAuthGuard)`：
+前者是給全域的後台 Guard 看的（讓它略過），後者才是真正的認證。
+只有前者的話兩個 Guard 都放行，端點完全沒有認證；只有後者的話全域 Guard 先跑，
+有效的前台 token 一律 401。`authorization-coverage.spec.ts` 兩邊都守著。
 
 ### 在線人數的衍生索引
 
 presence 的**真相**是 `presence:member:<id>` 的 Hash（每筆連線帶心跳時間、
-由 TTL 與 sweep 回收）。在它之上另有一個 `presence:online-members` 的 Set，
+由 TTL 與 sweep 回收）。⚠️ key 裡的 `member` 指的是**前台使用者**——
+WS 只服務前台。格式沒有改成 `presence:user:` 是因為要連帶改 sweep 的 scan pattern、
+在線索引與所有測試，換來的只是命名更精確；這是一筆有標記的命名債。在它之上另有一個 `presence:online-members` 的 Set，
 用途只有一個：讓「在線人數」變成 O(1) 的 `SCARD`。
 
 **這不牴觸「不得用無時效集合儲存連線」那條規則**——被禁止的是把連線本身存成集合
@@ -391,6 +399,21 @@ WebSocket 有**兩道各自獨立的限流**，它們看起來重複，實際上
 
 因此：**任何把帳號停用的路徑都必須呼叫 `REVOKE_MEMBER_SESSIONS_USE_CASE`**，
 它會先送 `server:sessionRevoked`（讓客戶端知道不要重連）再斷開連線。
+
+**停權有兩個入口，停的是兩張不同的表**：
+
+| 入口 | 對象 | use case |
+| --- | --- | --- |
+| `POST /admin/moderation/members/:id/suspend` | 前台使用者（`users`） | `SUSPEND_FRONT_USER_USE_CASE` |
+| `PATCH /admin/members/:id { status: false }` | 後台管理員（`members`） | `UPDATE_MEMBER_USE_CASE` |
+
+**不共用一支再加側別參數**：那會讓每個呼叫端都要記得傳對，而傳錯的後果是
+停錯人且沒有任何錯誤訊息。拆開之後對象由「呼叫哪一支」決定，型別上就不可能停錯。
+審閱側**沒有**「不可停權自己」的檢查——管理員的 ID 在 `users` 裡查不到，
+傳進來只會得到 404。
+
+撤銷連線本身**不分側別**：它只做「對個人房間廣播再斷線」，不查任何帳號表。
+複製一份「前台版」換來的只是兩份會各自漂移的相同程式碼。
 `session-revocation.spec.ts` 守著這件事——日後多一條停用路徑（批次停用、
 自動風控、匯入工具），它同樣會被要求撤銷連線。
 
