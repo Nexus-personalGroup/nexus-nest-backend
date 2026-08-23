@@ -1,9 +1,18 @@
 openapi: 3.0.0
 info:
-  title: Hexagonal NestJS 後台 (Admin) API
+  title: Nexus 後台 (Admin) API
   version: 1.0.0
   description: |
-    Hexagonal Architecture NestJS + Express API 文件
+    後台管理 API 文件。
+
+    **所有端點都需要後台的 Bearer Token**（由 `POST /admin/auth/login` 取得），
+    並依端點各自宣告的權限碼授權（`BACKEND:*`）。
+
+    ⚠️ **前台（`/api/front/*`）的 token 在這裡一律無效**——兩側各自使用不同的
+    簽發 secret，簽章驗證就會失敗，不是權限不足。
+
+    本文件涵蓋的「會員」有**兩種、分屬兩張互不相交的表**，別看混了：
+    `Members` 是後台管理員（`members`），`FrontUsers` 是聊天服務的使用者（`users`）。
 servers:
   - url: 'http://localhost:3000/api/admin'
     description: 本地開發環境（後台 API）
@@ -164,6 +173,25 @@ components:
             message: 伺服器發生未預期錯誤
             code: INTERNAL_SERVER_ERROR
             timestamp: '2024-01-01T00:00:00.000Z'
+tags:
+  - name: Auth
+    description: 後台認證：登入、登出、換發 token、忘記與重設密碼
+  - name: Profile
+    description: 目前登入者自己的資料
+  - name: Members
+    description: 後台帳號管理（`members`）——**同事的帳號**，不是聊天的使用者
+  - name: Roles
+    description: 角色與權限碼的指派
+  - name: FrontUsers
+    description: '前台會員管理（`users`）——**聊天服務的使用者**。與 Members 是兩個不相交的 帳號體系，權限碼也分開（`BACKEND:FRONT_USER:*`）'
+  - name: Moderation
+    description: 檢舉審閱：佇列、詳情、判定、訊息移除／還原、成員行為時間軸、 聊天室總覽，以及審閱側的停權入口
+  - name: Dashboard
+    description: 營運總覽的即時數字（快照與 SSE 串流）
+  - name: Attachments
+    description: 附件上傳與刪除
+  - name: Security
+    description: IP 白名單／黑名單與帳號解鎖（SUPERADMIN）
 paths:
   /moderation/reports:
     get:
@@ -601,16 +629,19 @@ paths:
     post:
       tags:
         - Moderation
-      summary: 停權成員
+      summary: 停權成員（審閱側）
       description: |
         需 `BACKEND:MODERATION:EDIT` 權限。
 
-        與帳號管理的 `PATCH /api/admin/members/{id} { "status": false }` **效果完全相同**
-        ——兩者呼叫同一個 use case。刻意並存是因為角色不同：
-        「能管帳號的人」與「能做審閱處置的人」在真實團隊裡經常不是同一群
-        （客服能停權違規者，但不該改帳號的角色與密碼）。
+        **停的是前台使用者（`users`），不是後台管理員。** 審閱處理的是聊天裡的違規行為，
+        而聊天的參與者是前台使用者。與帳號管理的
+        `PATCH /api/admin/members/{id} { "status": false }` 停的是**不同的東西**。
 
-        停權會做三件事：帳號停用、context 快取清除、**既有的 WebSocket 連線被斷開**。
+        與會員管理側的 `POST /api/admin/front-users/{userId}/suspend` 則是**同一個 use case**，
+        差別只在權限碼——分開的是授權而不是行為。
+
+        停權會做四件事：帳號停用、`tokenVersion` 遞增（讓所有裝置立即失效）、
+        **既有的 WebSocket 連線被斷開**、寫入稽核。
 
         第三項是關鍵：連線層的認證只在 handshake 執行一次，之後的事件只驗資源層級的授權。
         不主動撤銷的話，**被停權的人只要連線還開著就能繼續送訊息**。
@@ -627,23 +658,15 @@ paths:
       responses:
         '204':
           description: 已停權（無回應內容）；已停用時同樣回 204
-        '400':
-          description: 嘗試停權自己
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ErrorResponse'
-              example:
-                success: false
-                message: 無法停用自己的帳號
-                code: SELF_DISABLE_FORBIDDEN
-                timestamp: '2026-08-21T06:00:00.000Z'
         '401':
           $ref: '#/components/responses/NoToken'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
-          description: 成員不存在
+          description: |
+            該前台使用者不存在。**包含「傳入後台管理員的 ID」**——
+            管理員與前台使用者是兩個不相交的身分空間，那個 ID 在 `users` 裡查不到。
+            因此「停權自己」在本端點是 404 而非 409
           content:
             application/json:
               schema:
@@ -666,7 +689,7 @@ paths:
         **不會主動通知或恢復連線**：他的連線已經斷了、token 也失效了，
         沒有任何管道可以推給他。要通知得走 email 或推播通知，那是另一個主題。
 
-        **解除同樣留稽核**：`members.status` 只留下「現在是什麼狀態」，
+        **解除同樣留稽核**：`users.status` 只留下「現在是什麼狀態」，
         留不下「誰在什麼時候改的」，而反覆停權再解除本身就是可疑行為。
 
         **冪等**：對未停用的帳號解除回 `204`，不重複稽核。
@@ -1498,6 +1521,396 @@ paths:
           $ref: '#/components/responses/NoToken'
         '403':
           $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /front-users:
+    get:
+      tags:
+        - FrontUsers
+      summary: 查詢前台會員列表
+      description: |
+        需 `BACKEND:FRONT_USER:VIEW` 權限。
+
+        回傳的是**前台使用者**（`users`），與後台帳號（`members`）是兩個不相交的
+        身分空間——這裡不會出現任何一個後台管理員。
+
+        多個過濾條件同時給定時取交集；軟刪除的帳號一律不出現，與 `status` 無關。
+        排序固定 `createdAt` 由新到舊，不接受排序參數。
+      parameters:
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: email
+          in: query
+          required: false
+          schema:
+            type: string
+          description: email 模糊搜尋（不分大小寫）
+        - name: displayName
+          in: query
+          required: false
+          schema:
+            type: string
+          description: 顯示名稱模糊搜尋（不分大小寫）
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+          description: 啟用狀態。**省略即不過濾**；非 true/false 回 400
+        - name: verified
+          in: query
+          required: false
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
+          description: 信箱驗證狀態。`true` 對應「已驗證」。**省略即不過濾**
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - list
+                      - meta
+                    properties:
+                      list:
+                        type: array
+                        items:
+                          type: object
+                          description: |
+                            後台視角的前台使用者。**不含 `password` 與 `tokenVersion`**——
+                            前者是認證流程專屬、後者是內部機制，兩者都沒有理由離開伺服器。
+                          required:
+                            - id
+                            - email
+                            - displayName
+                            - avatarUrl
+                            - status
+                            - emailVerifiedAt
+                            - lastSeenAt
+                            - createdAt
+                          properties:
+                            id:
+                              type: string
+                              format: uuid
+                            email:
+                              type: string
+                              format: email
+                            displayName:
+                              type: string
+                            avatarUrl:
+                              type: string
+                              nullable: true
+                            status:
+                              type: boolean
+                              description: 帳號啟用狀態；false 代表已停權
+                            emailVerifiedAt:
+                              type: string
+                              format: date-time
+                              nullable: true
+                              description: 信箱驗證時間；null 表示尚未驗證
+                            lastSeenAt:
+                              type: string
+                              format: date-time
+                              nullable: true
+                              description: |
+                                **最後一次登入或換發 token 的時間**，不是「最後上線」——
+                                它只在認證流程更新，不隨 WS 心跳前進。顯示時要標示清楚。
+                            createdAt:
+                              type: string
+                              format: date-time
+                      meta:
+                        type: object
+                        required:
+                          - page
+                          - limit
+                          - total
+                          - totalPages
+                        properties:
+                          page:
+                            type: integer
+                          limit:
+                            type: integer
+                          total:
+                            type: integer
+                          totalPages:
+                            type: integer
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: query 參數不符 schema（例如 status=yes）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 資料驗證失敗
+                code: VALIDATION_ERROR
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/front-users/{userId}':
+    get:
+      tags:
+        - FrontUsers
+      summary: 查詢單一前台會員
+      description: |
+        需 `BACKEND:FRONT_USER:VIEW` 權限。
+
+        **與 `GET /moderation/members/{memberId}` 是兩支不同的端點**，各自回答不同的問題：
+        本端點回答「這個**帳號**是什麼狀態」，審閱側的成員概覽回答
+        「這個**人**在聊天裡做了什麼」。後者刻意只回八個欄位且不含帳號資料——
+        它的授權是 `BACKEND:MODERATION:VIEW`，把帳號面補進去就是繞過另一個權限的邊界。
+
+        傳入後台管理員的 ID 會得到 404：那個 ID 在 `users` 裡不存在。
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - id
+                      - email
+                      - displayName
+                      - avatarUrl
+                      - status
+                      - emailVerifiedAt
+                      - lastSeenAt
+                      - createdAt
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+                      displayName:
+                        type: string
+                      avatarUrl:
+                        type: string
+                        nullable: true
+                      status:
+                        type: boolean
+                      emailVerifiedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                      lastSeenAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: 最後一次登入或換發 token 的時間，不是「最後上線」
+                      createdAt:
+                        type: string
+                        format: date-time
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 該前台使用者不存在、已軟刪除，或那是一個後台管理員的 ID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 找不到帳號
+                code: MEMBER_NOT_FOUND
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/front-users/{userId}/suspend':
+    post:
+      tags:
+        - FrontUsers
+      summary: 停權前台會員
+      description: |
+        需 `BACKEND:FRONT_USER:EDIT` 權限。
+
+        **與審閱側的 `POST /moderation/members/{memberId}/suspend` 呼叫同一個 use case**，
+        效果完全相同：帳號停用、`tokenVersion` 遞增、既有的 WebSocket 連線被斷開、
+        寫入 `MEMBER_SUSPENDED` 稽核。
+
+        兩個入口分開的是**授權**而不是行為——「能瀏覽客戶名單的客服」與
+        「能看檢舉內容的審閱者」在真實團隊裡經常不是同一群。各自實作會讓斷線與稽核的
+        行為分歧，而分歧的那一邊不會有人發現。
+
+        被斷線的客戶端會先收到 `server:sessionRevoked`，據此停止自動重連。
+
+        **冪等**：對已停用的帳號再次停權回 `204`，不重複斷線也不重複稽核。
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 已停權（無回應內容）；已停用時同樣回 204
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 該前台使用者不存在或已軟刪除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 找不到帳號
+                code: MEMBER_NOT_FOUND
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/front-users/{userId}/reinstate':
+    post:
+      tags:
+        - FrontUsers
+      summary: 解除前台會員的停權
+      description: |
+        需 `BACKEND:FRONT_USER:EDIT` 權限。與審閱側的解除呼叫同一個 use case。
+
+        解除會留下 `MEMBER_REINSTATED` 稽核，但**不推播任何事件、也不恢復任何連線**：
+        被停權者的連線早已斷開、token 也已失效，沒有任何管道推得到他。他重新登入即可。
+
+        注意**舊的 token 仍然無效**——停權當下已經遞增過 `tokenVersion`。
+
+        **冪等**：對未停權的帳號呼叫回 `204`，不寫稽核。
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 已解除（無回應內容）；本來就啟用時同樣回 204
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 該前台使用者不存在或已軟刪除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 找不到帳號
+                code: MEMBER_NOT_FOUND
+                timestamp: '2026-08-24T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  '/front-users/{userId}/force-logout':
+    post:
+      tags:
+        - FrontUsers
+      summary: 強制前台會員登出
+      description: |
+        需 `BACKEND:FRONT_USER:EDIT` 權限。
+
+        讓該使用者所有裝置的 token 立即失效並斷開既有的 WebSocket 連線，
+        **但不改變帳號的 `status`**。
+
+        **這與停權是兩件不同的事，不要用「停權再解除」代替**：
+
+        | 動作 | 語意 | status | 能否重新登入 |
+        | --- | --- | --- | --- |
+        | 停權 | 這個人違規 | 變 false | 不能 |
+        | 強制登出 | 這個帳號可能被別人拿到了 | 不變 | 能 |
+
+        用停權代替會在稽核裡留下一筆**不實的違規紀錄**，而稽核的用途正是事後回答
+        「這個人被怎麼對待過」。本端點寫的是 `MEMBER_FORCE_LOGGED_OUT`。
+
+        **刻意不冪等**：每次呼叫都遞增 `tokenVersion` 並寫一筆稽核。
+        「再登出一次」是有意義的重複動作——第一次之後對方又登入了。
+
+        **對已停權的帳號同樣有效**：兩件事互相獨立。
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: 已強制登出（無回應內容）
+        '401':
+          $ref: '#/components/responses/NoToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          description: 該前台使用者不存在或已軟刪除
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 找不到帳號
+                code: MEMBER_NOT_FOUND
+                timestamp: '2026-08-24T06:00:00.000Z'
         '500':
           $ref: '#/components/responses/InternalServerError'
   /auth/login:

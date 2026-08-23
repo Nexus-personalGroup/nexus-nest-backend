@@ -2,7 +2,10 @@ import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import {
   LOAD_USER_PORT,
+  ListUsersPage,
+  ListUsersParams,
   LoadUserPort,
+  UserDetailDto,
   UserRecordDto,
 } from '@app/application/port/out/user/LoadUserPort';
 import {
@@ -77,6 +80,47 @@ export class PrismaUserRepository implements LoadUserPort, SaveUserPort {
     return this.prisma.userRecord.count({ where: { deletedAt: null } });
   }
 
+  async listUsers(params: ListUsersParams): Promise<ListUsersPage> {
+    const where = {
+      deletedAt: null,
+      ...(params.email
+        ? { email: { contains: params.email, mode: 'insensitive' as const } }
+        : {}),
+      ...(params.displayName
+        ? {
+            displayName: {
+              contains: params.displayName,
+              mode: 'insensitive' as const,
+            },
+          }
+        : {}),
+      ...(params.status === undefined ? {} : { status: params.status }),
+      // verified 是「有沒有時間戳」而不是一個布林欄位，因此翻成 null 判斷
+      ...(params.verified === undefined
+        ? {}
+        : { emailVerifiedAt: params.verified ? { not: null } : null }),
+    };
+
+    const [data, total] = await Promise.all([
+      this.prisma.userRecord.findMany({
+        where,
+        select: this.summaryFields,
+        orderBy: { createdAt: 'desc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+      }),
+      this.prisma.userRecord.count({ where }),
+    ]);
+    return { data, total };
+  }
+
+  async loadDetailById(id: string): Promise<UserDetailDto | null> {
+    return this.prisma.userRecord.findFirst({
+      where: { id, deletedAt: null },
+      select: this.summaryFields,
+    });
+  }
+
   async suspend(id: string): Promise<boolean> {
     // where 帶 status: true——條件式更新讓「是否真的改變了」由 DB 回答，
     // 而不是先讀再寫（那有兩個請求同時通過的窗口，結果是重複稽核）
@@ -95,6 +139,17 @@ export class PrismaUserRepository implements LoadUserPort, SaveUserPort {
     return count > 0;
   }
 
+  async bumpTokenVersion(id: string): Promise<boolean> {
+    // where 不帶 status——強制登出與停權互相獨立，
+    // 對已停權的帳號再次強制登出仍然應該生效
+    const { count } = await this.prisma.userRecord.updateMany({
+      where: { id, deletedAt: null },
+      data: { tokenVersion: { increment: 1 } },
+    });
+    return count > 0;
+  }
+
+  /** 認證流程專用——**含 password hash**，不可用於任何顯示路徑 */
   private readonly selectFields = {
     id: true,
     email: true,
@@ -104,6 +159,18 @@ export class PrismaUserRepository implements LoadUserPort, SaveUserPort {
     emailVerifiedAt: true,
     status: true,
     tokenVersion: true,
+    lastSeenAt: true,
+    createdAt: true,
+  } as const;
+
+  /** 後台顯示用——**刻意不含 password 與 tokenVersion**，兩者都不該離開伺服器 */
+  private readonly summaryFields = {
+    id: true,
+    email: true,
+    displayName: true,
+    avatarUrl: true,
+    status: true,
+    emailVerifiedAt: true,
     lastSeenAt: true,
     createdAt: true,
   } as const;

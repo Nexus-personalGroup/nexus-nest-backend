@@ -1,14 +1,17 @@
 tags: [Moderation]
-summary: 停權成員
+summary: 停權成員（審閱側）
 description: |
   需 `BACKEND:MODERATION:EDIT` 權限。
 
-  與帳號管理的 `PATCH /api/admin/members/{id} { "status": false }` **效果完全相同**
-  ——兩者呼叫同一個 use case。刻意並存是因為角色不同：
-  「能管帳號的人」與「能做審閱處置的人」在真實團隊裡經常不是同一群
-  （客服能停權違規者，但不該改帳號的角色與密碼）。
+  **停的是前台使用者（`users`），不是後台管理員。** 審閱處理的是聊天裡的違規行為，
+  而聊天的參與者是前台使用者。與帳號管理的
+  `PATCH /api/admin/members/{id} { "status": false }` 停的是**不同的東西**。
 
-  停權會做三件事：帳號停用、context 快取清除、**既有的 WebSocket 連線被斷開**。
+  與會員管理側的 `POST /api/admin/front-users/{userId}/suspend` 則是**同一個 use case**，
+  差別只在權限碼——分開的是授權而不是行為。
+
+  停權會做四件事：帳號停用、`tokenVersion` 遞增（讓所有裝置立即失效）、
+  **既有的 WebSocket 連線被斷開**、寫入稽核。
 
   第三項是關鍵：連線層的認證只在 handshake 執行一次，之後的事件只驗資源層級的授權。
   不主動撤銷的話，**被停權的人只要連線還開著就能繼續送訊息**。
@@ -27,23 +30,15 @@ parameters:
 responses:
   '204':
     description: 已停權（無回應內容）；已停用時同樣回 204
-  '400':
-    description: 嘗試停權自己
-    content:
-      application/json:
-        schema:
-          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
-        example:
-          success: false
-          message: 無法停用自己的帳號
-          code: SELF_DISABLE_FORBIDDEN
-          timestamp: '2026-08-21T06:00:00.000Z'
   '401':
     $ref: '../openapi.yaml#/components/responses/NoToken'
   '403':
     $ref: '../openapi.yaml#/components/responses/Forbidden'
   '404':
-    description: 成員不存在
+    description: |
+      該前台使用者不存在。**包含「傳入後台管理員的 ID」**——
+      管理員與前台使用者是兩個不相交的身分空間，那個 ID 在 `users` 裡查不到。
+      因此「停權自己」在本端點是 404 而非 409
     content:
       application/json:
         schema:

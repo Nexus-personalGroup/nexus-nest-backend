@@ -1,4 +1,4 @@
-tags: [Front]
+tags: [Ping]
 # 全域 security 要求 Bearer Token；本端點公開，明示覆寫為不需要
 security: []
 summary: 前台健康探測（骨架示範）

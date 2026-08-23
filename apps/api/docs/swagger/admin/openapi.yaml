@@ -1,10 +1,19 @@
 openapi: 3.0.0
 
 info:
-  title: Hexagonal NestJS 後台 (Admin) API
+  title: Nexus 後台 (Admin) API
   version: 1.0.0
   description: |
-    Hexagonal Architecture NestJS + Express API 文件
+    後台管理 API 文件。
+
+    **所有端點都需要後台的 Bearer Token**（由 `POST /admin/auth/login` 取得），
+    並依端點各自宣告的權限碼授權（`BACKEND:*`）。
+
+    ⚠️ **前台（`/api/front/*`）的 token 在這裡一律無效**——兩側各自使用不同的
+    簽發 secret，簽章驗證就會失敗，不是權限不足。
+
+    本文件涵蓋的「會員」有**兩種、分屬兩張互不相交的表**，別看混了：
+    `Members` 是後台管理員（`members`），`FrontUsers` 是聊天服務的使用者（`users`）。
 
 servers:
   - url: http://localhost:3000/api/admin
@@ -187,6 +196,34 @@ components:
             code: INTERNAL_SERVER_ERROR
             timestamp: '2024-01-01T00:00:00.000Z'
 
+# 分組的順序就是這裡的順序（Swagger UI 依宣告排，不是字母序）。
+# 排法對齊後台 Sidebar 的心智模型：先認證、再帳號與權限、再營運、最後基礎設施。
+# **新增 tag 一定要補進這裡**——沒宣告的 tag 仍然會顯示，但會掉到最後面、
+# 沒有任何說明，而那看起來只是「順序怪怪的」，不像是漏掉了什麼
+tags:
+  - name: Auth
+    description: 後台認證：登入、登出、換發 token、忘記與重設密碼
+  - name: Profile
+    description: 目前登入者自己的資料
+  - name: Members
+    description: 後台帳號管理（`members`）——**同事的帳號**，不是聊天的使用者
+  - name: Roles
+    description: 角色與權限碼的指派
+  - name: FrontUsers
+    description: >-
+      前台會員管理（`users`）——**聊天服務的使用者**。與 Members 是兩個不相交的
+      帳號體系，權限碼也分開（`BACKEND:FRONT_USER:*`）
+  - name: Moderation
+    description: >-
+      檢舉審閱：佇列、詳情、判定、訊息移除／還原、成員行為時間軸、
+      聊天室總覽，以及審閱側的停權入口
+  - name: Dashboard
+    description: 營運總覽的即時數字（快照與 SSE 串流）
+  - name: Attachments
+    description: 附件上傳與刪除
+  - name: Security
+    description: IP 白名單／黑名單與帳號解鎖（SUPERADMIN）
+
 paths:
   /moderation/reports:
     get:
@@ -245,6 +282,26 @@ paths:
   /moderation/members/{memberId}/timeline:
     get:
       $ref: './moderation/member-timeline.yaml'
+
+  /front-users:
+    get:
+      $ref: './front-users/list.yaml'
+
+  /front-users/{userId}:
+    get:
+      $ref: './front-users/detail.yaml'
+
+  /front-users/{userId}/suspend:
+    post:
+      $ref: './front-users/suspend.yaml'
+
+  /front-users/{userId}/reinstate:
+    post:
+      $ref: './front-users/reinstate.yaml'
+
+  /front-users/{userId}/force-logout:
+    post:
+      $ref: './front-users/force-logout.yaml'
 
   /auth/login:
     post:

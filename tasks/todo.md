@@ -5,10 +5,10 @@
 
 ## 進行中
 
-`migrate-chat-to-front-users`（路線圖第 4 項）——聊天領域從 `members` 切到 `users`。
-目標：WS 連線認證、三支前台 chat controller、後台審閱的四支補 email、
-成員概覽、儀表板成員數、停權拆兩支，全部改指向前台使用者，
-並把聊天相關的 e2e／整合測試改用 `seedUser` + 前台 token。
+`add-admin-front-user-management`（路線圖第 5 項）——後台的前台會員管理。
+目標：列表／搜尋／帳號面詳情／停權／解除／強制登出 + `/front-users` 兩個頁面，
+新開 `BACKEND:FRONT_USER:VIEW` / `EDIT` 權限碼。
+**它解除了「後台只能從檢舉點進前台使用者」的限制。**
 
 ## 路線圖
 
@@ -26,8 +26,8 @@
 | 1 | ~~`fix-unauthenticated-surface`~~ | 帳號鎖定時效、Swagger 開關、metrics 豁免收窄、`DB_PORT` 預設值 | 已合併（#20） |
 | 2 | ~~`fix-presence-scan-cost`~~ | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | 已合併（#21） |
 | 3a | ~~`add-front-user-account`~~ | `users` 表 + 前台登入／更新／登出／me + 兩側各自的 secret | 已合併（#22） |
-| 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | **待合併** |
-| 5 | `add-admin-front-user-management` | 後台的前台使用者管理：列表／搜尋／詳情／主動停權。**它解除了「進入點只有檢舉」的限制**——在它之前，後台只能從檢舉點進某個前台使用者，找不到沒被檢舉過的人 | 未開始 |
+| 4 | ~~`migrate-chat-to-front-users`~~ | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 已合併（#23） |
+| 5 | `add-admin-front-user-management` | 後台的前台使用者管理：列表／搜尋／詳情／停權／解除／強制登出。**解除了「進入點只有檢舉」的限制** | **待合併** |
 | 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設。建立在 3a 之上，可與 5 平行 | 未開始 |
 | 6 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
 | 7 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
@@ -40,13 +40,14 @@
 
 **5 排在 3b 之前**：分表之後，後台**沒有任何一支端點能列出前台使用者**——
 只能從檢舉點進去。那讓「找一個沒被檢舉過的人」與「主動停權」都做不到，
-而註冊（3b）會讓這個缺口變大（帳號會開始自己長出來）。
+而註冊（3b）會讓這個缺口變大（帳號會開始自己長出來）。**第 5 項已補上這個入口。**
 
 ## 待辦
 
 ### 卡在分表（做完 change 4 之後才有意義）
 
 > change 4 已完成，以下兩項的前置條件已解除。
+> **change 5 也完成了**：後台已經可以不經檢舉找到任何一個前台使用者。
 
 - **附件訊息**：訊息帶圖片／檔案。之後加 `messageType` 欄位（預設 `TEXT`）即可，
   `content` 維持 `TEXT NOT NULL` 不需改。**真正要先想清楚的是前台的上傳授權與容量限制**——
@@ -68,7 +69,18 @@
 
 ### 已知缺口（知情，非遺漏）
 
-（無。連線層事件限流已補上；審查報告的 🔴 在 change 1 修掉。）
+- **8 份 master spec 的 `## Purpose` 還是 archive 留下的 `TBD` 佔位字串**：
+  `platform-token-scope`、`platform-public-surface`、`api-dashboard`、
+  `api-front-auth`、`ui-member-profile`、`ui-room-overview`、`ui-moderation`、
+  `ui-dashboard`。`openspec archive` 只合併 `## Requirements`，**Purpose 要手動補**，
+  而 `openspec validate --specs --strict` 不會抓（38/38 全過）。
+  **值得開一個小 cleanup change**：補完 8 份之後加一條守則擋住
+  「Purpose 含 `TBD - created by archiving`」——在補完之前那條守則會是紅的，
+  所以兩件事必須同一個 change 做完。
+  （順帶：archive 也不會發現舊 Purpose 與新合併的 Requirements 互相矛盾，
+  `api-account-suspension` 就發生過，那個要靠人看。）
+
+（其餘無。連線層事件限流已補上；審查報告的 🔴 在 change 1 修掉。）
 
 ### 技術債（小，隨手可修）
 

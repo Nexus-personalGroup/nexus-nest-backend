@@ -6,6 +6,7 @@ import {
   Shield,
   ShieldBan,
   ShieldCheck,
+  UserRound,
   Users,
 } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
@@ -40,6 +41,15 @@ export const NAV_ITEMS: NavItem[] = [
     icon: Users,
     group: '使用者與權限',
     requiredPermission: 'BACKEND:ACCOUNT:VIEW',
+  },
+  {
+    // 標籤不能只叫「會員」——上面的 /members 是**後台帳號**。
+    // 兩個都叫會員會讓人在錯的體系裡找人，然後以為對方不存在
+    label: '前台會員',
+    path: '/front-users',
+    icon: UserRound,
+    group: '使用者與權限',
+    requiredPermission: 'BACKEND:FRONT_USER:VIEW',
   },
   {
     label: '角色管理',

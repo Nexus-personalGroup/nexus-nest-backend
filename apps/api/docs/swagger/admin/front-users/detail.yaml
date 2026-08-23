@@ -1,0 +1,94 @@
+tags: [FrontUsers]
+summary: 查詢單一前台會員
+description: |
+  需 `BACKEND:FRONT_USER:VIEW` 權限。
+
+  **與 `GET /moderation/members/{memberId}` 是兩支不同的端點**，各自回答不同的問題：
+  本端點回答「這個**帳號**是什麼狀態」，審閱側的成員概覽回答
+  「這個**人**在聊天裡做了什麼」。後者刻意只回八個欄位且不含帳號資料——
+  它的授權是 `BACKEND:MODERATION:VIEW`，把帳號面補進去就是繞過另一個權限的邊界。
+
+  傳入後台管理員的 ID 會得到 404：那個 ID 在 `users` 裡不存在。
+
+parameters:
+  - name: userId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            # 不 $ref './_front-user.yaml'：共用 schema 只能被**一處**引用
+            # （這裡讓給 list.yaml）。第二處再 $ref 的話，bundler 會把正本
+            # 搬到後者底下，openapi-typescript 產出的型別就會指進一個解不開的位置，
+            # 而那只有 typecheck 抓得到。與 moderation/room-detail.yaml 同一個坑
+            data:
+              type: object
+              required:
+                [
+                  id,
+                  email,
+                  displayName,
+                  avatarUrl,
+                  status,
+                  emailVerifiedAt,
+                  lastSeenAt,
+                  createdAt,
+                ]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+                displayName:
+                  type: string
+                avatarUrl:
+                  type: string
+                  nullable: true
+                status:
+                  type: boolean
+                emailVerifiedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                lastSeenAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: 最後一次登入或換發 token 的時間，不是「最後上線」
+                createdAt:
+                  type: string
+                  format: date-time
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 該前台使用者不存在、已軟刪除，或那是一個後台管理員的 ID
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

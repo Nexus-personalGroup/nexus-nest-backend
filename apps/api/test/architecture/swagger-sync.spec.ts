@@ -169,3 +169,130 @@ describe('架構守則：API 契約三段轉換同步', () => {
     ).toBe('');
   });
 });
+
+/**
+ * Swagger UI 的分組（tag）必須在該文件的頂層 `tags:` 宣告。
+ *
+ * 沒宣告的 tag **仍然會顯示**——Swagger UI 會自己補一組，掉到最後面、
+ * 沒有任何說明。症狀因此只是「順序怪怪的」，看起來不像漏掉了什麼，
+ * 而新增一個模組時最容易忘的正是這一步。
+ *
+ * 反向也要擋：宣告了卻沒有任何端點使用的 tag，會在 UI 上留下一個空分組。
+ */
+describe('架構守則：Swagger 分組必須宣告', () => {
+  /** 取頂層 `tags:` 區塊裡的 `- name: X` */
+  const declaredTags = (file: string): string[] => {
+    const source = readSource(file);
+    const start = source.search(/^tags:$/m);
+    if (start < 0) return [];
+    // 頂層 tags 區塊到下一個頂層 key（行首非空白）為止
+    const rest = source.slice(start + 'tags:'.length);
+    const end = rest.search(/^\S/m);
+    const block = end < 0 ? rest : rest.slice(0, end);
+    return [...block.matchAll(/^\s*- name:\s*(\S+)/gm)].map((m) => m[1]);
+  };
+
+  /** 取某一側所有 path yaml 用到的 tag */
+  const usedTags = (dir: string): string[] => {
+    // 預設只收 .ts，這裡要的是 yaml；bundle 產物排除（它是衍生檔）
+    const files = collectSourceFiles([dir], {
+      extensions: ['.yaml'],
+      exclude: ['.bundle.yaml'],
+    });
+    return [
+      ...new Set(
+        files.flatMap((file) =>
+          [...readSource(file).matchAll(/^tags:\s*\[([^\]]+)\]/gm)].flatMap(
+            (m) => m[1].split(',').map((t) => t.trim()),
+          ),
+        ),
+      ),
+    ];
+  };
+
+  const SIDES = [
+    { side: 'admin', source: SOURCE.admin, dir: 'docs/swagger/admin' },
+    { side: 'front', source: SOURCE.front, dir: 'docs/swagger/front' },
+  ];
+
+  it('掃描範圍有效', () => {
+    for (const { source, dir } of SIDES) {
+      expect(declaredTags(source).length).toBeGreaterThan(0);
+      expect(usedTags(dir).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('每個用到的 tag 都必須宣告在頂層 tags', () => {
+    const offenders: string[] = [];
+
+    for (const { side, source, dir } of SIDES) {
+      const declared = new Set(declaredTags(source));
+      offenders.push(
+        ...usedTags(dir)
+          .filter((tag) => !declared.has(tag))
+          .map((tag) => `  ${side}: ${tag}`),
+      );
+    }
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下 tag 沒有宣告在對應 openapi.yaml 的頂層 tags：\n${offenders.join(
+            '\n',
+          )}\n未宣告的分組仍會顯示，但會掉到最後面且沒有說明——那看起來只是順序怪，不像漏了東西。`,
+    ).toBe('');
+  });
+
+  it('宣告了卻沒有端點使用的 tag 要清掉', () => {
+    const offenders: string[] = [];
+
+    for (const { side, source, dir } of SIDES) {
+      const used = new Set(usedTags(dir));
+      offenders.push(
+        ...declaredTags(source)
+          .filter((tag) => !used.has(tag))
+          .map((tag) => `  ${side}: ${tag}`),
+      );
+    }
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下 tag 已宣告但沒有任何端點使用，會在 UI 留下空分組：\n${offenders.join('\n')}`,
+    ).toBe('');
+  });
+});
+
+/**
+ * 兩份 API 文件的 `info` 必須是**這個專案的**。
+ *
+ * 後台那份的標題在腳手架之後**二十幾個 change 都沒人改**，一直掛著
+ * `Hexagonal NestJS 後台 (Admin) API`——因為沒有人會為了寫功能去看文件的頁首。
+ * 這種殘留不會壞掉任何東西，只會讓每一個打開文件的人第一眼看到別的專案的名字。
+ */
+describe('架構守則：API 文件的標題屬於本專案', () => {
+  /** 專案顯示名。改名時只改這裡，兩份文件與這條守則一起跟著走 */
+  const PROJECT_NAME = 'Nexus';
+
+  const infoTitle = (file: string): string =>
+    /^\s*title:\s*(.+)$/m.exec(readSource(file))?.[1].trim() ?? '';
+
+  it('掃描範圍有效', () => {
+    expect(infoTitle(SOURCE.admin).length).toBeGreaterThan(0);
+    expect(infoTitle(SOURCE.front).length).toBeGreaterThan(0);
+  });
+
+  it('標題必須以專案名開頭', () => {
+    const offenders = [SOURCE.admin, SOURCE.front]
+      .filter((file) => !infoTitle(file).startsWith(PROJECT_NAME))
+      .map((file) => `  ${file}: "${infoTitle(file)}"`);
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下 API 文件的標題不是本專案的：\n${offenders.join(
+            '\n',
+          )}\n預期以 "${PROJECT_NAME}" 開頭。腳手架模板的殘留不會讓任何東西壞掉，只會讓打開文件的人看到別的專案。`,
+    ).toBe('');
+  });
+});

@@ -587,6 +587,10 @@ enum ChatAuditAction {
   MESSAGE_RESTORED
   MEMBER_SUSPENDED
   MEMBER_REINSTATED
+  /// 強制登出：讓所有裝置失效但**不停用帳號**。與 MEMBER_SUSPENDED 分開是因為
+  /// 兩者的語意不同——前者是「這個帳號可能外洩」，後者是「這個人違規」。
+  /// 用停權代替會在稽核裡留下一筆不實的違規紀錄
+  MEMBER_FORCE_LOGGED_OUT
 
   @@map("chat_audit_action")
 }

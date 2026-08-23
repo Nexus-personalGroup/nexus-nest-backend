@@ -59,23 +59,31 @@ const run = async (): Promise<void> => {
   log.info(`找到 ${files.length} 個 seed 檔案`);
 
   for (const file of files) {
+    const seedModule = (await import(path.join(seedsDir, file))) as {
+      default: (prisma: PrismaClient) => Promise<void>;
+      alwaysRun?: boolean;
+    };
+
     const history = await prisma.seedHistoryRecord.findUnique({
       where: { seedName: file },
     });
 
-    if (history) {
+    // alwaysRun 的 seed 每次都跑：它們同步的是**編譯期常數**（權限目錄、
+    // 預設角色的權限分配），不是「初始資料」。只跑一次的話，日後新增一個
+    // 權限碼就永遠進不了既有的資料庫——而症狀是「新功能上線後沒有人看得到」，
+    // 沒有任何錯誤訊息
+    if (history && !seedModule.alwaysRun) {
       log.info(`跳過 ${file}（已執行過）`);
       continue;
     }
 
-    log.info(`執行 ${file}`);
-    const seedModule = (await import(path.join(seedsDir, file))) as {
-      default: (prisma: PrismaClient) => Promise<void>;
-    };
+    log.info(`執行 ${file}${history ? '（alwaysRun，重跑）' : ''}`);
     await seedModule.default(prisma);
 
-    await prisma.seedHistoryRecord.create({ data: { seedName: file } });
-    log.info(`記錄 ${file} 執行完成`);
+    if (!history) {
+      await prisma.seedHistoryRecord.create({ data: { seedName: file } });
+      log.info(`記錄 ${file} 執行完成`);
+    }
   }
 
   log.info('全部執行完成！');

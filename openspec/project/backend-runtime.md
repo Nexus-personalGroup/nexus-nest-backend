@@ -259,12 +259,18 @@ if (this.featureFlags.isEnabled('accountLockEnabled')) { ... }
   要收斂有兩條路：前端載入後立刻 `history.replaceState` 移除 token（成本最低），
   或統一改用 fragment。改動會影響前端路由，目前維持現狀。
 
-### 後台檢舉審閱的權限
+### 後台檢舉審閱與前台會員管理的權限
 
 | 權限碼 | 涵蓋的端點 |
 | --- | --- |
 | `BACKEND:MODERATION:VIEW` | 檢舉佇列、檢舉詳情、成員行為時間軸 |
-| `BACKEND:MODERATION:EDIT` | 檢舉的狀態流轉（判定 / 駁回） |
+| `BACKEND:MODERATION:EDIT` | 檢舉的狀態流轉（判定 / 駁回）、審閱側的停權／解除 |
+| `BACKEND:FRONT_USER:VIEW` | 前台會員列表與帳號面詳情 |
+| `BACKEND:FRONT_USER:EDIT` | 會員管理側的停權／解除、強制登出 |
+
+**三組權限（`ACCOUNT` / `MODERATION` / `FRONT_USER`）互不相通**，
+因為它們管的是三件不同的事：後台同事的帳號、檢舉的內容、客戶的名單。
+沿用其中任一組都會讓一次授權變成兩件事的授權。
 
 **兩者刻意分開**，理由與附件（上傳與刪除共用一個碼）相反：這裡兩個動作的風險不同——
 查看會接觸到敏感內容（**含被撤回的訊息快照**），判定會改變狀態。
@@ -411,6 +417,16 @@ WebSocket 有**兩道各自獨立的限流**，它們看起來重複，實際上
 停錯人且沒有任何錯誤訊息。拆開之後對象由「呼叫哪一支」決定，型別上就不可能停錯。
 審閱側**沒有**「不可停權自己」的檢查——管理員的 ID 在 `users` 裡查不到，
 傳進來只會得到 404。
+
+停前台使用者有**兩個入口**（審閱側與會員管理側），但它們**共用同一個 use case**：
+分開的是**授權**（`MODERATION:EDIT` vs `FRONT_USER:EDIT`）而不是行為。
+各自實作會讓斷線與稽核分歧，而分歧的那一邊不會有人發現。
+provider 放在 `FrontUserSuspensionModule`，兩個模組都 import 它。
+
+**強制登出（`POST /admin/front-users/:id/force-logout`）不是停權。**
+它遞增 `tokenVersion` 並斷線，但**不動 `status`**——語意是「這個帳號可能外洩」
+而非「這個人違規」，對方重新登入就能繼續使用。用「停權再解除」代替它，
+會在稽核裡留下一筆**不實的違規紀錄**。稽核 action 是 `MEMBER_FORCE_LOGGED_OUT`。
 
 撤銷連線本身**不分側別**：它只做「對個人房間廣播再斷線」，不查任何帳號表。
 複製一份「前台版」換來的只是兩份會各自漂移的相同程式碼。

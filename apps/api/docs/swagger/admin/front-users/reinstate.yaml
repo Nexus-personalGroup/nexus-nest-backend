@@ -1,0 +1,40 @@
+tags: [FrontUsers]
+summary: 解除前台會員的停權
+description: |
+  需 `BACKEND:FRONT_USER:EDIT` 權限。與審閱側的解除呼叫同一個 use case。
+
+  解除會留下 `MEMBER_REINSTATED` 稽核，但**不推播任何事件、也不恢復任何連線**：
+  被停權者的連線早已斷開、token 也已失效，沒有任何管道推得到他。他重新登入即可。
+
+  注意**舊的 token 仍然無效**——停權當下已經遞增過 `tokenVersion`。
+
+  **冪等**：對未停權的帳號呼叫回 `204`，不寫稽核。
+
+parameters:
+  - name: userId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 已解除（無回應內容）；本來就啟用時同樣回 204
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 該前台使用者不存在或已軟刪除
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

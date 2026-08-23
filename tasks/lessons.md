@@ -661,3 +661,19 @@ const taipeiMidnightUtc = new Date(
 **Why**：拆分的理由是「一支 use case 同時知道兩張表，而呼叫端要記得傳對參數」。撤銷連線沒有那個問題：它不知道任何一張表，也沒有參數可以傳錯。理由套在它身上時已經失去了前提，但「一致性」讀起來很像正確。
 
 **How to apply**：把一條設計決策往下游延伸時，回去檢查**原本的理由在下游還成不成立**。這裡的正確做法是把它移到 `ChatWsModule`（它是傳輸層的操作）並 export，讓兩個入口拿到同一份——而不是兩份會各自漂移的複製品。
+
+### 2026-08-24 — 新增權限碼在既有資料庫上永遠不會生效
+
+**踩到什麼**：`add-admin-front-user-management` 加了兩個權限碼，功能全部做完、測試全綠，但在一個**已經跑過 seed 的資料庫**上，那個頁面**沒有任何人進得去**，而且完全沒有錯誤訊息——選單只是不出現。追下去是三件事疊在一起：(a) `seed-runner` 依 `seed_history` 讓每個 seed 檔一輩子只跑一次，新權限碼進不了 `permissions` 表；(b) `seed-roles` 宣告 SUPERADMIN =「全部權限」，但它也被跳過；(c) SUPERADMIN 的角色是 `isDefault`，`UpdateRoleService` 直接拋 `DefaultRoleNotEditableException`，UI 上改不了。
+
+**Why**：seed 機制把「一次性的初始資料」與「同步編譯期常數」當成同一種東西。前者只該跑一次（測試帳號），後者必須每次都跑（權限目錄、預設角色的權限分配）——因為它們會隨程式碼成長。而 e2e 完全驗不到這件事：測試資料庫每次都是全新的，seed_history 是空的，所有 seed 都會跑。
+
+**How to apply**：同步編譯期常數的 seed 標 `export const alwaysRun = true`（它們本來就是 upsert，重跑無副作用）。更一般的判準：**任何「跑一次就記錄下來」的機制，都要先問「它同步的東西會不會再變」**。會變的話，只跑一次就是一個會隨時間擴大的漂移，而漂移的症狀通常是「新功能上線後沒有人看得到」。
+
+### 2026-08-24 — 共用的 swagger schema 只能被一處 `$ref`
+
+**踩到什麼**：新端點的 list 與 detail 都想用同一份 `_front-user.yaml`，detail 用 `allOf` 把它併進來再加一個欄位。bundle 出來之後，api-client 產出的型別變成 `paths[...]["schema"]["data"]["allOf"]["0"]`——一個解不開的位置。`swagger:bundle` 與 `api-client generate` 都是 exit 0，**只有 `apps/web` 的 typecheck 會紅**。
+
+**Why**：`swagger-cli bundle` 會把重複的 `$ref` 目標收斂到**第一個出現的地方**，而那個地方如果在 `allOf` 裡面，openapi-typescript 就產不出可用的具名型別。
+
+**How to apply**：共用的 `_*.yaml` **只給一處 `$ref`，第二處直接 inline**。`moderation/room-detail.yaml` 的註解裡早就記著同一個坑——這次是沒去看。另外：改完 swagger 一定要跑 `pnpm --filter @app/web typecheck`，那是唯一抓得到這個錯的地方。

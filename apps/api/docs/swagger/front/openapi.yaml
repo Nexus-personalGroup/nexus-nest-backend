@@ -4,7 +4,13 @@ info:
   title: Nexus 前台 (Front) API
   version: 1.0.0
   description: |
-    前台 API 文件。聊天室相關端點需帶 Bearer Token；/ping 為公開骨架示範。
+    前台 API 文件。
+
+    **除了 `/auth/*` 與 `/ping` 之外，所有端點都需要前台的 Bearer Token**
+    （由 `POST /front/auth/login` 取得）。
+
+    ⚠️ **後台（`/api/admin/*`）的 token 在這裡一律無效**——兩側各自使用不同的
+    簽發 secret，簽章驗證就會失敗，不是權限不足。WebSocket 連線同理。
 
 servers:
   - url: http://localhost:3000/api/front
@@ -189,6 +195,19 @@ components:
             message: 伺服器發生未預期錯誤
             code: INTERNAL_SERVER_ERROR
             timestamp: '2024-01-01T00:00:00.000Z'
+
+# 順序即宣告順序。新增 tag 要補進這裡，否則它會掉到最後面且沒有說明
+tags:
+  - name: FrontAuth
+    description: >-
+      前台認證：登入、登出、換發 token、取得自己的資料。
+      **與後台是兩套獨立的體系**，各自的簽發 secret 互不通用
+  - name: ChatRoom
+    description: 聊天室與室內的訊息：建立、列表、離開、歷史、已讀、撤回
+  - name: ChatReport
+    description: 檢舉他人的訊息。**沒有查詢端點**——被檢舉者不得知情
+  - name: Ping
+    description: 連通性檢查。唯一不需要 token 的端點
 
 paths:
   /auth/login:

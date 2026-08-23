@@ -28,6 +28,12 @@ export const PermissionCode = {
   // 「能看的人」與「能判的人」在真實團隊裡經常不是同一群
   BACKEND_MODERATION_VIEW: 'BACKEND:MODERATION:VIEW',
   BACKEND_MODERATION_EDIT: 'BACKEND:MODERATION:EDIT',
+
+  // 後台 - 前台會員管理。與上面兩組都分開：ACCOUNT 管的是後台同事的帳號、
+  // MODERATION 管的是檢舉內容，而這一組管的是**客戶名單**。
+  // 沿用任一組都會讓一次授權變成兩件事的授權
+  BACKEND_FRONT_USER_VIEW: 'BACKEND:FRONT_USER:VIEW',
+  BACKEND_FRONT_USER_EDIT: 'BACKEND:FRONT_USER:EDIT',
 } as const;
 
 export type PermissionCode =

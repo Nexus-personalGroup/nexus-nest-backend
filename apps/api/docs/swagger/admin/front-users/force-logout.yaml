@@ -1,0 +1,51 @@
+tags: [FrontUsers]
+summary: 強制前台會員登出
+description: |
+  需 `BACKEND:FRONT_USER:EDIT` 權限。
+
+  讓該使用者所有裝置的 token 立即失效並斷開既有的 WebSocket 連線，
+  **但不改變帳號的 `status`**。
+
+  **這與停權是兩件不同的事，不要用「停權再解除」代替**：
+
+  | 動作 | 語意 | status | 能否重新登入 |
+  | --- | --- | --- | --- |
+  | 停權 | 這個人違規 | 變 false | 不能 |
+  | 強制登出 | 這個帳號可能被別人拿到了 | 不變 | 能 |
+
+  用停權代替會在稽核裡留下一筆**不實的違規紀錄**，而稽核的用途正是事後回答
+  「這個人被怎麼對待過」。本端點寫的是 `MEMBER_FORCE_LOGGED_OUT`。
+
+  **刻意不冪等**：每次呼叫都遞增 `tokenVersion` 並寫一筆稽核。
+  「再登出一次」是有意義的重複動作——第一次之後對方又登入了。
+
+  **對已停權的帳號同樣有效**：兩件事互相獨立。
+
+parameters:
+  - name: userId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 已強制登出（無回應內容）
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 該前台使用者不存在或已軟刪除
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'
