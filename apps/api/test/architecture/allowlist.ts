@@ -50,6 +50,12 @@ export const PERMANENT_NATIVE_ERROR: Exemption[] = [
     reason:
       '取不到 MemberContext 代表該路由漏掛 JwtAuthGuard，屬開發期程式錯誤',
   },
+  {
+    file: 'src/adapter/in/web/decorator/current-user.decorator.ts',
+    snippet: 'UserContext 未設定',
+    reason:
+      '取不到 UserContext 代表該路由漏掛 FrontJwtAuthGuard，屬開發期程式錯誤（同 current-member）',
+  },
 ];
 
 /**

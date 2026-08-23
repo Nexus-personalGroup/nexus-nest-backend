@@ -9,6 +9,8 @@ import { parsePermissionCode } from '@app/shared/constants/permissions';
 export const resetDb = async (prisma: PrismaService): Promise<void> => {
   await prisma.rolePermission.deleteMany();
   await prisma.memberRecord.deleteMany();
+  // 前台使用者與 members 完全獨立，沒有外鍵牽連
+  await prisma.userRecord.deleteMany();
   await prisma.authLogRecord.deleteMany();
   await prisma.passwordResetTokenRecord.deleteMany();
   await prisma.systemLogRecord.deleteMany();
@@ -60,6 +62,27 @@ export interface SeededMember {
  * 建立一個可登入的後台會員:權限（upsert）+ Role（綁權限）+ Member（bcrypt 密碼）。
  * @returns 新建的 memberId / roleId
  */
+/** 前台測試使用者的最小建立函式。與 seedMember 平行——兩者是不同的帳號體系 */
+export const seedUser = async (
+  prisma: PrismaService,
+  opts: {
+    email: string;
+    password: string;
+    displayName?: string;
+    status?: boolean;
+  },
+): Promise<{ userId: string; email: string }> => {
+  const user = await prisma.userRecord.create({
+    data: {
+      email: opts.email,
+      password: await bcrypt.hash(opts.password, 4),
+      displayName: opts.displayName ?? opts.email.split('@')[0],
+      status: opts.status ?? true,
+    },
+  });
+  return { userId: user.id, email: user.email };
+};
+
 export const seedMember = async (
   prisma: PrismaService,
   opts: {

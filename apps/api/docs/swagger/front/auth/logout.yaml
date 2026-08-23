@@ -1,0 +1,21 @@
+tags: [FrontAuth]
+summary: 前台登出
+description: |
+  把當前的 access token 加入黑名單。
+
+  **對客戶端是冪等的**：token 已經過期或無效時仍回 `204`——
+  要求「先通過認證才能登出」會讓客戶端陷入「登不出去」的狀態。
+
+  黑名單沿用後台的同一套實作：它以 token 本身為鍵，與哪一側簽發無關。
+
+responses:
+  '204':
+    description: 已登出
+  '401':
+    description: 未帶 Authorization header
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

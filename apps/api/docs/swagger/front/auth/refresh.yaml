@@ -1,0 +1,51 @@
+tags: [FrontAuth]
+summary: 前台 Token 更新
+description: |
+  以 Refresh Token 換發新的一對 Token（rotation）。
+  舊的 Refresh Token 在換發成功後**立即進黑名單**——同一枚再次被使用
+  是 token 遭竊的訊號，不可靜默放行。
+
+  以 access token 呼叫、或以**後台**簽出的 refresh token 呼叫，都回 `401`
+  （後者連簽章都驗不過，因為兩側用不同的 secret）。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [refreshToken]
+        properties:
+          refreshToken:
+            type: string
+
+responses:
+  '200':
+    description: 換發成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              $ref: './_token-pair.yaml'
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    description: token 無效、過期、型別錯誤、側別錯誤或版本已撤銷
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '403':
+    description: 帳號在這期間被停權
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

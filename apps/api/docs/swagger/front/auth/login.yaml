@@ -1,0 +1,79 @@
+tags: [FrontAuth]
+summary: 前台登入
+description: |
+  以 Email 與密碼換發**前台的** Access Token 與 Refresh Token。
+
+  **前台與後台是兩套獨立的帳號體系**：不同的表（`users` vs `members`）、
+  不同的簽發 secret、不同的上下文型別。這裡簽出的 token
+  **無法通過任何 `/api/admin/*` 端點的認證**——不是因為權限不足，
+  而是簽章根本驗不過。
+
+  登入失敗不區分「帳號不存在」與「密碼錯誤」，且帳號不存在時仍執行一次 bcrypt——
+  少了那一步，兩條路徑的耗時差距穩定可測，足以用來列舉帳號。
+
+  **不實作帳號鎖定。** 暴力破解的防護由全域 throttle 與 IP 封鎖負責——
+  per-IP 而非 per-account，後者是一個未認證者可以觸發的 DoS 面。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [email, password]
+        properties:
+          email:
+            type: string
+            format: email
+          password:
+            type: string
+      example:
+        email: user1@test.com
+        password: User1234!
+
+responses:
+  '200':
+    description: 登入成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              $ref: './_token-pair.yaml'
+            timestamp:
+              type: string
+              format: date-time
+  '400':
+    description: email 格式不合法或 password 缺漏
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '401':
+    description: 帳號不存在或密碼錯誤（兩者訊息一致）
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 帳號或密碼錯誤
+          code: UNAUTHORIZED
+          timestamp: '2026-08-23T06:00:00.000Z'
+  '403':
+    description: 帳號已停權
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 帳號已停用
+          code: ACCOUNT_DISABLED
+          timestamp: '2026-08-23T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

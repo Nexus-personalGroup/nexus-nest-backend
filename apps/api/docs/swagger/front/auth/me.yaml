@@ -1,0 +1,61 @@
+tags: [FrontAuth]
+summary: 查詢自己的資料
+description: |
+  回傳目前登入的前台使用者。
+
+  **回應不含 `password`、`tokenVersion`，也不含任何後台概念**
+  （角色、權限碼）——前台使用者沒有那些東西。
+
+  以後台簽出的 token 呼叫會回 `401`：兩側用不同的 secret，簽章驗不過。
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [id, email, displayName, avatarUrl, emailVerifiedAt, createdAt]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+                displayName:
+                  type: string
+                avatarUrl:
+                  type: string
+                  nullable: true
+                emailVerifiedAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  description: null 表示信箱尚未驗證
+                createdAt:
+                  type: string
+                  format: date-time
+            timestamp:
+              type: string
+              format: date-time
+  '401':
+    description: 未帶、無效、或不屬於前台的 token
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '403':
+    description: 帳號已停權
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

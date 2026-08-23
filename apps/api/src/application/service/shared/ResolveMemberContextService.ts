@@ -71,6 +71,18 @@ export class ResolveMemberContextService implements ResolveMemberContextUseCase 
       throw new UnauthorizedException('Token 類型不正確');
     }
 
+    // 側別的**第一道**防線是各側各自的 secret：前台簽的 token 在這裡連
+    // 簽章都過不了。這一段是第二道，作用是讓錯誤訊息說得出「這是另一側的」。
+    //
+    // **缺少 side 視為 admin 是有時效的相容措施**：本欄位上線前簽出的 token
+    // 沒有它，一律拒絕會讓部署當下所有人被登出。部署時間超過 refresh token
+    // 效期（預設 7 天）之後，所有流通中的 token 都會帶 side，
+    // 屆時把 `?? 'admin'` 改成 `!== 'admin'` 即可收緊。
+    // **沒有這段註解，這個相容會變成永久的後門。**
+    if ((payload.side ?? 'admin') !== 'admin') {
+      throw new UnauthorizedException('Token 不屬於後台');
+    }
+
     const cached = await this.memberContextCache.getByMemberId(payload.sub);
     if (cached) {
       const context = this.parseCachedContext(cached);

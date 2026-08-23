@@ -168,11 +168,21 @@ export class LoginService implements LoginUseCase {
     // 雙 Token 簽發（雙 secret 分離）；帶 tokenVersion 供 refresh 重用連坐撤銷比對
     const tokenVersion = member.tokenVersion;
     const accessToken = this.jwtService.sign(
-      { sub: memberId, type: 'access', tokenVersion } satisfies JwtPayload,
+      {
+        sub: memberId,
+        type: 'access',
+        tokenVersion,
+        side: 'admin',
+      } satisfies JwtPayload,
       { secret: env.ACCESS_SECRET, expiresIn: env.ACCESS_TOKEN_EXPIRES_IN },
     );
     const refreshToken = this.jwtService.sign(
-      { sub: memberId, type: 'refresh', tokenVersion } satisfies JwtPayload,
+      {
+        sub: memberId,
+        type: 'refresh',
+        tokenVersion,
+        side: 'admin',
+      } satisfies JwtPayload,
       { secret: env.REFRESH_SECRET, expiresIn: env.REFRESH_TOKEN_EXPIRES_IN },
     );
 

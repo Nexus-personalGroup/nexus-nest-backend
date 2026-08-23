@@ -9,6 +9,7 @@ import {
   type Route,
 } from './swagger-helpers';
 import { SWAGGER_EXEMPT_ROUTES } from './allowlist';
+import { collectSourceFiles, readSource, toRelative } from './helpers';
 
 const SOURCE = {
   admin: 'docs/swagger/admin/openapi.yaml',
@@ -38,6 +39,37 @@ describe('架構守則：API 契約三段轉換同步', () => {
   const sourceRoutes = union([SOURCE.admin, SOURCE.front]);
   const bundleRoutes = union([BUNDLE.admin, BUNDLE.front]);
   const exemptRoutes = SWAGGER_EXEMPT_ROUTES.map((item) => item.route);
+
+  /**
+   * 路由掃描以「檔案裡的第一個 `@Controller`」當前綴。
+   *
+   * 一個檔案放兩個 controller 時，第二個的路由會被算到第一個的前綴底下——
+   * 而那是一個**看起來正常的錯誤答案**：規則照樣報「某某路由缺 yaml」，
+   * 只是報的是一條不存在的路由，而真正缺的那條完全沒被提到。
+   * （實際發生過：`FrontMeController` 與 `FrontAuthController` 曾同檔。）
+   *
+   * 與其讓掃描器變聰明，不如把慣例變成規則——每個檔案一個 controller
+   * 本來就是這個 codebase 的既有寫法，只是從來沒有東西強制它。
+   */
+  it('每個檔案只能有一個 @Controller', () => {
+    const offenders = collectSourceFiles(['src/adapter/in/web'], {
+      exclude: ['.spec.ts'],
+    })
+      .map((file) => ({
+        file,
+        count: (readSource(file).match(/@Controller\(/g) ?? []).length,
+      }))
+      .filter((entry) => entry.count > 1)
+      .map((entry) => `  ${toRelative(entry.file)}（${entry.count} 個）`);
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下檔案有多個 @Controller：\n${offenders.join(
+            '\n',
+          )}\n路由掃描以檔案裡的第一個 @Controller 當前綴，多個會讓後面的路由被算到錯的前綴下——\n而那是一個看起來正常的錯誤答案。請一個檔案一個 controller。`,
+    ).toBe('');
+  });
 
   it('掃描範圍有效', () => {
     expect(controllerRoutes.size).toBeGreaterThan(0);

@@ -165,6 +165,278 @@ components:
             code: INTERNAL_SERVER_ERROR
             timestamp: '2024-01-01T00:00:00.000Z'
 paths:
+  /auth/login:
+    post:
+      tags:
+        - FrontAuth
+      summary: 前台登入
+      description: |
+        以 Email 與密碼換發**前台的** Access Token 與 Refresh Token。
+
+        **前台與後台是兩套獨立的帳號體系**：不同的表（`users` vs `members`）、
+        不同的簽發 secret、不同的上下文型別。這裡簽出的 token
+        **無法通過任何 `/api/admin/*` 端點的認證**——不是因為權限不足，
+        而是簽章根本驗不過。
+
+        登入失敗不區分「帳號不存在」與「密碼錯誤」，且帳號不存在時仍執行一次 bcrypt——
+        少了那一步，兩條路徑的耗時差距穩定可測，足以用來列舉帳號。
+
+        **不實作帳號鎖定。** 暴力破解的防護由全域 throttle 與 IP 封鎖負責——
+        per-IP 而非 per-account，後者是一個未認證者可以觸發的 DoS 面。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - email
+                - password
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+            example:
+              email: user1@test.com
+              password: User1234!
+      responses:
+        '200':
+          description: 登入成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - accessToken
+                      - refreshToken
+                      - accessTokenExpiresIn
+                      - refreshTokenExpiresIn
+                      - user
+                    properties:
+                      accessToken:
+                        type: string
+                      refreshToken:
+                        type: string
+                      accessTokenExpiresIn:
+                        type: integer
+                        description: 秒
+                      refreshTokenExpiresIn:
+                        type: integer
+                        description: 秒
+                      user:
+                        type: object
+                        required:
+                          - id
+                          - email
+                          - displayName
+                          - avatarUrl
+                        properties:
+                          id:
+                            type: string
+                            format: uuid
+                          email:
+                            type: string
+                            format: email
+                          displayName:
+                            type: string
+                          avatarUrl:
+                            type: string
+                            nullable: true
+                  timestamp:
+                    type: string
+                    format: date-time
+        '400':
+          description: email 格式不合法或 password 缺漏
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: 帳號不存在或密碼錯誤（兩者訊息一致）
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 帳號或密碼錯誤
+                code: UNAUTHORIZED
+                timestamp: '2026-08-23T06:00:00.000Z'
+        '403':
+          description: 帳號已停權
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              example:
+                success: false
+                message: 帳號已停用
+                code: ACCOUNT_DISABLED
+                timestamp: '2026-08-23T06:00:00.000Z'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/refresh:
+    post:
+      tags:
+        - FrontAuth
+      summary: 前台 Token 更新
+      description: |
+        以 Refresh Token 換發新的一對 Token（rotation）。
+        舊的 Refresh Token 在換發成功後**立即進黑名單**——同一枚再次被使用
+        是 token 遭竊的訊號，不可靜默放行。
+
+        以 access token 呼叫、或以**後台**簽出的 refresh token 呼叫，都回 `401`
+        （後者連簽章都驗不過，因為兩側用不同的 secret）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - refreshToken
+              properties:
+                refreshToken:
+                  type: string
+      responses:
+        '200':
+          description: 換發成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/paths/~1auth~1login/post/responses/200/content/application~1json/schema/properties/data'
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          description: token 無效、過期、型別錯誤、側別錯誤或版本已撤銷
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 帳號在這期間被停權
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /auth/logout:
+    post:
+      tags:
+        - FrontAuth
+      summary: 前台登出
+      description: |
+        把當前的 access token 加入黑名單。
+
+        **對客戶端是冪等的**：token 已經過期或無效時仍回 `204`——
+        要求「先通過認證才能登出」會讓客戶端陷入「登不出去」的狀態。
+
+        黑名單沿用後台的同一套實作：它以 token 本身為鍵，與哪一側簽發無關。
+      responses:
+        '204':
+          description: 已登出
+        '401':
+          description: 未帶 Authorization header
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
+  /me:
+    get:
+      tags:
+        - FrontAuth
+      summary: 查詢自己的資料
+      description: |
+        回傳目前登入的前台使用者。
+
+        **回應不含 `password`、`tokenVersion`，也不含任何後台概念**
+        （角色、權限碼）——前台使用者沒有那些東西。
+
+        以後台簽出的 token 呼叫會回 `401`：兩側用不同的 secret，簽章驗不過。
+      responses:
+        '200':
+          description: 查詢成功
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - success
+                  - data
+                  - timestamp
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: object
+                    required:
+                      - id
+                      - email
+                      - displayName
+                      - avatarUrl
+                      - emailVerifiedAt
+                      - createdAt
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      email:
+                        type: string
+                        format: email
+                      displayName:
+                        type: string
+                      avatarUrl:
+                        type: string
+                        nullable: true
+                      emailVerifiedAt:
+                        type: string
+                        format: date-time
+                        nullable: true
+                        description: null 表示信箱尚未驗證
+                      createdAt:
+                        type: string
+                        format: date-time
+                  timestamp:
+                    type: string
+                    format: date-time
+        '401':
+          description: 未帶、無效、或不屬於前台的 token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '403':
+          description: 帳號已停權
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '500':
+          $ref: '#/components/responses/InternalServerError'
   /chat-rooms:
     get:
       tags:
