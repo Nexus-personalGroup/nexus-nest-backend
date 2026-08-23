@@ -1,0 +1,45 @@
+tags: [FrontUsers]
+summary: 停權前台會員
+description: |
+  需 `BACKEND:FRONT_USER:EDIT` 權限。
+
+  **與審閱側的 `POST /moderation/members/{memberId}/suspend` 呼叫同一個 use case**，
+  效果完全相同：帳號停用、`tokenVersion` 遞增、既有的 WebSocket 連線被斷開、
+  寫入 `MEMBER_SUSPENDED` 稽核。
+
+  兩個入口分開的是**授權**而不是行為——「能瀏覽客戶名單的客服」與
+  「能看檢舉內容的審閱者」在真實團隊裡經常不是同一群。各自實作會讓斷線與稽核的
+  行為分歧，而分歧的那一邊不會有人發現。
+
+  被斷線的客戶端會先收到 `server:sessionRevoked`，據此停止自動重連。
+
+  **冪等**：對已停用的帳號再次停權回 `204`，不重複斷線也不重複稽核。
+
+parameters:
+  - name: userId
+    in: path
+    required: true
+    schema:
+      type: string
+      format: uuid
+
+responses:
+  '204':
+    description: 已停權（無回應內容）；已停用時同樣回 204
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '404':
+    description: 該前台使用者不存在或已軟刪除
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 找不到帳號
+          code: MEMBER_NOT_FOUND
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

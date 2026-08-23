@@ -14,6 +14,43 @@ export interface UserRecordDto {
   createdAt: Date;
 }
 
+/** 後台顯示用的前台使用者視圖。**沒有 `password`**——那是認證流程專屬的欄位 */
+export interface UserSummaryDto {
+  id: string;
+  email: string;
+  displayName: string;
+  avatarUrl: string | null;
+  status: boolean;
+  emailVerifiedAt: Date | null;
+  lastSeenAt: Date | null;
+  createdAt: Date;
+}
+
+/**
+ * 詳情與列表回**同一組欄位**。
+ *
+ * 原本多帶一個 `updatedAt`，拿掉了：這個 change 不提供任何編輯前台使用者的功能，
+ * 而系統內唯一會動到 `updated_at` 的是登入時的 `lastSeenAt`——
+ * 兩者幾乎永遠相同，多一欄只是多一個會被誤讀的數字。
+ */
+export type UserDetailDto = UserSummaryDto;
+
+export interface ListUsersParams {
+  page: number;
+  limit: number;
+  email?: string;
+  displayName?: string;
+  /** 啟用狀態過濾；undefined 表示不過濾 */
+  status?: boolean;
+  /** 信箱驗證狀態過濾；true 對應 `emailVerifiedAt != null`，undefined 表示不過濾 */
+  verified?: boolean;
+}
+
+export interface ListUsersPage {
+  data: UserSummaryDto[];
+  total: number;
+}
+
 export interface LoadUserPort {
   /** 依 email 查詢，含 password hash——登入用 */
   loadByEmail(email: string): Promise<UserRecordDto | null>;
@@ -46,4 +83,19 @@ export interface LoadUserPort {
   findActiveUserIds(ids: string[]): Promise<string[]>;
   /** 未軟刪除的前台使用者總數 */
   countUsers(): Promise<number>;
+  /**
+   * 後台的分頁列表。多個條件同時給定時取交集，未給定的條件不過濾。
+   *
+   * 排序固定 `createdAt DESC`，不接受排序參數：可排序的欄位一旦開放
+   * 就要為每一個建索引，而目前沒有任何排序需求。
+   */
+  listUsers(params: ListUsersParams): Promise<ListUsersPage>;
+  /**
+   * 後台的單筆詳情。
+   *
+   * **與 `loadById` 是兩支，不可共用**：後者帶 `password`（認證流程需要），
+   * 而顯示路徑不該有機會把它送出去。分成兩支之後，「不小心回傳密碼雜湊」
+   * 需要有人主動改 select，而不是忘記刪一個欄位。
+   */
+  loadDetailById(id: string): Promise<UserDetailDto | null>;
 }

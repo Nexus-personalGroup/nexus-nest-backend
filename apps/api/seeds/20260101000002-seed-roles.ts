@@ -19,6 +19,16 @@ const ROLES = [
   },
 ];
 
+/**
+ * **每次都跑。** 預設角色（SUPERADMIN）宣告的是「**全部**權限」，
+ * 那是一個會隨權限目錄成長的集合。只跑一次的話，新增權限碼之後
+ * SUPERADMIN 會悄悄地不再擁有全部權限——而它的角色是 `isDefault`，
+ * UI 上改不了（`DefaultRoleNotEditableException`），等於沒有任何補救路徑。
+ *
+ * 只做 upsert，**不移除任何既有的授權**，因此重跑不會動到人工調整過的角色。
+ */
+export const alwaysRun = true;
+
 export default async function seed(prisma: PrismaClient): Promise<void> {
   log.info('插入角色與權限分配...');
 

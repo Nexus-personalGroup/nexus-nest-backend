@@ -1,0 +1,36 @@
+type: object
+description: |
+  後台視角的前台使用者。**不含 `password` 與 `tokenVersion`**——
+  前者是認證流程專屬、後者是內部機制，兩者都沒有理由離開伺服器。
+required:
+  [id, email, displayName, avatarUrl, status, emailVerifiedAt, lastSeenAt, createdAt]
+properties:
+  id:
+    type: string
+    format: uuid
+  email:
+    type: string
+    format: email
+  displayName:
+    type: string
+  avatarUrl:
+    type: string
+    nullable: true
+  status:
+    type: boolean
+    description: 帳號啟用狀態；false 代表已停權
+  emailVerifiedAt:
+    type: string
+    format: date-time
+    nullable: true
+    description: 信箱驗證時間；null 表示尚未驗證
+  lastSeenAt:
+    type: string
+    format: date-time
+    nullable: true
+    description: |
+      **最後一次登入或換發 token 的時間**，不是「最後上線」——
+      它只在認證流程更新，不隨 WS 心跳前進。顯示時要標示清楚。
+  createdAt:
+    type: string
+    format: date-time

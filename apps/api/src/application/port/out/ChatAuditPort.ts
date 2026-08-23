@@ -17,7 +17,10 @@ export type ChatAuditAction =
   | 'MESSAGE_REMOVED'
   | 'MESSAGE_RESTORED'
   | 'MEMBER_SUSPENDED'
-  | 'MEMBER_REINSTATED';
+  | 'MEMBER_REINSTATED'
+  // 讓所有裝置失效但**不停用帳號**。與 MEMBER_SUSPENDED 分開是因為語意不同——
+  // 這是「帳號可能外洩」，那是「這個人違規」
+  | 'MEMBER_FORCE_LOGGED_OUT';
 
 export interface ChatAuditEvent {
   /** 執行動作的成員 */

@@ -1,0 +1,103 @@
+tags: [FrontUsers]
+summary: 查詢前台會員列表
+description: |
+  需 `BACKEND:FRONT_USER:VIEW` 權限。
+
+  回傳的是**前台使用者**（`users`），與後台帳號（`members`）是兩個不相交的
+  身分空間——這裡不會出現任何一個後台管理員。
+
+  多個過濾條件同時給定時取交集；軟刪除的帳號一律不出現，與 `status` 無關。
+  排序固定 `createdAt` 由新到舊，不接受排序參數。
+
+parameters:
+  - name: page
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+  - name: limit
+    in: query
+    required: false
+    schema:
+      type: integer
+      minimum: 1
+      maximum: 200
+  - name: email
+    in: query
+    required: false
+    schema:
+      type: string
+    description: email 模糊搜尋（不分大小寫）
+  - name: displayName
+    in: query
+    required: false
+    schema:
+      type: string
+    description: 顯示名稱模糊搜尋（不分大小寫）
+  - name: status
+    in: query
+    required: false
+    schema:
+      type: string
+      enum: ['true', 'false']
+    description: 啟用狀態。**省略即不過濾**；非 true/false 回 400
+  - name: verified
+    in: query
+    required: false
+    schema:
+      type: string
+      enum: ['true', 'false']
+    description: 信箱驗證狀態。`true` 對應「已驗證」。**省略即不過濾**
+
+responses:
+  '200':
+    description: 查詢成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [list, meta]
+              properties:
+                list:
+                  type: array
+                  items:
+                    $ref: './_front-user.yaml'
+                meta:
+                  type: object
+                  required: [page, limit, total, totalPages]
+                  properties:
+                    page:
+                      type: integer
+                    limit:
+                      type: integer
+                    total:
+                      type: integer
+                    totalPages:
+                      type: integer
+            timestamp:
+              type: string
+              format: date-time
+  '400':
+    description: query 參數不符 schema（例如 status=yes）
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 資料驗證失敗
+          code: VALIDATION_ERROR
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '401':
+    $ref: '../openapi.yaml#/components/responses/NoToken'
+  '403':
+    $ref: '../openapi.yaml#/components/responses/Forbidden'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

@@ -27,4 +27,11 @@ export interface SaveUserPort {
    * 再遞增一次沒有任何東西會被撤銷。
    */
   reinstate(id: string): Promise<boolean>;
+  /**
+   * 只遞增 `tokenVersion`，**不動 `status`**——強制登出用。
+   *
+   * 回傳是否命中（已軟刪除的算沒命中）。**刻意不冪等**：每次呼叫都遞增，
+   * 因為「再登出一次」是一個有意義的重複動作（第一次之後對方又登入了）。
+   */
+  bumpTokenVersion(id: string): Promise<boolean>;
 }

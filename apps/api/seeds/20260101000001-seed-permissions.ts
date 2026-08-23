@@ -13,6 +13,13 @@ const log = pino({
   },
 });
 
+/**
+ * **每次都跑。** 本檔同步的是 `PERMISSION_CATALOG` 這個編譯期常數，
+ * 不是一次性的初始資料——只跑一次的話，日後新增的權限碼永遠進不了既有的資料庫。
+ * 內容全部是 upsert，重跑沒有副作用。
+ */
+export const alwaysRun = true;
+
 export default async function seed(prisma: PrismaClient): Promise<void> {
   log.info('插入權限資料...');
 

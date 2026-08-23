@@ -11,6 +11,8 @@ import { Layout } from '@/routes/_layout';
 import { LoginPage } from '@/routes/login/page';
 import { HomePage } from '@/routes/home/page';
 import { MembersPage } from '@/routes/members/page';
+import { FrontUsersPage } from '@/routes/front-users/page';
+import { FrontUserDetailPage } from '@/routes/front-users/detail/page';
 import { RolesPage } from '@/routes/roles/page';
 import { ReportsPage } from '@/routes/moderation/reports/page';
 import { ReportDetailPage } from '@/routes/moderation/report-detail/page';
@@ -43,6 +45,11 @@ export const App = () => {
               >
                 <Route path="/" element={<HomePage />} />
                 <Route path="/members" element={<MembersPage />} />
+                <Route path="/front-users" element={<FrontUsersPage />} />
+                <Route
+                  path="/front-users/:userId"
+                  element={<FrontUserDetailPage />}
+                />
                 <Route path="/roles" element={<RolesPage />} />
                 <Route path="/moderation/reports" element={<ReportsPage />} />
                 <Route

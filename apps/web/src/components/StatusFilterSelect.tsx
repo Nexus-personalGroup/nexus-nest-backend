@@ -21,16 +21,27 @@ type StatusFilterSelectProps = {
   onChange: (next: StatusFilter) => void;
   /** 預設「狀態」；列表頁可改成「會員狀態」「角色狀態」等 */
   label?: string;
+  /**
+   * DOM id。**同一頁放兩個這種下拉時必須各自指定**——
+   * 重複的 id 會讓 label 指到錯的那一個，而畫面上完全看不出來
+   */
+  id?: string;
+  /** 兩個選項的文字；預設「啟用 / 停用」。用於狀態以外的布林過濾 */
+  trueLabel?: string;
+  falseLabel?: string;
 };
 
 export const StatusFilterSelect = ({
   value,
   onChange,
   label = '狀態',
+  id = 'status-filter',
+  trueLabel = '啟用',
+  falseLabel = '停用',
 }: StatusFilterSelectProps) => {
   return (
     <div className="flex flex-col gap-1.5">
-      <label className="text-xs" htmlFor="status-filter">
+      <label className="text-xs" htmlFor={id}>
         {label}
       </label>
       <Select
@@ -40,13 +51,13 @@ export const StatusFilterSelect = ({
           onChange(next === ALL_SENTINEL ? undefined : next);
         }}
       >
-        <SelectTrigger id="status-filter" className="w-32">
+        <SelectTrigger id={id} className="w-32">
           <SelectValue />
         </SelectTrigger>
         <SelectContent>
           <SelectItem value={ALL_SENTINEL}>全部</SelectItem>
-          <SelectItem value="true">啟用</SelectItem>
-          <SelectItem value="false">停用</SelectItem>
+          <SelectItem value="true">{trueLabel}</SelectItem>
+          <SelectItem value="false">{falseLabel}</SelectItem>
         </SelectContent>
       </Select>
     </div>
