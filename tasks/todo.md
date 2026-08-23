@@ -22,8 +22,9 @@
 | --- | --- | --- | --- |
 | 1 | `fix-unauthenticated-surface` | 帳號鎖定時效、Swagger 開關、metrics 豁免收窄、`DB_PORT` 預設值 | 待合併 |
 | 2 | ~~`fix-presence-scan-cost`~~ | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | **待合併** |
-| 3 | `add-front-user-auth` | `users` 表 + 前台認證（註冊 / 驗證信箱 / 登入 / 重設密碼）+ JWT 側別 claim | 未開始 |
-| 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 未開始 |
+| 3a | ~~`add-front-user-account`~~ | `users` 表 + 前台登入／更新／登出／me + 兩側各自的 secret | **待合併** |
+| 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設。建立在 3a 之上，可與 4 平行 | 未開始 |
+| 4 | `migrate-chat-to-front-users` | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者）。3a 已完成，可以開始 | 未開始 |
 | 5 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
 | 6 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
 
@@ -190,6 +191,32 @@
 ## 已完成
 
 > 模板時期的變更歷史留在 `hexagonal-nest-express-mysql` repo，未帶入本專案。
+
+### 2026-08-23 — 前台帳號體系（`add-front-user-account`）｜路線圖 3a
+
+新增 `users` 表與前台的登入／更新／登出／me，**與 `members` 完全獨立**。
+刻意是「純新增」：`/api/front/chat-*` 與 WS **仍然吃 admin token**，
+切換是 change 4 的事（那一步一旦開始就不能留半套）。
+
+**因此審查報告的觀察 A 只補了一半**：後台端點已拒絕前台 token，
+但前台端點仍接受 admin token。另一半在 change 4。
+
+**與審查報告建議不同的一點**：它建議共用 secret 靠 `side` claim 區分，
+這裡改成**兩側各自的 secret**——差別在「某處忘了比對 side」的後果：
+共用時是跨側存取，各自一組時是簽章驗證失敗（fail-closed）。
+
+**實作中發現三道防線而非兩道**：除了 secret 與 `side` claim，
+還有**兩張表的 ID 空間不相交**（前台使用者的 id 在 `members` 裡查不到）——
+那是分表的附帶效果，寫 spec 時沒算到。三道任一單獨都擋得住，
+所以 e2e 的「跨側 → 401」驗的是結果而非機制，機制由單元測試釘住。
+
+**踩到的兩個坑**：`FrontJwtAuthGuard` 一度也檢查 `@Public()`，而 controller 上就掛著
+（那是給全域後台 guard 看的）——結果會是兩個 guard 都放行、端點完全沒有認證。
+以及 `gen:module --front` 產的是 CRUD 骨架，形狀不合 auth，已完整還原後手寫。
+
+順手補了一條守則：**一個檔案只能有一個 `@Controller`**——
+路由掃描以檔案裡的第一個當前綴，多個會讓後面的路由被算到錯的前綴下，
+而那是一個「看起來正常的錯誤答案」。
 
 ### 2026-08-23 — 在線人數改用衍生索引（`fix-presence-scan-cost`）
 

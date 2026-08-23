@@ -275,6 +275,41 @@ if (this.featureFlags.isEnabled('accountLockEnabled')) { ... }
 那是特權路徑的對價：這是唯一能看到被撤回訊息內容的地方，
 查看不留痕跡的話，它與「任何人都看得到」在事後沒有實質區別。
 
+### 兩套獨立的帳號體系
+
+專案有**兩張互不相關的帳號表**，不是一張表加側別欄位：
+
+| | 後台 `members` | 前台 `users` |
+| --- | --- | --- |
+| 登入 | `/api/admin/auth/login` | `/api/front/auth/login` |
+| 簽發 secret | `ACCESS_SECRET` / `REFRESH_SECRET` | `FRONT_ACCESS_SECRET` / `FRONT_REFRESH_SECRET` |
+| 上下文型別 | `MemberContext`（含角色與權限碼） | `UserContext`（沒有這些概念） |
+| Guard | 全域 `JwtAuthGuard` | `FrontJwtAuthGuard`（`@UseGuards` 掛在需要認證的 controller） |
+| 帳號鎖定 | 有（`lockedAt` + 時效） | **沒有**——per-account 鎖定是未認證者可觸發的 DoS 面 |
+| 共用 | token 黑名單（以 token 為鍵，與側別無關） | 同左 |
+
+**token 的側別有三道防線**，任何一道單獨都擋得住：
+
+1. **各自的簽發 secret**——跨側的 token 連簽章都驗不過。這是刻意的選擇：
+   共用 secret 時「某處忘了比對 side」的後果是**跨側存取**，
+   各自一組時是**簽章驗證失敗**（fail-closed）。
+2. **`side` claim 比對**（`'admin' | 'front'`）。作用是讓錯誤訊息說得出
+   「這是另一側的 token」而不是只有「簽章無效」。
+3. **兩張表的 ID 空間不相交**——前台使用者的 id 在 `members` 裡查不到。
+   這是分表的附帶效果，也是它比「一張表加側別欄位」更安全的最深理由。
+
+因為 (1) 與 (3) 都會擋，**e2e 的「跨側 token → 401」驗的是結果而非機制**；
+機制由 `ResolveMemberContextService.spec.ts` 的單元測試釘住。
+
+**`side` 缺席的相容措施是有時效的**：本機制上線前簽出的後台 token 沒有這個欄位，
+一律拒絕會讓部署當下所有人被登出，因此「缺少 `side`」視為 `admin`。
+部署時間超過 refresh token 效期（預設 7 天）之後，所有流通中的 token 都會帶 `side`，
+屆時可把 `?? 'admin'` 改成 `!== 'admin'`。前台不需要這個相容——前台 secret 是新的。
+
+**目前的半套狀態**：`/api/front/chat-*` 與 WS 連線**仍然吃 admin token**。
+切換到前台帳號是 `migrate-chat-to-front-users` 的事，那一步一旦開始就不能留半套
+（`chat_messages.senderId`、presence key、後台四個審閱頁、停權要一起改）。
+
 ### 在線人數的衍生索引
 
 presence 的**真相**是 `presence:member:<id>` 的 Hash（每筆連線帶心跳時間、

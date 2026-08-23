@@ -188,6 +188,22 @@ components:
             timestamp: '2024-01-01T00:00:00.000Z'
 
 paths:
+  /auth/login:
+    post:
+      $ref: './auth/login.yaml'
+
+  /auth/refresh:
+    post:
+      $ref: './auth/refresh.yaml'
+
+  /auth/logout:
+    post:
+      $ref: './auth/logout.yaml'
+
+  /me:
+    get:
+      $ref: './auth/me.yaml'
+
   /chat-rooms:
     get:
       $ref: './chat-rooms/list.yaml'

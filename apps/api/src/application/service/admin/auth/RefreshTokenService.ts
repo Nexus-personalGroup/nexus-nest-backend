@@ -102,11 +102,21 @@ export class RefreshTokenService implements RefreshTokenUseCase {
     }
 
     const accessToken = this.jwtService.sign(
-      { sub: payload.sub, type: 'access', tokenVersion } satisfies JwtPayload,
+      {
+        sub: payload.sub,
+        type: 'access',
+        tokenVersion,
+        side: 'admin',
+      } satisfies JwtPayload,
       { secret: env.ACCESS_SECRET, expiresIn: env.ACCESS_TOKEN_EXPIRES_IN },
     );
     const newRefreshToken = this.jwtService.sign(
-      { sub: payload.sub, type: 'refresh', tokenVersion } satisfies JwtPayload,
+      {
+        sub: payload.sub,
+        type: 'refresh',
+        tokenVersion,
+        side: 'admin',
+      } satisfies JwtPayload,
       { secret: env.REFRESH_SECRET, expiresIn: env.REFRESH_TOKEN_EXPIRES_IN },
     );
 

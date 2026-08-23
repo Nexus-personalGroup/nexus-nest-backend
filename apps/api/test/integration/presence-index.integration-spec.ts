@@ -2,7 +2,10 @@ import { io, Socket } from 'socket.io-client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import { SERVER_EVENTS } from '@app/adapter/in/ws/events';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
-import { buildPresenceKey } from '@app/infrastructure/redis/cache-keys';
+import {
+  buildPresenceKey,
+  buildPresenceScanPattern,
+} from '@app/infrastructure/redis/cache-keys';
 import { resetDb, seedMember } from '../helpers/db';
 import {
   signAccessToken,
@@ -74,8 +77,19 @@ describe('在線成員索引（整合）', () => {
     otherId = other.memberId;
     token = signAccessToken(instance.jwt, memberId);
     otherToken = signAccessToken(instance.jwt, otherId);
-    // 上一支測試留下的索引會讓計數從非零開始
+    // **整合測試共用同一個 Redis**（prefix `integration:`），而其他 spec 的連線
+    // 在 presence key 的 TTL（60 秒）內都還算「在線」——不清乾淨的話這裡的
+    // 絕對值斷言會拿到別人的連線數，而症狀是「預期 1、收到 3」這種指不到原因的失敗。
+    // 先實際刪掉所有 presence key 與索引，再 sweep 讓兩者歸零
+    const stale = await redis.scanKeys(
+      buildPresenceScanPattern(redis.keyPrefix),
+    );
+    for (const key of stale) {
+      await redis.del(key);
+    }
+    await redis.del(`${redis.keyPrefix}presence:online-members`);
     await instance.presence.sweepStale();
+    expect(await instance.presence.countOnlineMembers()).toBe(0);
   });
 
   const connect = async (auth: string): Promise<Socket> => {

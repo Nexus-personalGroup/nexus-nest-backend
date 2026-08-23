@@ -1,0 +1,30 @@
+# 前台的 token 對與使用者摘要。**摘要刻意不含 tokenVersion 與 password**
+type: object
+required:
+  [accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn, user]
+properties:
+  accessToken:
+    type: string
+  refreshToken:
+    type: string
+  accessTokenExpiresIn:
+    type: integer
+    description: 秒
+  refreshTokenExpiresIn:
+    type: integer
+    description: 秒
+  user:
+    type: object
+    required: [id, email, displayName, avatarUrl]
+    properties:
+      id:
+        type: string
+        format: uuid
+      email:
+        type: string
+        format: email
+      displayName:
+        type: string
+      avatarUrl:
+        type: string
+        nullable: true

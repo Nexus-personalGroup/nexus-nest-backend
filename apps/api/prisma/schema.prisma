@@ -205,6 +205,60 @@ model MemberRecord {
   @@map("members")
 }
 
+/// 前台使用者
+///
+/// **與 `members` 完全獨立的帳號體系。** 聊天領域裡的每一個「member」指的都是這裡的人，
+/// 不是管理員——`members` 帶著 roleId / lockedAt / isDefault / failedLoginCount /
+/// lastPasswordChange 這些 RBAC 與後台專屬的欄位，前台一個都不需要；
+/// 反過來前台需要的顯示名稱、頭像、信箱驗證狀態，後台也沒有。
+///
+/// 兩者共用一張表加側別欄位的代價不只是「欄位對對方永遠是 null」——
+/// 更實際的問題是每一支查詢都要記得帶側別條件，而漏帶的後果是
+/// 後台的使用者列表出現前台使用者，一個看起來只是「資料變多」的錯。
+model UserRecord {
+  id String @id @default(uuid())
+
+  email String @unique @db.VarChar(255)
+
+  /// bcrypt hash
+  password String @db.VarChar(255)
+
+  /// 聊天裡別人看到的名字。**刻意不唯一**——強制唯一會讓註冊體驗變差，
+  /// 而同名在聊天裡靠頭像與上下文區分。代價是審閱時不能只靠顯示名認人，
+  /// 後台仍然看得到 email
+  displayName String @map("display_name") @db.VarChar(50)
+
+  /// 頭像 URL。目前不做上傳，只留欄位，日後接附件上傳時直接用
+  avatarUrl String? @map("avatar_url") @db.VarChar(500)
+
+  /// 信箱驗證完成的時間；null 表示未驗證。
+  /// 未驗證要不要擋登入由註冊流程（3b）決定，本階段只存不判斷
+  emailVerifiedAt DateTime? @map("email_verified_at") @db.Timestamptz(3)
+
+  /// 啟用狀態。false 時登入直接拒絕，且既有 token 在下次請求即失效
+  status Boolean @default(true)
+
+  /// JWT 失效世代。與 members 同樣的機制：改密碼、強制登出、
+  /// refresh 重用連坐撤銷時 +1，是「立即讓該帳號所有裝置的既發 token 失效」的唯一手段
+  tokenVersion Int @default(0) @map("token_version")
+
+  /// 上次活動時間。**與 presence 不同**：presence 是「現在在不在」
+  /// （存 Redis、會隨 TTL 消失），這一欄是「上次什麼時候來過」（永久）。
+  /// 審閱與清理閒置帳號都要看它。
+  ///
+  /// 刻意沒有 lastLoginAt：前台的 session 是長效的，「上次登入」的意義遠小於
+  /// 「上次活動」，多一個語意重疊的時間欄位只會讓人問「該看哪個」
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  /// 軟刪除標記。所有查詢必須帶 deletedAt: null
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
+
+  @@map("users")
+}
+
 /// 認證事件稽核。與 system_logs 分開，因為登入失敗的查詢頻率與保留需求都不同
 model AuthLogRecord {
   id String @id @default(uuid())

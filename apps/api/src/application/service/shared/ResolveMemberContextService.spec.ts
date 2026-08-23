@@ -281,4 +281,68 @@ describe('ResolveMemberContextService', () => {
       });
     });
   });
+
+  /**
+   * 側別檢查。
+   *
+   * **這裡是唯一驗得到「這道檢查存在」的地方。** e2e 那支
+   * 「前台 token 打後台端點 → 401」驗的是**結果**而非機制——
+   * 前後台之間其實有三道獨立的防線：
+   *
+   *   1. 各自的簽發 secret（跨側的 token 連簽章都驗不過）
+   *   2. 本段的 `side` 比對
+   *   3. **兩張表的 ID 空間不相交**——前台使用者的 id 在 `members` 裡查不到
+   *
+   * 任何一道單獨都擋得住，所以 e2e 就算三道全拿掉也仍然是 401。
+   * 那支測試仍然有價值（它釘住「結果必須是拒絕」），但它分辨不出機制。
+   */
+  describe('側別', () => {
+    beforeEach(() => {
+      mockTokenBlacklist.isBlacklisted.mockResolvedValue(false);
+      mockMemberContextCache.getByMemberId.mockResolvedValue(null);
+      mockLoadMemberContext.loadMemberContext.mockResolvedValue(memberData);
+    });
+
+    it('side 為 admin → 通過', async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValue({
+        sub: TEST_UUID,
+        type: 'access',
+        side: 'admin',
+      });
+
+      await expect(service.resolve('token')).resolves.toMatchObject({
+        sub: TEST_UUID,
+      });
+    });
+
+    it('⭐ side 為 front → 拒絕', async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValue({
+        sub: TEST_UUID,
+        type: 'access',
+        side: 'front',
+      });
+
+      await expect(service.resolve('token')).rejects.toThrow(
+        UnauthorizedException,
+      );
+    });
+
+    /**
+     * **有時效的相容措施**：本欄位上線前簽出的 token 沒有 `side`，
+     * 一律拒絕會讓部署當下所有人被登出。
+     *
+     * 部署時間超過 refresh token 效期（預設 7 天）之後，所有流通中的 token
+     * 都會帶 side，屆時這支測試要改成「拒絕」。
+     */
+    it('⭐ 缺少 side → 視為 admin 並通過（暫時的相容）', async () => {
+      (mockJwt.verify as jest.Mock).mockReturnValue({
+        sub: TEST_UUID,
+        type: 'access',
+      });
+
+      await expect(service.resolve('token')).resolves.toMatchObject({
+        sub: TEST_UUID,
+      });
+    });
+  });
 });

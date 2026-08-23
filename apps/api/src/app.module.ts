@@ -42,6 +42,7 @@ import { SchedulerModule } from './modules/scheduler.module';
 import { FrontChatRoomModule } from './modules/front/chat-room.module';
 import { FrontChatReportModule } from './modules/front/chat-report.module';
 import { ModerationModule } from './modules/admin/moderation.module';
+import { FrontAuthModule } from './modules/front/auth.module';
 import { DashboardModule } from './modules/admin/dashboard.module';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { PrometheusModule } from '@willsoto/nestjs-prometheus';
@@ -196,6 +197,7 @@ const resolveWebStaticRoot = (): string | null => {
     FrontChatRoomModule,
     FrontChatReportModule,
     ModerationModule,
+    FrontAuthModule,
     DashboardModule,
     // 全域 JwtAuthGuard（APP_GUARD）需在 AppModule 直接取得 JwtService
     JwtModule,

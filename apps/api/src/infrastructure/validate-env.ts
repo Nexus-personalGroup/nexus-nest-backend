@@ -29,6 +29,25 @@ const envSchema = z.object({
   //預設 2 小時
   ACCESS_TOKEN_EXPIRES_IN: z.coerce.number().default(7200),
   REFRESH_SECRET: z.string().min(32),
+
+  /**
+   * 前台專屬的簽發 secret。
+   *
+   * **與後台各自一組，而不是共用 secret 靠 `side` claim 區分。**
+   * 差別在「某處忘了比對 side」的後果：共用時是**跨側存取**，
+   * 各自一組時是簽章驗證失敗——天然 fail-closed。
+   * 本專案在黑名單與限流上一貫選 fail-closed，這裡沒有理由選相反的。
+   *
+   * 開發環境給預設值只是為了方便；production 由 `productionErrors` 強制檢查。
+   */
+  FRONT_ACCESS_SECRET: z
+    .string()
+    .min(32)
+    .default('dev-only-front-access-secret-min-32-ch'),
+  FRONT_REFRESH_SECRET: z
+    .string()
+    .min(32)
+    .default('dev-only-front-refresh-secret-min-32-c'),
   //預設 7 天
   REFRESH_TOKEN_EXPIRES_IN: z.coerce.number().default(604800),
   // JWT issuer/audience：簽發與驗證一致，避免 token 被共用同 secret 的其他服務重放
@@ -492,6 +511,31 @@ export const getEnv = (): Env => {
       _env.REFRESH_SECRET.length < 32
     ) {
       productionErrors.push('REFRESH_SECRET: 生產環境必填且至少 32 字元');
+    }
+    // 前台的兩組與後台同樣的規則：dev 的預設值帶 dev-only，production 必須換掉
+    if (
+      _env.FRONT_ACCESS_SECRET.includes('dev-only') ||
+      _env.FRONT_ACCESS_SECRET.length < 32
+    ) {
+      productionErrors.push(
+        'FRONT_ACCESS_SECRET: 不可使用開發用預設值，請設定至少 32 字元的隨機字串',
+      );
+    }
+    if (
+      _env.FRONT_REFRESH_SECRET.includes('dev-only') ||
+      _env.FRONT_REFRESH_SECRET.length < 32
+    ) {
+      productionErrors.push(
+        'FRONT_REFRESH_SECRET: 不可使用開發用預設值，請設定至少 32 字元的隨機字串',
+      );
+    }
+    if (_env.FRONT_ACCESS_SECRET === _env.ACCESS_SECRET) {
+      productionErrors.push(
+        'FRONT_ACCESS_SECRET: 不可與 ACCESS_SECRET 相同——兩側各自一組 secret 正是為了讓「忘記比對側別」的後果是簽章失敗而非跨側存取',
+      );
+    }
+    if (_env.FRONT_REFRESH_SECRET === _env.REFRESH_SECRET) {
+      productionErrors.push('FRONT_REFRESH_SECRET: 不可與 REFRESH_SECRET 相同');
     }
     if (
       _env.COOKIE_SECRET.includes('change-in-production') ||
