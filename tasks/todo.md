@@ -5,10 +5,10 @@
 
 ## 進行中
 
-`add-admin-front-user-management`（路線圖第 5 項）——後台的前台會員管理。
-目標：列表／搜尋／帳號面詳情／停權／解除／強制登出 + `/front-users` 兩個頁面，
-新開 `BACKEND:FRONT_USER:VIEW` / `EDIT` 權限碼。
-**它解除了「後台只能從檢舉點進前台使用者」的限制。**
+`add-front-user-registration`（路線圖 3b）——前台的註冊與密碼重設。
+目標：註冊／信箱驗證／重發／忘記密碼／重設密碼五支端點，
+`user_tokens` 表（帶 purpose），以及**未驗證信箱不能聊天**的門檻。
+**前台專案（獨立 repo）現在有東西可以接了。**
 
 ## 路線圖
 
@@ -27,8 +27,8 @@
 | 2 | ~~`fix-presence-scan-cost`~~ | `countOnlineMembers` 改 Redis SET + `SCARD`；加守則擋「請求路徑用 scan pattern」 | 已合併（#21） |
 | 3a | ~~`add-front-user-account`~~ | `users` 表 + 前台登入／更新／登出／me + 兩側各自的 secret | 已合併（#22） |
 | 4 | ~~`migrate-chat-to-front-users`~~ | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 已合併（#23） |
-| 5 | `add-admin-front-user-management` | 後台的前台使用者管理：列表／搜尋／詳情／停權／解除／強制登出。**解除了「進入點只有檢舉」的限制** | **待合併** |
-| 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設。建立在 3a 之上，可與 5 平行 | 未開始 |
+| 5 | ~~`add-admin-front-user-management`~~ | 後台的前台使用者管理：列表／搜尋／詳情／停權／解除／強制登出。**解除了「進入點只有檢舉」的限制** | 已合併（#24） |
+| 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設；未驗證不能聊天 | **待合併** |
 | 6 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
 | 7 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
 
@@ -63,16 +63,25 @@
 
 - **三個待同步項**（後端已完成、前端尚未接）：`retractedAt`、`removedAt`、
   以及 `server:sessionRevoked`——**收到後不可自動重連**，否則被停權者會進入無盡重連迴圈。
-- **change 3 完成後**還要加：註冊 / 驗證信箱 / 重設密碼的畫面，以及前台自己的 token 儲存。
+- **註冊 / 驗證信箱 / 重設密碼的畫面**（後端已完成，3b）。要接的四件事：
+  1. `POST /front/auth/register` — 回 201 但**不回 token**，註冊完要自己導去登入。
+  2. **`/verify-email` 這一頁必須存在**——驗證信的連結由後端接，
+     驗完 302 導到 `APP_FRONT_URL/verify-email?result=success|invalid|expired`，
+     前台只要讀 query 顯示三種結果。**沒有這一頁的話使用者會停在 404。**
+  3. `POST /front/auth/forgot-password` / `reset-password`，
+     重設信的連結指向前台的 `/reset-password?token=...`。
+  4. ⚠️ **未驗證的帳號登得進來但聊不了天**（403 `EMAIL_NOT_VERIFIED`、WS 連線被拒）。
+     登入回應帶 `emailVerified`，**要據此決定是導去聊天室還是導去「請收驗證信」**——
+     不看它的話，使用者會在第一次進聊天室時撞上一個沒有說明的 403。
 - **一開始就要走前台的認證端點**：聊天現在只吃 `/api/front/auth/login` 簽出的 token；
   後台 token 打前台端點會 401、開 WS 連線會被拒。
 
 ### 已知缺口（知情，非遺漏）
 
-- **8 份 master spec 的 `## Purpose` 還是 archive 留下的 `TBD` 佔位字串**：
+- **7 份 master spec 的 `## Purpose` 還是 archive 留下的 `TBD` 佔位字串**：
   `platform-token-scope`、`platform-public-surface`、`api-dashboard`、
-  `api-front-auth`、`ui-member-profile`、`ui-room-overview`、`ui-moderation`、
-  `ui-dashboard`。`openspec archive` 只合併 `## Requirements`，**Purpose 要手動補**，
+  `ui-member-profile`、`ui-room-overview`、`ui-moderation`、`ui-dashboard`。
+  （`api-front-auth` 那一份在 3b 順手補掉了。）`openspec archive` 只合併 `## Requirements`，**Purpose 要手動補**，
   而 `openspec validate --specs --strict` 不會抓（38/38 全過）。
   **值得開一個小 cleanup change**：補完 8 份之後加一條守則擋住
   「Purpose 含 `TBD - created by archiving`」——在補完之前那條守則會是紅的，

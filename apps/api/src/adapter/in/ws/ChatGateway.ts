@@ -185,6 +185,9 @@ export class ChatGateway
    * 在 `ResolveUserContextUseCase` 的簽章驗證就過不了——擋下它的不是權限判斷，
    * 而是它根本不屬於這一側。
    *
+   * **信箱未驗證的帳號同樣連不上。** 驗證狀態來自 `UserContext`，
+   * 不在這一層自己查資料庫——判定只有一個實作。
+   *
    * @param client - 尚未認證的連線
    */
   async handleConnection(client: Socket): Promise<void> {
@@ -196,6 +199,15 @@ export class ChatGateway
       }
 
       const member = await this.resolveUserContext.resolve(token);
+
+      // 信箱未驗證擋在這裡而非 Guard：WS 沒有 Guard 可掛。
+      // **只擋 HTTP 不擋 WS 的話**，未驗證的帳號雖然開不了房間，
+      // 卻能連上去收別人的廣播——那比「能不能發言」更嚴重
+      if (!member.emailVerified) {
+        this.rejectConnection(client, 'EMAIL_NOT_VERIFIED', '請先完成信箱驗證');
+        return;
+      }
+
       (client as AuthenticatedSocket).member = member;
 
       const connections = await this.presence.getConnections(member.sub);

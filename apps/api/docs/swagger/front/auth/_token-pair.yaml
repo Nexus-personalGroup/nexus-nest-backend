@@ -15,7 +15,7 @@ properties:
     description: 秒
   user:
     type: object
-    required: [id, email, displayName, avatarUrl]
+    required: [id, email, displayName, avatarUrl, emailVerified]
     properties:
       id:
         type: string
@@ -28,3 +28,9 @@ properties:
       avatarUrl:
         type: string
         nullable: true
+      emailVerified:
+        type: boolean
+        description: |
+          信箱是否已驗證。**false 時登得進來但聊不了天**——
+          客戶端要據此決定是引導去聊天室還是引導去收驗證信。
+          少了它，前台只能等第一次聊天請求被 403 才知道

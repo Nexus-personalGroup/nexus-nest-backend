@@ -276,6 +276,7 @@ type FrontWiring = {
   usesUserContext: boolean;
   usesMemberContext: boolean;
   hasFrontGuard: boolean;
+  hasVerifiedGuard: boolean;
   hasPublic: boolean;
 };
 
@@ -291,7 +292,9 @@ export const auditFrontWiring = (source: string): FrontWiring => {
   return {
     usesUserContext: code.includes('@CurrentUser('),
     usesMemberContext: code.includes('@CurrentMember('),
-    hasFrontGuard: classSection.includes('@UseGuards(FrontJwtAuthGuard)'),
+    // 兩個 Guard 寫在同一個 @UseGuards() 裡，因此只比對名稱是否出現
+    hasFrontGuard: classSection.includes('FrontJwtAuthGuard'),
+    hasVerifiedGuard: classSection.includes('EmailVerifiedGuard'),
     hasPublic: classSection.includes('@Public('),
   };
 };
@@ -318,6 +321,17 @@ describe('架構守則：前台 controller 的認證接線', () => {
   const controllers = collectSourceFiles(['src/adapter/in/web/front'], {
     exclude: ['.spec.ts'],
   }).filter((file) => file.endsWith('Controller.ts'));
+
+  /**
+   * 不需要「信箱已驗證」門檻的前台 controller。
+   *
+   * 門檻高：能列進來的只有「未驗證的使用者**必須**用得到」的端點，
+   * 不包含「還沒接上」。
+   */
+  const VERIFIED_GUARD_EXEMPT = [
+    // 使用者要看得到自己的驗證狀態，才知道自己卡在哪、該去點哪封信
+    'front/auth/FrontMeController.ts',
+  ];
 
   it('掃描範圍有效', () => {
     expect(controllers.length).toBeGreaterThan(0);
@@ -359,6 +373,44 @@ describe('架構守則：前台 controller 的認證接線', () => {
         : `以下前台 controller 掛了 FrontJwtAuthGuard 卻沒標 @Public()：\n${offenders.join(
             '\n',
           )}\n全域的後台 Guard 會先跑，有效的前台 token 一律被判 401。`,
+    ).toBe('');
+  });
+
+  /**
+   * 掛了認證就要掛驗證門檻——除非明列豁免。
+   *
+   * 沒有這條的話，日後新增一支前台聊天端點會**預設對未驗證帳號開放**，
+   * 而那不會有任何徵兆：端點看起來完全正常，只是門檻少了一道。
+   * 這與 `AttachmentController` 踩過的是同一種缺陷——
+   * 它遵守了所有現存規則，只是缺少沒有規則要求它具備的東西。
+   */
+  it('掛了 FrontJwtAuthGuard 就必須掛 EmailVerifiedGuard（豁免需明列）', () => {
+    const offenders = controllers
+      .filter((file) => !VERIFIED_GUARD_EXEMPT.some((e) => file.includes(e)))
+      .filter((file) => {
+        const wiring = auditFrontWiring(readSource(file));
+        return wiring.hasFrontGuard && !wiring.hasVerifiedGuard;
+      })
+      .map((file) => `  ${file}`);
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下前台 controller 掛了 FrontJwtAuthGuard 卻沒掛 EmailVerifiedGuard：\n${offenders.join(
+            '\n',
+          )}\n未驗證信箱的帳號會因此拿到聊天功能。確實不需要門檻的話，請加進 VERIFIED_GUARD_EXEMPT 並註明理由。`,
+    ).toBe('');
+  });
+
+  it('豁免清單不得有過期項目', () => {
+    const expired = VERIFIED_GUARD_EXEMPT.filter(
+      (exempt) => !controllers.some((file) => file.includes(exempt)),
+    ).map((exempt) => `  ${exempt}`);
+
+    expect(
+      expired.length === 0
+        ? ''
+        : `以下豁免的 controller 已不存在：\n${expired.join('\n')}`,
     ).toBe('');
   });
 
@@ -420,6 +472,27 @@ describe('架構守則：前台 controller 的認證接線', () => {
         ),
       );
       expect(wiring.usesUserContext).toBe(false);
+    });
+
+    it('E2：只掛 FrontJwtAuthGuard 而沒掛 EmailVerifiedGuard → 抓得出來', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `@Public()\n@UseGuards(FrontJwtAuthGuard)\n@Controller('front/x')`,
+          `  @Get()\n  list(@CurrentUser() u: unknown) {}`,
+        ),
+      );
+      expect(wiring.hasFrontGuard).toBe(true);
+      expect(wiring.hasVerifiedGuard).toBe(false);
+    });
+
+    it('E3：兩個 Guard 寫在同一個 @UseGuards() 裡 → 都認得', () => {
+      const wiring = auditFrontWiring(
+        wrap(
+          `@Public()\n@UseGuards(FrontJwtAuthGuard, EmailVerifiedGuard)\n@Controller('front/x')`,
+          `  @Get()\n  list(@CurrentUser() u: unknown) {}`,
+        ),
+      );
+      expect(wiring.hasFrontGuard && wiring.hasVerifiedGuard).toBe(true);
     });
 
     it('E：前台用了 @CurrentMember → 抓得出來', () => {

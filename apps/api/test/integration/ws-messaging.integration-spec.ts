@@ -201,6 +201,51 @@ describe('WebSocket 訊息（整合）', () => {
    * 後台簽出的 token 在 handshake 的簽章驗證就過不了。
    */
   describe('⭐ 連線的身分', () => {
+    /**
+     * 只擋 HTTP 不擋 WS 的話，未驗證的帳號雖然開不了房間，
+     * 卻能**連上去收別人的廣播**——那比「能不能發言」更嚴重。
+     */
+    it('⭐ 未驗證信箱的帳號 → 連線被拒，且沒有 presence 紀錄', async () => {
+      const pending = await seedUser(prisma, {
+        email: 'pending@example.com',
+        password: 'Passw0rd!',
+        verified: false,
+      });
+      const socket = io(`http://127.0.0.1:${PORT_A}/chat`, {
+        transports: ['websocket'],
+        auth: { token: signAccessToken(instanceA.jwt, pending.userId) },
+        reconnection: false,
+      });
+      sockets.push(socket);
+
+      const failure = await waitForEvent<WsError>(socket, SERVER_EVENTS.ERROR);
+
+      expect(failure.code).toBe('EMAIL_NOT_VERIFIED');
+      expect(
+        await instanceA.presence.getConnections(pending.userId),
+      ).toHaveLength(0);
+    });
+
+    it('⭐ 驗證之後同一個 token 就連得上', async () => {
+      const pending = await seedUser(prisma, {
+        email: 'later@example.com',
+        password: 'Passw0rd!',
+        verified: false,
+      });
+      const token = signAccessToken(instanceA.jwt, pending.userId);
+
+      await prisma.userRecord.update({
+        where: { id: pending.userId },
+        data: { emailVerifiedAt: new Date() },
+      });
+
+      // 驗證狀態每次 handshake 重新解析，不快取在 token 裡
+      const socket = await connect(`http://127.0.0.1:${PORT_A}`, token);
+      sockets.push(socket);
+
+      expect(socket.connected).toBe(true);
+    });
+
     it('後台 token 建立連線 → 被拒並斷線', async () => {
       const admin = await seedMember(prisma, {
         email: 'admin@example.com',

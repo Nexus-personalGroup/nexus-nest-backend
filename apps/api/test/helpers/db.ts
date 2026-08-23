@@ -9,6 +9,9 @@ import { parsePermissionCode } from '@app/shared/constants/permissions';
 export const resetDb = async (prisma: PrismaService): Promise<void> => {
   await prisma.rolePermission.deleteMany();
   await prisma.memberRecord.deleteMany();
+  // user_tokens 先於 users：雖然刻意沒建外鍵，但留著孤兒 token 會讓
+  // 「這個 token 屬於誰」在下一個測試裡指向一個不存在的人
+  await prisma.userTokenRecord.deleteMany();
   // 前台使用者與 members 完全獨立，沒有外鍵牽連
   await prisma.userRecord.deleteMany();
   await prisma.authLogRecord.deleteMany();
@@ -62,7 +65,13 @@ export interface SeededMember {
  * 建立一個可登入的後台會員:權限（upsert）+ Role（綁權限）+ Member（bcrypt 密碼）。
  * @returns 新建的 memberId / roleId
  */
-/** 前台測試使用者的最小建立函式。與 seedMember 平行——兩者是不同的帳號體系 */
+/**
+ * 前台測試使用者的最小建立函式。與 seedMember 平行——兩者是不同的帳號體系。
+ *
+ * **`verified` 預設為 true。** 既有的聊天測試沒有一支關心驗證狀態，
+ * 讓它們全部去補一個參數是噪音；而未驗證是一個需要刻意製造的情境，
+ * 明確傳 `verified: false` 也讓那些測試自己說得出在驗什麼。
+ */
 export const seedUser = async (
   prisma: PrismaService,
   opts: {
@@ -70,6 +79,7 @@ export const seedUser = async (
     password: string;
     displayName?: string;
     status?: boolean;
+    verified?: boolean;
   },
 ): Promise<{ userId: string; email: string }> => {
   const user = await prisma.userRecord.create({
@@ -78,6 +88,7 @@ export const seedUser = async (
       password: await bcrypt.hash(opts.password, 4),
       displayName: opts.displayName ?? opts.email.split('@')[0],
       status: opts.status ?? true,
+      emailVerifiedAt: (opts.verified ?? true) ? new Date() : null,
     },
   });
   return { userId: user.id, email: user.email };

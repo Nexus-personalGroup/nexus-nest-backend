@@ -134,6 +134,11 @@ const HTTP_STATUS_VALUE: Record<string, number> = {
   CREATED: 201,
   ACCEPTED: 202,
   NO_CONTENT: 204,
+  // 重導也是一種「成功」：驗證信的連結驗完就 302 導回前台。
+  // 只認 2xx 的話，那種端點在 yaml 裡無法被記載成一個成功結果
+  FOUND: 302,
+  MOVED_PERMANENTLY: 301,
+  SEE_OTHER: 303,
 };
 
 /** NestJS 未指定 `@HttpCode` 時的預設成功狀態：POST 為 201，其餘為 200 */
@@ -188,9 +193,13 @@ export const successStatusFromControllers = (): Map<Route, number> => {
 };
 
 /**
- * 從 OpenAPI yaml 取出每條路由記載的 2xx 狀態碼
+ * 從 OpenAPI yaml 取出每條路由記載的成功狀態碼（2xx 與 3xx）
+ *
+ * **3xx 也算成功**：重導是一個正常的結果，而信箱驗證那支端點就是 302——
+ * 只認 2xx 會讓它在 yaml 裡怎麼寫都對不起來。
+ *
  * @param file - 相對 apps/api 的 yaml 路徑
- * @returns 路由 → 該路由記載的所有 2xx 狀態碼
+ * @returns 路由 → 該路由記載的所有成功狀態碼
  */
 export const successStatusFromOpenApi = (
   file: string,
@@ -214,7 +223,7 @@ export const successStatusFromOpenApi = (
 
       const success = Object.keys(responses)
         .map(Number)
-        .filter((code) => code >= 200 && code < 300);
+        .filter((code) => code >= 200 && code < 400);
 
       result.set(
         `${method.toUpperCase()} ${normalizePath(`${base}${path}`)}`,

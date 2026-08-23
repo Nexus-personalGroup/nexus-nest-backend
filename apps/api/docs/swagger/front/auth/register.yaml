@@ -1,0 +1,114 @@
+tags: [FrontAuth]
+summary: 前台註冊
+description: |
+  建立一個**信箱尚未驗證**的前台使用者，並寄出驗證信。無需認證。
+
+  **本端點刻意會揭露「這個信箱是否已註冊」（409）**，與底下的重發驗證信
+  和忘記密碼不同——那兩支一律回 204。不這樣做的話使用者收不到任何有用的回饋，
+  他會以為註冊成功然後永遠等不到信。而「這個信箱能不能註冊」本來就是
+  註冊表單必須回答的問題，藏不住。要擋的是**把它自動化**，那是限流的工作。
+
+  **已註冊但尚未驗證的信箱再次註冊**：回 409 並**重發一次驗證信到原信箱**，
+  不覆蓋既有帳號的任何欄位（尤其是密碼）。這是最常見的真實情境——
+  信進了垃圾信匣，於是使用者重新註冊一次。擋掉他等於逼他換信箱。
+
+  **回應不含 token**：註冊不等於登入，使用者要自己走登入流程。
+
+  信箱在比對與儲存前會正規化（去空白、轉小寫），
+  因此 `Foo@X.com` 與 `foo@x.com` 是同一個帳號。
+
+  寄信**不阻塞回應**：SMTP 連不上時走滿逾時會讓註冊看起來當掉。
+  寄送失敗只寫 log，不讓註冊本身失敗。
+
+requestBody:
+  required: true
+  content:
+    application/json:
+      schema:
+        type: object
+        required: [email, password, displayName]
+        properties:
+          email:
+            type: string
+            format: email
+            maxLength: 255
+          password:
+            type: string
+            maxLength: 128
+            description: 複雜度由密碼政策判定
+          displayName:
+            type: string
+            minLength: 1
+            maxLength: 50
+      example:
+        email: user@example.com
+        password: User1234!
+        displayName: 小明
+
+responses:
+  '201':
+    description: 註冊成功
+    content:
+      application/json:
+        schema:
+          type: object
+          required: [success, data, timestamp]
+          properties:
+            success:
+              type: boolean
+            data:
+              type: object
+              required: [id, email, displayName, avatarUrl, emailVerified]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                email:
+                  type: string
+                  format: email
+                displayName:
+                  type: string
+                avatarUrl:
+                  type: string
+                  nullable: true
+                emailVerified:
+                  type: boolean
+                  description: 註冊當下必然為 false
+            timestamp:
+              type: string
+              format: date-time
+  '400':
+    description: 欄位不符 schema，或密碼未通過政策
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 資料驗證失敗
+          code: VALIDATION_ERROR
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '409':
+    description: 該信箱已註冊（未驗證者會順便重發驗證信）
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 此 Email 已被使用
+          code: EMAIL_ALREADY_EXISTS
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '429':
+    description: 對該信箱的寄送過於頻繁
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 寄送過於頻繁，請稍後再試
+          code: EMAIL_SEND_RATE_LIMITED
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

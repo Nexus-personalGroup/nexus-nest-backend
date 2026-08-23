@@ -15,6 +15,11 @@ export interface UserContext {
   displayName: string;
   /** 帳號啟用狀態（false 時 Guard 會拒絕請求） */
   status: boolean;
+  /**
+   * 信箱是否已驗證。**每次請求重新解析，不快取在 token 裡**——
+   * 快取的話使用者驗證完還得重新登入才能聊天。
+   */
+  emailVerified: boolean;
   /** token 版本（refresh 重用連坐撤銷用） */
   tokenVersion?: number;
 }
@@ -25,5 +30,6 @@ export const UserContextSchema = z.object({
   email: z.string(),
   displayName: z.string(),
   status: z.boolean(),
+  emailVerified: z.boolean(),
   tokenVersion: z.number().optional(),
 });

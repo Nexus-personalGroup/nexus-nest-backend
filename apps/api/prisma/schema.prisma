@@ -364,6 +364,52 @@ model PasswordResetTokenRecord {
   @@map("password_reset_tokens")
 }
 
+/// 前台使用者的一次性 token 用途
+///
+/// 兩種用途共用一張表：欄位完全相同（雜湊、效期、使用時間、擁有者），
+/// 差別只在語意。拿錯用途的 token 由**查詢條件**擋——每一支消費 token 的
+/// service 都必須同時比對 purpose，少了它就能拿驗證信的 token 去改密碼
+enum UserTokenPurpose {
+  VERIFY_EMAIL
+  RESET_PASSWORD
+
+  @@map("user_token_purpose")
+}
+
+/// 前台使用者的一次性 token（信箱驗證與密碼重設）
+///
+/// 與後台的 `password_reset_tokens` 分開：那張綁 `member_id`，是另一個帳號體系。
+/// 三個決定沿用它（都已經想清楚過）：只存雜湊、使用後保留紀錄、成功後作廢同用途的其他 token
+model UserTokenRecord {
+  id String @id @default(uuid())
+
+  /// 擁有這個 token 的前台使用者
+  userId String @map("user_id")
+
+  /// token 的 **sha256 雜湊**，不是明文
+  ///
+  /// 寄給使用者的是明文，資料庫只留雜湊——資料庫外洩不等於可以驗證或重設任何人的帳號。
+  /// token 本身是高熵隨機值，單向雜湊即足夠，不需要 bcrypt 的加鹽與慢雜湊
+  token String @unique
+
+  purpose UserTokenPurpose
+
+  /// 失效時間。過期的 token 由排程依此欄位清理
+  expiresAt DateTime @map("expires_at") @db.Timestamptz(3)
+
+  /// 使用時間。非 null 即代表已作廢
+  ///
+  /// 使用後保留紀錄而非刪除，才查得到「這個 token 何時被誰用掉」
+  usedAt DateTime? @map("used_at") @db.Timestamptz(3)
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  // 帶 purpose：作廢與查詢一律以「某人的某種用途」為單位，沒有跨用途的操作
+  @@index([userId, purpose], map: "idx_user_tokens_user_purpose")
+  @@index([expiresAt], map: "idx_user_tokens_expires")
+  @@map("user_tokens")
+}
+
 /// 上傳檔案的中繼資料。實體檔案存在 local 或 S3，由 STORAGE_DRIVER 決定
 model AttachmentRecord {
   id String @id @default(uuid())

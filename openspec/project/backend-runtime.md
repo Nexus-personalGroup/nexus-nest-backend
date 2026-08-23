@@ -312,6 +312,39 @@ if (this.featureFlags.isEnabled('accountLockEnabled')) { ... }
 部署時間超過 refresh token 效期（預設 7 天）之後，所有流通中的 token 都會帶 `side`，
 屆時可把 `?? 'admin'` 改成 `!== 'admin'`。前台不需要這個相容——前台 secret 是新的。
 
+### 前台使用者的完整生命週期
+
+註冊（`POST /front/auth/register`）建立的帳號 `emailVerifiedAt` 為 null，
+必須點驗證信的連結才算完成。**未驗證的帳號能登入、看得到 `/front/me`，
+但聊天全部擋下**（三支 chat controller 掛 `EmailVerifiedGuard`，
+WS 在 `handleConnection` 檢查）——只擋 HTTP 不擋 WS 的話，
+未驗證的帳號雖然開不了房間，卻能連上去**收別人的廣播**。
+
+`UserContext.emailVerified` **每次請求重新解析，不快取在 token 裡**：
+快取的話使用者驗證完還得重新登入才能聊天。
+
+**五支端點裡有四支「一律成功」，只有註冊例外**：
+`resend-verification` / `forgot-password` 無論信箱是否存在都回 204，
+`verify-email` / `reset-password` 不區分無效與過期。
+註冊會回 `409` 揭露信箱已存在——不這樣的話使用者會以為成功然後永遠等不到信，
+而那個資訊本來就是註冊表單必須回答的。要擋的是把它自動化，那是限流的工作。
+
+**限流有兩層，缺一不可**：全域的 IP 限流擋不住分散式來源；
+`EMAIL_SEND_RATE_LIMIT`（每信箱）擋的是「拿這個服務對別人的信箱轟炸」，
+而那**只需要一個 IP**。額度**無論帳號存不存在都扣**——只對存在的帳號計數的話，
+Redis 的計數狀態就成了帳號探測的旁通道。
+
+一次性 token 存在 `user_tokens`，**只存 sha256 雜湊**，並帶 `purpose`
+（`VERIFY_EMAIL` / `RESET_PASSWORD`）。每一支消費 token 的 service
+**都必須帶 purpose 查詢**——少了它就能拿驗證信的 token 去改密碼。
+
+**信箱驗證是 GET 且帶副作用**：信件裡只能放連結，而連結只有 GET。
+代價是預抓與郵件安全掃描會提前把 token 用掉，因此**成功是冪等的**——
+已驗證的帳號再次點同一個連結仍導向 `result=success`。
+另外 `@Redirect()` 的 handler 必須被 `TransformInterceptor` 豁免，
+否則回傳值被包成 `{ success, data }`，Nest 讀不到 `url`，
+結果是**狀態碼對但 `Location` 是空的**，瀏覽器停在空白頁且沒有錯誤。
+
 **聊天的參與者一律是前台使用者。** `/api/front/chat-*` 三支 controller
 掛的是 `FrontJwtAuthGuard`，WS 連線走 `ResolveUserContextUseCase`——
 兩者都只吃前台 token。後台 token 打進來會 401 / 連線被拒，

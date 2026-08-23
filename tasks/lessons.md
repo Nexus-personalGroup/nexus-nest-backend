@@ -677,3 +677,19 @@ const taipeiMidnightUtc = new Date(
 **Why**：`swagger-cli bundle` 會把重複的 `$ref` 目標收斂到**第一個出現的地方**，而那個地方如果在 `allOf` 裡面，openapi-typescript 就產不出可用的具名型別。
 
 **How to apply**：共用的 `_*.yaml` **只給一處 `$ref`，第二處直接 inline**。`moderation/room-detail.yaml` 的註解裡早就記著同一個坑——這次是沒去看。另外：改完 swagger 一定要跑 `pnpm --filter @app/web typecheck`，那是唯一抓得到這個錯的地方。
+
+### 2026-08-24 — python 就地改檔寫兩次，第二次會蓋掉第一次
+
+**踩到什麼**：用一支 python 腳本改 `ChatGateway`，先 `p.write_text(s.replace(a, b))` 寫入「未驗證不能連線」的檢查，接著在同一支腳本裡繼續 `s = s.replace(c, d)` 改文件註解，再 `p.write_text(s)`。第二次寫入用的是**還沒套用第一次替換的 `s`**，把整段檢查蓋掉了。腳本印出 `ok`、typecheck 綠、lint 綠、單元測試綠——**只有那支整合測試會紅**，而它是三塊之後才寫的。
+
+**Why**：`str.replace` 回傳新字串、不改原字串。`p.write_text(s.replace(...))` 這種寫法把結果直接送進檔案，本地變數 `s` 仍然是舊的，後續任何以 `s` 為基礎的寫入都會回退第一次的修改。
+
+**How to apply**：**一支腳本只在最後寫一次檔**。中間的每一次替換都寫回 `s`（`s = s.replace(...)`），最後才 `p.write_text(s)`。更一般的：多處編輯同一個檔時用 `Edit` 工具（它會因為找不到 old_string 而失敗），不要用「多次 write」的腳本——後者失敗時是靜默的。
+
+### 2026-08-24 — `@Redirect()` 會被回應包裝 interceptor 吃掉
+
+**踩到什麼**：信箱驗證端點 `GET /verify-email` 用 `@Redirect()` 回傳 `{ url }`，實際跑起來狀態碼是對的 `302`，但 **`Location` header 是空的**，瀏覽器停在一個空白頁上，沒有任何錯誤訊息。
+
+**Why**：全域的 `TransformInterceptor` 把所有回傳值包成 `{ success, data, timestamp }`。Nest 的 redirect 是在 interceptor **之後**才讀回傳值的 `url`，包完之後 `url` 跑到 `data.url` 裡，它讀不到就不設 header。`@Render()` 早就因為完全相同的理由被豁免了——`@Redirect()` 只是在這之前沒有人用過。
+
+**How to apply**：任何「回傳值有特殊語意」的 Nest 裝飾器（`@Render` / `@Redirect` / `@Sse`）都要在回應包裝的 interceptor 裡豁免。加新的這類端點時，**先去看那支 interceptor 有沒有涵蓋**。判準：這個裝飾器是不是靠讀回傳值的形狀在運作。

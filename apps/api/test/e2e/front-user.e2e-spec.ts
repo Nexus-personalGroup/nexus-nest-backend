@@ -230,11 +230,19 @@ describe('FrontUser E2E', () => {
     });
 
     it('verified=false 只回未驗證的', async () => {
+      // 明確建一個未驗證的：seedUser 預設已驗證，
+      // 未驗證是要刻意製造的情境（否則這支測試會依賴 helper 的預設值而不是自己的意圖）
+      await seedUser(prisma, {
+        email: 'pending@test.com',
+        password: USER_PASSWORD,
+        verified: false,
+      });
+
       const res = await list('?verified=false');
 
       const { list: rows } = (res.body as ListBody).data;
       expect(rows).toHaveLength(1);
-      expect(rows[0].email).toBe('suspended@test.com');
+      expect(rows[0].email).toBe('pending@test.com');
     });
 
     it('條件取交集', async () => {

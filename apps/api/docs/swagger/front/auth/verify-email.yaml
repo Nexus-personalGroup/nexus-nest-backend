@@ -1,0 +1,52 @@
+tags: [FrontAuth]
+summary: 信箱驗證
+description: |
+  驗證信裡的連結指向這裡。驗完 **302 導回前台**：
+  `{APP_FRONT_URL}{APP_FRONT_VERIFY_REDIRECT_PATH}?result=success|invalid|expired`。
+
+  **GET 且帶副作用，這是刻意的**——信件裡只能放連結，而連結只有 GET。
+  代價是**預抓（prefetch）與郵件安全掃描會提前把 token 用掉**，
+  因此**驗證成功是冪等的**：已驗證的帳號再次帶同一個 token 進來仍回
+  `result=success`，而不是失敗。使用者什麼都沒做錯，不該看到失敗。
+
+  **本端點不回 JSON 錯誤**：使用者是從信件點進來的，看到一段 JSON
+  只會不知道發生什麼事。失敗一樣是 302，只是 `result` 不同。
+
+  無效、過期、用途不符（拿密碼重設的 token 來驗證信箱）一律導向失敗，
+  且不透露帳號是否存在。
+
+parameters:
+  - name: token
+    in: query
+    required: true
+    schema:
+      type: string
+      maxLength: 255
+    description: 信件連結帶入的明文 token
+
+responses:
+  '302':
+    description: |
+      一律導回前台，以 query 的 `result` 表示結果：
+
+      - `success` — 驗證完成（或本來就已驗證）
+      - `expired` — token 過期
+      - `invalid` — token 不存在、用途不符，或帳號已不存在
+    headers:
+      Location:
+        schema:
+          type: string
+        description: '例：https://front.example.com/verify-email?result=success'
+  '400':
+    description: 未帶 token
+    content:
+      application/json:
+        schema:
+          $ref: '../openapi.yaml#/components/schemas/ErrorResponse'
+        example:
+          success: false
+          message: 資料驗證失敗
+          code: VALIDATION_ERROR
+          timestamp: '2026-08-24T06:00:00.000Z'
+  '500':
+    $ref: '../openapi.yaml#/components/responses/InternalServerError'

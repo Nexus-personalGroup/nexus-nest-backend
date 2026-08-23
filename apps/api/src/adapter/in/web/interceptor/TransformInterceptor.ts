@@ -9,6 +9,8 @@ import { Observable, map } from 'rxjs';
 
 /** NestJS 內部 @Render() 使用的 metadata key */
 const RENDER_METADATA = '__renderTemplate__';
+/** NestJS 內部 @Redirect() 使用的 metadata key */
+const REDIRECT_METADATA = '__redirect__';
 
 export interface ApiSuccessResponse<T> {
   success: true;
@@ -34,6 +36,17 @@ export class TransformInterceptor<T> implements NestInterceptor<
       context.getHandler(),
     );
     if (renderTemplate) {
+      return next.handle();
+    }
+
+    // @Redirect 同理：Nest 讀的是回傳值的 `url`，包成 { success, data } 之後
+    // 它就找不到了——結果是狀態碼對、**Location header 卻是空的**，
+    // 而瀏覽器停在一個空白頁上，沒有任何錯誤。信箱驗證那支端點踩過這個坑
+    const redirect = this.reflector.get<unknown>(
+      REDIRECT_METADATA,
+      context.getHandler(),
+    );
+    if (redirect) {
       return next.handle();
     }
 

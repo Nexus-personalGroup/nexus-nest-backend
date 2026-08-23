@@ -7,6 +7,7 @@ import { AbstractLoader } from '@nestjs/serve-static/dist/loaders/abstract.loade
 import { ExpressLoader } from '@nestjs/serve-static/dist/loaders/express.loader';
 import { AppModule } from '@app/app.module';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
+import { SEND_EMAIL_PORT } from '@app/application/port/out/shared/SendEmailPort';
 import { SAVE_SYSTEM_LOG_PORT } from '@app/application/port/out/shared/SaveSystemLogPort';
 
 export interface TestAppOverrides {
@@ -19,7 +20,43 @@ export interface TestAppOverrides {
    * httpAdapter 時會選到 NoopLoader（不服務靜態檔）；驗證單一埠靜態服務時設 true 對齊生產。
    */
   forceServeStatic?: boolean;
+  /**
+   * 覆寫寄信 port。
+   *
+   * 驗證信與密碼重設的 token **只有明文才用得了**，而資料庫只存 sha256 雜湊——
+   * 要在測試裡走完整條流程，唯一的取得方式就是攔截寄出去的那封信。
+   * 這也順帶驗到了「信裡真的有一個可用的連結」，那是 e2e 之外沒有東西在守的。
+   */
+  sendEmail?: { sendMail: jest.Mock };
 }
+
+/**
+ * 攔截寄出的信，並從內文取出 token。
+ *
+ * 回傳的 `lastToken()` 讀的是**最後一封**：重發之後舊 token 會被作廢，
+ * 測試關心的永遠是最新那一封。
+ */
+export const createMailCatcher = (): {
+  sendMail: jest.Mock;
+  lastToken: () => string | null;
+  lastHtml: () => string;
+  count: () => number;
+} => {
+  const sent: string[] = [];
+  const sendMail = jest.fn((payload: { html?: string }) => {
+    sent.push(payload.html ?? '');
+    return Promise.resolve();
+  });
+  return {
+    sendMail,
+    lastToken: () => {
+      const html = sent[sent.length - 1] ?? '';
+      return /[?&]token=([A-Za-z0-9]+)/.exec(html)?.[1] ?? null;
+    },
+    lastHtml: () => sent[sent.length - 1] ?? '',
+    count: () => sent.length,
+  };
+};
 
 /**
  * 每次呼叫回傳全新獨立的 Redis mock 實例，
@@ -82,6 +119,10 @@ export async function createE2EApp(overrides: TestAppOverrides = {}): Promise<{
     .useValue(mockRedis)
     .overrideProvider(SAVE_SYSTEM_LOG_PORT)
     .useValue(mockLog);
+
+  if (overrides.sendEmail) {
+    builder.overrideProvider(SEND_EMAIL_PORT).useValue(overrides.sendEmail);
+  }
 
   if (overrides.forceServeStatic) {
     builder.overrideProvider(AbstractLoader).useClass(ExpressLoader);

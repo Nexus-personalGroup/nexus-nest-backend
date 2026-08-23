@@ -214,6 +214,26 @@ paths:
     post:
       $ref: './auth/login.yaml'
 
+  /auth/register:
+    post:
+      $ref: './auth/register.yaml'
+
+  /auth/verify-email:
+    get:
+      $ref: './auth/verify-email.yaml'
+
+  /auth/resend-verification:
+    post:
+      $ref: './auth/resend-verification.yaml'
+
+  /auth/forgot-password:
+    post:
+      $ref: './auth/forgot-password.yaml'
+
+  /auth/reset-password:
+    post:
+      $ref: './auth/reset-password.yaml'
+
   /auth/refresh:
     post:
       $ref: './auth/refresh.yaml'

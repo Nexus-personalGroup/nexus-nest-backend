@@ -21,7 +21,16 @@ responses:
               type: boolean
             data:
               type: object
-              required: [id, email, displayName, avatarUrl, emailVerifiedAt, createdAt]
+              required:
+                [
+                  id,
+                  email,
+                  displayName,
+                  avatarUrl,
+                  emailVerified,
+                  emailVerifiedAt,
+                  createdAt,
+                ]
               properties:
                 id:
                   type: string
@@ -34,11 +43,16 @@ responses:
                 avatarUrl:
                   type: string
                   nullable: true
+                emailVerified:
+                  type: boolean
+                  description: |
+                    信箱是否已驗證。**本端點刻意不受驗證門檻限制**——
+                    使用者要看得到自己的狀態才知道卡在哪、該去點哪一封信
                 emailVerifiedAt:
                   type: string
                   format: date-time
                   nullable: true
-                  description: null 表示信箱尚未驗證
+                  description: 驗證的時間；null 表示尚未驗證
                 createdAt:
                   type: string
                   format: date-time

@@ -84,6 +84,13 @@ export interface LoadUserPort {
   /** 未軟刪除的前台使用者總數 */
   countUsers(): Promise<number>;
   /**
+   * 該信箱是否已註冊。
+   *
+   * 呼叫端傳入的 email MUST 已正規化（小寫、去空白），
+   * 否則 `Foo@x.com` 會被判定為「沒註冊過」然後撞上 unique 約束。
+   */
+  existsByEmail(email: string): Promise<boolean>;
+  /**
    * 後台的分頁列表。多個條件同時給定時取交集，未給定的條件不過濾。
    *
    * 排序固定 `createdAt DESC`，不接受排序參數：可排序的欄位一旦開放

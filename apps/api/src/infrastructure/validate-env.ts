@@ -318,6 +318,34 @@ const envSchema = z.object({
     .default(30),
   APP_PASSWORD_RESET_URL: z.string().optional(),
 
+  // ─── 前台（獨立 repo）的落點與 token 效期 ───
+  /**
+   * 前台網站的根位址。驗證信的連結由後端接、驗完 302 導回這裡。
+   *
+   * production 必填（見 productionErrors）：沒有它，導向目標會變成
+   * `undefined/verify-email`，而使用者看到的是一個壞掉的連結而非錯誤訊息。
+   */
+  APP_FRONT_URL: z.string().default('http://localhost:5174'),
+  /** 導回前台時的路徑；後端會在其後接上 `?result=success|invalid|expired` */
+  APP_FRONT_VERIFY_REDIRECT_PATH: z.string().default('/verify-email'),
+  /**
+   * 驗證信 token 的效期（秒）。預設 24 小時。
+   *
+   * 偏短是安全的方向：重發的成本很低，而一封被轉寄的信不該長期有效。
+   */
+  EMAIL_VERIFICATION_EXPIRES_IN: z.coerce.number().int().min(1).default(86400),
+  /** 前台密碼重設 token 的效期（秒）。預設 1 小時 */
+  FRONT_PASSWORD_RESET_EXPIRES_IN: z.coerce.number().int().min(1).default(3600),
+  /**
+   * 同一信箱在視窗內可收到幾封同類型的信。
+   *
+   * 與 IP 限流是**兩層**：IP 擋不住分散式來源，信箱擋不住「一個 IP 對一萬個信箱
+   * 各發一封」。少了信箱這一層，任何人都能拿這個服務對別人的信箱轟炸。
+   */
+  EMAIL_SEND_RATE_LIMIT: z.coerce.number().int().min(1).default(3),
+  /** 寄信限流的視窗（秒）。預設 15 分鐘 */
+  EMAIL_SEND_RATE_WINDOW_SEC: z.coerce.number().int().min(1).default(900),
+
   // ─── Seed 預設帳號 ───
   ADMIN_DEFAULT_EMAIL: z.string().default('admin@test.com'),
   ADMIN_DEFAULT_PASSWORD: z.string().default('Admin1234!'),
@@ -536,6 +564,13 @@ export const getEnv = (): Env => {
     }
     if (_env.FRONT_REFRESH_SECRET === _env.REFRESH_SECRET) {
       productionErrors.push('FRONT_REFRESH_SECRET: 不可與 REFRESH_SECRET 相同');
+    }
+    // 驗證信的連結指向這裡；留著 localhost 的話寄出去的信全部是壞的，
+    // 而寄信本身不會失敗——沒有這道檢查就不會有任何徵兆
+    if (_env.APP_FRONT_URL.includes('localhost')) {
+      productionErrors.push(
+        'APP_FRONT_URL: 生產環境必須指向實際的前台網址，驗證信的連結由它組成',
+      );
     }
     if (
       _env.COOKIE_SECRET.includes('change-in-production') ||

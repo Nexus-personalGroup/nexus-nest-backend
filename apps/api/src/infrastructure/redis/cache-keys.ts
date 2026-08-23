@@ -53,6 +53,18 @@ export const buildPresenceKey = (prefix: string, memberId: string): string =>
 export const buildOnlineMembersKey = (prefix: string): string =>
   `${prefix}presence:online-members`;
 
+/**
+ * 「對某信箱寄某種信」的限流計數器。
+ *
+ * email 由呼叫端正規化後傳入——大小寫不同的同一個信箱必須共用同一份額度，
+ * 否則 `Foo@x.com` 與 `foo@x.com` 各拿一份，限流形同虛設。
+ */
+export const buildEmailSendRateKey = (
+  prefix: string,
+  purpose: string,
+  email: string,
+): string => `${prefix}email-rate:${purpose}:${email}`;
+
 /** 掃描所有 presence key 的 pattern，供排程 sweep 使用（不可用於請求路徑） */
 export const buildPresenceScanPattern = (prefix: string): string =>
   `${prefix}presence:member:*`;

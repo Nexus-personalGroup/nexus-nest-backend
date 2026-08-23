@@ -4,11 +4,13 @@ import { RedisTokenBlacklistAdapter } from '../adapter/out/redis/RedisTokenBlack
 import { RedisMemberContextCacheAdapter } from '../adapter/out/redis/RedisMemberContextCacheAdapter';
 import { RedisSessionActivityAdapter } from '../adapter/out/redis/RedisSessionActivityAdapter';
 import { RedisPresenceAdapter } from '../adapter/out/redis/RedisPresenceAdapter';
+import { RedisEmailSendRateLimitAdapter } from '../adapter/out/redis/RedisEmailSendRateLimitAdapter';
 import { TOKEN_BLACKLIST_PORT } from '../application/port/out/auth/TokenBlacklistPort';
 import { CLEAR_MEMBER_CONTEXT_PORT } from '../application/port/out/member/ClearMemberContextPort';
 import { MEMBER_CONTEXT_CACHE_PORT } from '../application/port/out/member/MemberContextCachePort';
 import { SESSION_ACTIVITY_PORT } from '../application/port/out/auth/SessionActivityPort';
 import { PRESENCE_PORT } from '../application/port/out/presence/PresencePort';
+import { EMAIL_SEND_RATE_LIMIT_PORT } from '../application/port/out/shared/EmailSendRateLimitPort';
 
 /**
  * @Global() — 所有 Redis-backed Port 在此統一提供，
@@ -36,6 +38,11 @@ import { PRESENCE_PORT } from '../application/port/out/presence/PresencePort';
     },
     RedisPresenceAdapter,
     { provide: PRESENCE_PORT, useExisting: RedisPresenceAdapter },
+    RedisEmailSendRateLimitAdapter,
+    {
+      provide: EMAIL_SEND_RATE_LIMIT_PORT,
+      useExisting: RedisEmailSendRateLimitAdapter,
+    },
   ],
   exports: [
     RedisService,
@@ -44,6 +51,7 @@ import { PRESENCE_PORT } from '../application/port/out/presence/PresencePort';
     MEMBER_CONTEXT_CACHE_PORT,
     SESSION_ACTIVITY_PORT,
     PRESENCE_PORT,
+    EMAIL_SEND_RATE_LIMIT_PORT,
   ],
 })
 export class RedisModule {}
