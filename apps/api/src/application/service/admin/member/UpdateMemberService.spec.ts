@@ -3,7 +3,7 @@ import { UpdateMemberService } from './UpdateMemberService';
 import { LoadMemberPort } from '../../../port/out/member/LoadMemberPort';
 import { SaveMemberPort } from '../../../port/out/member/SaveMemberPort';
 import { LoadRolePort } from '../../../port/out/role/LoadRolePort';
-import { ClearMemberContextPort } from '../../../port/out/member/ClearMemberContextPort';
+import { MemberContextCachePort } from '../../../port/out/member/MemberContextCachePort';
 import { PasswordPolicyService } from '../../shared/PasswordPolicyService';
 import { Member } from '@app/domain/model/Member';
 import { CannotDisableSelfException } from '@app/domain/exception/CannotDisableSelfException';
@@ -69,9 +69,9 @@ const mockLoadRole = {
   findActiveRoleOption: jest.fn(),
 } as jest.Mocked<LoadRolePort>;
 
-const mockClearMemberContext = {
-  clearMemberContext: jest.fn(),
-} as jest.Mocked<ClearMemberContextPort>;
+const mockMemberContextCache = {
+  clearByMemberId: jest.fn(),
+} as unknown as jest.Mocked<MemberContextCachePort>;
 
 const makePasswordPolicy = () => {
   const svc = new PasswordPolicyService();
@@ -84,7 +84,7 @@ const makeService = () =>
     mockLoadMember,
     mockSaveMember,
     mockLoadRole,
-    mockClearMemberContext,
+    mockMemberContextCache,
     10,
     makePasswordPolicy(),
     mockRevokeSessions,
@@ -290,7 +290,7 @@ describe('UpdateMemberService', () => {
       status: true,
     });
 
-    expect(mockClearMemberContext.clearMemberContext).toHaveBeenCalledWith(
+    expect(mockMemberContextCache.clearByMemberId).toHaveBeenCalledWith(
       MEMBER_ID,
     );
   });
@@ -303,7 +303,7 @@ describe('UpdateMemberService', () => {
     });
 
     expect(mockSaveMember.updateMember).toHaveBeenCalledTimes(1);
-    expect(mockClearMemberContext.clearMemberContext).toHaveBeenCalledWith(
+    expect(mockMemberContextCache.clearByMemberId).toHaveBeenCalledWith(
       MEMBER_ID,
     );
   });

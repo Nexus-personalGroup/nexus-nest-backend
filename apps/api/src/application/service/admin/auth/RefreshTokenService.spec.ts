@@ -4,6 +4,7 @@ import { TokenBlacklistPort } from '../../../port/out/auth/TokenBlacklistPort';
 import { LoadMemberContextPort } from '../../../port/out/member/LoadMemberContextPort';
 import { SaveAuthLogPort } from '../../../port/out/auth/SaveAuthLogPort';
 import { SaveMemberPort } from '../../../port/out/member/SaveMemberPort';
+import { MemberContextCachePort } from '../../../port/out/member/MemberContextCachePort';
 import { FeatureFlagService } from '../../shared/FeatureFlagService';
 import { InvalidRefreshTokenException } from '@app/domain/exception/InvalidRefreshTokenException';
 import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
@@ -36,7 +37,7 @@ describe('RefreshTokenService', () => {
   let saveAuthLog: jest.Mocked<SaveAuthLogPort>;
   let featureFlags: { isEnabled: jest.Mock };
   let saveMember: { incrementTokenVersion: jest.Mock };
-  let clearMemberContext: { clearMemberContext: jest.Mock };
+  let memberContextCache: { clearByMemberId: jest.Mock };
 
   beforeEach(() => {
     jwt = {
@@ -54,7 +55,7 @@ describe('RefreshTokenService', () => {
     saveAuthLog = { saveAuthLog: jest.fn() };
     featureFlags = { isEnabled: jest.fn().mockReturnValue(false) };
     saveMember = { incrementTokenVersion: jest.fn() };
-    clearMemberContext = { clearMemberContext: jest.fn() };
+    memberContextCache = { clearByMemberId: jest.fn() };
 
     service = new RefreshTokenService(
       jwt as unknown as JwtService,
@@ -63,7 +64,7 @@ describe('RefreshTokenService', () => {
       saveAuthLog,
       featureFlags as unknown as FeatureFlagService,
       saveMember as unknown as SaveMemberPort,
-      clearMemberContext,
+      memberContextCache as unknown as MemberContextCachePort,
     );
   });
 
@@ -99,7 +100,7 @@ describe('RefreshTokenService', () => {
       service.execute({ refreshToken: 'reused' }),
     ).rejects.toBeInstanceOf(InvalidRefreshTokenException);
     expect(saveMember.incrementTokenVersion).toHaveBeenCalledWith(MEMBER_UUID);
-    expect(clearMemberContext.clearMemberContext).toHaveBeenCalledWith(
+    expect(memberContextCache.clearByMemberId).toHaveBeenCalledWith(
       MEMBER_UUID,
     );
     expect(blacklist.addToBlacklist).not.toHaveBeenCalled();
@@ -115,7 +116,7 @@ describe('RefreshTokenService', () => {
       service.execute({ refreshToken: 'logged-out' }),
     ).rejects.toBeInstanceOf(InvalidRefreshTokenException);
     expect(saveMember.incrementTokenVersion).not.toHaveBeenCalled();
-    expect(clearMemberContext.clearMemberContext).not.toHaveBeenCalled();
+    expect(memberContextCache.clearByMemberId).not.toHaveBeenCalled();
   });
 
   // 舊格式紀錄（改用 reason 之前寫入的值 '1'）代表「在黑名單但原因不明」。
@@ -129,7 +130,7 @@ describe('RefreshTokenService', () => {
       service.execute({ refreshToken: 'legacy-format' }),
     ).rejects.toBeInstanceOf(InvalidRefreshTokenException);
     expect(saveMember.incrementTokenVersion).not.toHaveBeenCalled();
-    expect(clearMemberContext.clearMemberContext).not.toHaveBeenCalled();
+    expect(memberContextCache.clearByMemberId).not.toHaveBeenCalled();
   });
 
   it('payload.tokenVersion 與現值不符 → InvalidRefreshTokenException', async () => {

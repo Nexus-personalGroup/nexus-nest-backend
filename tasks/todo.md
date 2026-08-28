@@ -29,7 +29,7 @@
 | 4 | ~~`migrate-chat-to-front-users`~~ | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 已合併（#23） |
 | 5 | ~~`add-admin-front-user-management`~~ | 後台的前台使用者管理：列表／搜尋／詳情／停權／解除／強制登出。**解除了「進入點只有檢舉」的限制** | 已合併（#24） |
 | 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設；未驗證不能聊天 | **待合併** |
-| 6 | `fix-permission-cache-consistency` | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 未開始 |
+| 6 | ~~`fix-permission-cache-consistency`~~ | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | **待合併** |
 | 7 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
 
 **2 排在 3 之前的理由**：`countOnlineMembers` 是我自己剛加的錯（用了明確標注
@@ -117,7 +117,7 @@
 
 ### 觀察中
 
-- **e2e 有間歇性失敗**：**已發生 7 次**，皆重跑後全綠。
+- **e2e 有間歇性失敗**：**已發生 8 次**，皆重跑後全綠。
   **第 4 次（2026-08-21，`add-admin-message-removal`）終於抓到證據**：
 
   ```
@@ -206,6 +206,31 @@
   **下次的具體實驗**：`pnpm test:cov && pnpm --filter @app/api test:e2e` 連跑 5 次，
   對照單獨 `test:e2e` 連跑 5 次。若只有前者會壞，就去看 jest 的 `--detectOpenHandles`
   與 Prisma 連線池的釋放時機。**在有證據之前仍然不改。**
+
+  **第 8 次（2026-08-28，`fix-permission-cache-consistency`）——症狀與第 6 次相同**：
+
+  ```
+  ● ChatReport E2E › 重複檢舉 → 回同一個 reportId，DB 只有一筆
+      TypeError: Cannot read properties of undefined (reading 'accessToken')
+      at login (test/e2e/chat-report.e2e-spec.ts:35:65)
+  ```
+
+  又是「登入回應沒有 `data`」——第 6 次三支失敗中的一支就是這個症狀。
+
+  **這次做了對照，第 7 次留下的實驗有了第一筆資料**：
+
+  | 執行 | 結果 |
+  | --- | --- |
+  | 完整 e2e（含本 change 的改動） | ChatReport 1 支失敗，387/388 |
+  | 單獨跑 `chat-report` | 11/11 全綠 |
+  | **改動全部 `git stash` 後跑完整 e2e** | **384/384 全綠** |
+  | 改動 `stash pop` 還原後再跑完整 e2e | **388/388 全綠** |
+
+  **關鍵是最後一列**：同樣的程式碼，同樣的完整套件，第一次紅、第二次綠。
+  這排除了「本次改動造成」，也再次確認**不可重現**。
+  值得記的是這次的失敗執行**不在指令鏈裡**——是單獨的 `pnpm test:e2e`，
+  而前面幾次累積的共同點正是「跟在 `test:cov` 後面」。
+  **那個共同點被這次推翻了**，第 7 次寫下的實驗設計因此需要重新想。
 
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 

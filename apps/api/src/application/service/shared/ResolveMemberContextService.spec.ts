@@ -31,6 +31,8 @@ const mockTokenBlacklist: jest.Mocked<TokenBlacklistPort> = {
 const mockMemberContextCache: jest.Mocked<MemberContextCachePort> = {
   getByMemberId: jest.fn(),
   setByMemberId: jest.fn(),
+  clearByMemberId: jest.fn(),
+  clearMany: jest.fn(),
   isAvailable: true,
 };
 

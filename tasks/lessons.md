@@ -219,6 +219,36 @@ export {};
 
 ## 測試
 
+### 2026-08 — 無狀態的 Redis mock 會讓「快取過時了嗎」的測試變成空的
+
+**踩到什麼**：要驗「改完角色權限，既有 token 的下一個請求就被擋」，
+照既有 e2e 的寫法用 `createMockRedis()`——測試綠了，但**把修正整段拿掉它照樣綠**。
+
+**Why**：`createMockRedis()` 的 `get` 永遠 `mockResolvedValue(null)`，
+MemberContext 快取因此**永遠不命中**，每個請求都重新查 DB。
+「快取有沒有被清掉」在這個 mock 之下沒有可觀察的差別——
+測的其實只有「DB 寫進去了嗎」，而那本來就會過。
+
+**How to apply**：驗快取失效行為時必須讓寫進去的值讀得回來——
+另開一個 Map-backed 的 `createStatefulMockRedis()`（`test/setup/test-app.ts`），
+**不要改 `createMockRedis()`**，其他 spec 依賴它「每次都重查 DB」的無狀態行為。
+判準通用：**mock 掉的東西如果正是被測行為的載體，測試就是空的**——
+寫完先把修正拿掉跑一次，紅了才算數。
+
+### 2026-08 — 只驗「破壞後會紅」不夠，要連「還原後會綠」一起驗
+
+**踩到什麼**：反向驗證時把清快取改成 `if (command.permissionCodes !== undefined)`，
+確認對應的測試變紅就收工——但沒回頭確認還原之後全部回綠。
+中途用 `cp` 還原時被 shell 的 `cp -i` alias 擋在互動提示上（指令背景化、看起來像跑完了），
+差一點把破壞版本留在工作區。
+
+**Why**：反向驗證會實際改動原始碼，而「改回去」這一步沒有任何東西在檢查。
+zsh 常見的 `cp`/`rm` 互動 alias 會讓還原**靜默失敗**——
+指令卡在提示而不是報錯，exit code 也不會告訴你。
+
+**How to apply**：反向驗證一律**兩邊都跑**：破壞後紅、還原後綠，兩個 exit code 都要看到。
+腳本裡用 `command cp -f` / `rm -f` 繞過 alias。
+
 ### 2026-07 — 物件組態的 Prisma 跑真 DB e2e：runtime 與 migrate CLI 吃的組態不是同一套
 
 **踩到什麼**：runtime 用 `PrismaMariaDb({ host, user, password, database })` 物件組態（無 `DATABASE_URL`），但 e2e 的 `global-setup` 要跑 `prisma migrate deploy` 建測試庫的表——**CLI 只吃 `DATABASE_URL`**。

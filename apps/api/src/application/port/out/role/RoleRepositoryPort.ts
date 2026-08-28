@@ -45,4 +45,10 @@ export interface RoleRepositoryPort {
   ): Promise<void>;
   softDelete(id: string): Promise<void>;
   countMembers(id: string): Promise<number>;
+  /**
+   * 列出隸屬於該角色的成員 ID（排除軟刪除）
+   * @param id - 角色 ID
+   * @returns 成員 ID 陣列；角色沒有成員時為空陣列
+   */
+  findMemberIdsByRole(id: string): Promise<string[]>;
 }

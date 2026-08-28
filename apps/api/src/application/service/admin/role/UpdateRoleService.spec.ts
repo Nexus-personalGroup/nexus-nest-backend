@@ -4,6 +4,7 @@ import {
   RoleRepositoryPort,
 } from '../../../port/out/role/RoleRepositoryPort';
 import { PermissionRepositoryPort } from '../../../port/out/role/PermissionRepositoryPort';
+import { MemberContextCachePort } from '../../../port/out/member/MemberContextCachePort';
 import { RoleNotFoundException } from '@app/domain/exception/RoleNotFoundException';
 import { DefaultRoleNotEditableException } from '@app/domain/exception/DefaultRoleNotEditableException';
 import { DuplicateRoleNameException } from '@app/domain/exception/DuplicateRoleNameException';
@@ -30,6 +31,7 @@ const mockRoleRepo = {
   updateWithPermissions: jest.fn(),
   softDelete: jest.fn(),
   countMembers: jest.fn(),
+  findMemberIdsByRole: jest.fn(),
 } as jest.Mocked<RoleRepositoryPort>;
 
 const mockPermissionRepo = {
@@ -39,11 +41,24 @@ const mockPermissionRepo = {
   replacePermissions: jest.fn(),
 } as jest.Mocked<PermissionRepositoryPort>;
 
+const mockMemberContextCache = {
+  getByMemberId: jest.fn(),
+  setByMemberId: jest.fn(),
+  clearByMemberId: jest.fn(),
+  clearMany: jest.fn(),
+  isAvailable: true,
+} as unknown as jest.Mocked<MemberContextCachePort>;
+
 const makeService = () =>
-  new UpdateRoleService(mockRoleRepo, mockPermissionRepo);
+  new UpdateRoleService(
+    mockRoleRepo,
+    mockPermissionRepo,
+    mockMemberContextCache,
+  );
 
 beforeEach(() => {
   jest.clearAllMocks();
+  mockRoleRepo.findMemberIdsByRole.mockResolvedValue([]);
 });
 
 describe('UpdateRoleService', () => {
@@ -155,5 +170,93 @@ describe('UpdateRoleService', () => {
       undefined,
       undefined,
     );
+  });
+
+  describe('成員快取清除', () => {
+    it('清的是該角色的成員', async () => {
+      mockRoleRepo.findById.mockResolvedValue(makeRole());
+      mockRoleRepo.findMemberIdsByRole.mockResolvedValue(['m-1', 'm-2']);
+      mockPermissionRepo.findByCodes.mockResolvedValue([]);
+
+      await makeService().execute({ id: ROLE_ID, permissionCodes: [] });
+
+      expect(mockRoleRepo.findMemberIdsByRole).toHaveBeenCalledWith(ROLE_ID);
+      expect(mockMemberContextCache.clearMany).toHaveBeenCalledWith([
+        'm-1',
+        'm-2',
+      ]);
+    });
+
+    // 一律清（design D6）：不判斷「這次改的是不是授權」——MemberContext 也帶 roleName
+    it('只改名稱也要清', async () => {
+      mockRoleRepo.findById.mockResolvedValue(makeRole());
+      mockRoleRepo.findByName.mockResolvedValue(null);
+      mockRoleRepo.findMemberIdsByRole.mockResolvedValue(['m-1']);
+
+      await makeService().execute({ id: ROLE_ID, name: '審核人員' });
+
+      expect(mockMemberContextCache.clearMany).toHaveBeenCalledWith(['m-1']);
+    });
+
+    it('只切換 status 也要清', async () => {
+      mockRoleRepo.findById.mockResolvedValue(makeRole());
+      mockRoleRepo.findMemberIdsByRole.mockResolvedValue(['m-1']);
+
+      await makeService().execute({ id: ROLE_ID, status: false });
+
+      expect(mockMemberContextCache.clearMany).toHaveBeenCalledWith(['m-1']);
+    });
+
+    it('角色沒有成員時仍呼叫清除，但帶空陣列', async () => {
+      mockRoleRepo.findById.mockResolvedValue(makeRole());
+      mockRoleRepo.findMemberIdsByRole.mockResolvedValue([]);
+
+      await makeService().execute({ id: ROLE_ID, status: false });
+
+      expect(mockMemberContextCache.clearMany).toHaveBeenCalledWith([]);
+    });
+
+    // 順序不可顛倒：先清再寫的話，中間那一瞬間的請求會把舊值重新快取回去
+    it('清除發生在 updateWithPermissions 之後', async () => {
+      const order: string[] = [];
+      mockRoleRepo.findById.mockResolvedValue(makeRole());
+      mockRoleRepo.updateWithPermissions.mockImplementation(() => {
+        order.push('update');
+        return Promise.resolve();
+      });
+      mockRoleRepo.findMemberIdsByRole.mockResolvedValue(['m-1']);
+      mockMemberContextCache.clearMany.mockImplementation(() => {
+        order.push('clear');
+        return Promise.resolve();
+      });
+
+      await makeService().execute({ id: ROLE_ID, status: false });
+
+      expect(order).toEqual(['update', 'clear']);
+    });
+
+    // 失敗不吞（design D4）：語意是「權限改了但沒有生效」，
+    // 回成功會讓呼叫端處於一個他不知道的狀態
+    it('清除失敗會讓 execute 拋出', async () => {
+      mockRoleRepo.findById.mockResolvedValue(makeRole());
+      mockRoleRepo.findMemberIdsByRole.mockResolvedValue(['m-1']);
+      mockMemberContextCache.clearMany.mockRejectedValue(
+        new Error('redis down'),
+      );
+
+      await expect(
+        makeService().execute({ id: ROLE_ID, status: false }),
+      ).rejects.toThrow('redis down');
+    });
+
+    it('更新前就拋出時不會清快取', async () => {
+      mockRoleRepo.findById.mockResolvedValue(makeRole({ isDefault: true }));
+
+      await expect(
+        makeService().execute({ id: ROLE_ID, status: false }),
+      ).rejects.toBeInstanceOf(DefaultRoleNotEditableException);
+
+      expect(mockMemberContextCache.clearMany).not.toHaveBeenCalled();
+    });
   });
 });

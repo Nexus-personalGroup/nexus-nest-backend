@@ -21,7 +21,7 @@ import { JwtModule } from '../jwt.module';
   imports: [MemberModule, JwtModule],
   controllers: [AuthController],
   providers: [
-    // TOKEN_BLACKLIST_PORT + CLEAR_MEMBER_CONTEXT_PORT 由 @Global() RedisModule 提供
+    // TOKEN_BLACKLIST_PORT + MEMBER_CONTEXT_CACHE_PORT 由 @Global() RedisModule 提供
     // SAVE_AUTH_LOG_PORT 由 @Global() AuthLogModule 提供
     // ACCOUNT_LOCK_PORT + IP_BLOCK_PORT + IP_LIST_PORT 由 @Global() SecurityModule 提供
     // RECAPTCHA_VERIFY_PORT 由 @Global() RecaptchaModule 提供

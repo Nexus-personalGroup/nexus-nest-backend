@@ -11,9 +11,7 @@
 
 前端畫面行為見 `ui-role-management`。Swagger 與 `@app/api-client` 的同步義務由
 `platform-api-client-generation` 統一規範，本 spec 不逐條重述。
-
 ## Requirements
-
 ### Requirement: 角色列表查詢
 
 `GET /api/admin/roles` SHALL 以分頁回傳角色清單，支援名稱模糊搜尋與啟用狀態過濾，
@@ -249,6 +247,21 @@ MUST 要求 `BACKEND:ROLE:EDIT`。預設角色（`isDefault === true`）MUST 拒
 多欄位同送時 MUST 在**同一個資料庫 transaction** 內完成，
 不得留下「name 已改但 status 未改」的中間狀態。
 
+**更新成功後 MUST 清除該角色所有成員的 `MemberContext` 快取。**
+那份快取帶著 `roleName`、`permissions` 與帳號狀態，TTL 最長 `PERMISSION_CACHE_TTL`
+（預設 300 秒）。不清的話，**權限的變更最多五分鐘之後才會生效**——
+而兩個方向的後果不對稱：加權限只是讓人多等，**拿掉權限則是他繼續用得到五分鐘**，
+而會急著拿掉某人權限的場合正是最不能等的那種。
+
+清除 MUST 涵蓋三種變更（名稱、權限、狀態），**MUST NOT 判斷「這次改的是不是授權」**。
+要判斷就得比對前後的權限集合，而那個比對寫錯的方向是**該清沒清**——
+一個沒有徵兆的失效。省下的只是一次罕見操作的批次刪除。
+
+清除失敗 MUST 讓整個更新失敗，MUST NOT 吞掉。失敗的語意是
+「權限改了但沒有生效」，吞掉的話呼叫者看到「更新成功」而系統處於一個
+他不知道的狀態——那正是撤銷權限最不能接受的結果。
+（對比：稽核寫入失敗是 best-effort，因為它不影響任何人的實際權限。）
+
 成功 MUST 回 `204 No Content`，**沒有回應主體**。
 
 **Request**（path `id: string (uuid)`；body 全部選填）：
@@ -271,8 +284,39 @@ MUST 要求 `BACKEND:ROLE:EDIT`。預設角色（`isDefault === true`）MUST 拒
 - `400`、`code: "INVALID_PERMISSION_COMBINATION"`：有 EDIT 但缺同模組的 VIEW
 - `401`、`code: "UNAUTHORIZED"`：未帶或無效 Token
 - `403`、`code: "FORBIDDEN"`：缺 `BACKEND:ROLE:EDIT`
-- `404`、`code: "ROLE_NOT_FOUND"`：角色不存在
 - `409`、`code: "DUPLICATE_ROLE_NAME"`：新名稱已被其他角色使用
+- `500`：快取清除失敗（權限已寫入資料庫但未生效，呼叫者應重試）
+
+#### Scenario: ⭐ 撤銷權限後既有 session 立即失效
+
+- **WHEN** 某成員持有效 token 且該權限已在快取中，管理員把該權限從他的角色移除
+- **THEN** 該成員的**下一個請求** MUST 回 `403`，MUST NOT 等到快取過期
+
+#### Scenario: ⭐ 授予權限後既有 session 立即可用
+
+- **WHEN** 管理員為某角色加上一個權限
+- **THEN** 該角色成員的下一個請求 MUST 已具備該權限，不必重新登入
+
+#### Scenario: 停用角色
+
+- **WHEN** 管理員把某角色 `status` 改為 false
+- **THEN** 該角色成員的快取 MUST 一併清除
+
+#### Scenario: 只改名稱也要清
+
+- **WHEN** body 只有 `{ "name": "新名稱" }`
+- **THEN** 快取 MUST 仍然被清除——`MemberContext` 帶著 `roleName`，
+  不清的話顯示的是舊名字
+
+#### Scenario: 不影響其他角色的成員
+
+- **WHEN** 更新角色 A
+- **THEN** MUST NOT 清除角色 B 成員的快取
+
+#### Scenario: 快取清除失敗
+
+- **WHEN** Redis 不可用
+- **THEN** 整個更新 MUST 失敗並回 5xx，MUST NOT 回 `204`
 
 #### Scenario: 僅切換 status
 
@@ -351,3 +395,4 @@ MUST 要求 `BACKEND:ROLE:EDIT`。
 
 - **WHEN** 對已軟刪除的角色再次呼叫
 - **THEN** 回 `404`、`code: "ROLE_NOT_FOUND"`
+

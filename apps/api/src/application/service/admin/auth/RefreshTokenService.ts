@@ -23,9 +23,9 @@ import {
   SaveMemberPort,
 } from '../../../port/out/member/SaveMemberPort';
 import {
-  CLEAR_MEMBER_CONTEXT_PORT,
-  ClearMemberContextPort,
-} from '../../../port/out/member/ClearMemberContextPort';
+  MEMBER_CONTEXT_CACHE_PORT,
+  MemberContextCachePort,
+} from '../../../port/out/member/MemberContextCachePort';
 import { FeatureFlagService } from '../../shared/FeatureFlagService';
 import { JwtPayload } from '../../../port/jwt-payload';
 import { getEnv } from '@app/infrastructure/validate-env';
@@ -54,8 +54,8 @@ export class RefreshTokenService implements RefreshTokenUseCase {
     private readonly featureFlags: FeatureFlagService,
     @Inject(SAVE_MEMBER_PORT)
     private readonly saveMember: SaveMemberPort,
-    @Inject(CLEAR_MEMBER_CONTEXT_PORT)
-    private readonly clearMemberContext: ClearMemberContextPort,
+    @Inject(MEMBER_CONTEXT_CACHE_PORT)
+    private readonly memberContextCache: MemberContextCachePort,
   ) {}
 
   async execute(command: RefreshTokenCommand): Promise<RefreshTokenResult> {
@@ -159,7 +159,7 @@ export class RefreshTokenService implements RefreshTokenUseCase {
       const payload = this.jwtService.verify<JwtPayload>(token, { secret });
       if (payload?.type === 'refresh') {
         await this.saveMember.incrementTokenVersion(payload.sub);
-        await this.clearMemberContext.clearMemberContext(payload.sub);
+        await this.memberContextCache.clearByMemberId(payload.sub);
       }
     } catch {
       // 無法解析 → 略過撤銷，仍拒絕本次請求

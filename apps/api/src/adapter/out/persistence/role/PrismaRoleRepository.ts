@@ -267,6 +267,15 @@ export class PrismaRoleRepository implements LoadRolePort, RoleRepositoryPort {
     });
   }
 
+  async findMemberIdsByRole(id: string): Promise<string[]> {
+    // 與 countMembers 同一組條件：軟刪除的成員不會再有請求，不需要清快取
+    const members = await this.prisma.memberRecord.findMany({
+      where: { roleId: id, deletedAt: null },
+      select: { id: true },
+    });
+    return members.map((m) => m.id);
+  }
+
   // ── Private helpers ───────────────────────────
 
   private toRecord(role: {

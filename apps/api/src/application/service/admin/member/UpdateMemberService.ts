@@ -18,9 +18,9 @@ import {
   LoadRolePort,
 } from '../../../port/out/role/LoadRolePort';
 import {
-  CLEAR_MEMBER_CONTEXT_PORT,
-  ClearMemberContextPort,
-} from '../../../port/out/member/ClearMemberContextPort';
+  MEMBER_CONTEXT_CACHE_PORT,
+  MemberContextCachePort,
+} from '../../../port/out/member/MemberContextCachePort';
 import { PasswordPolicyService } from '../../shared/PasswordPolicyService';
 import { Email } from '@app/domain/value-object/Email';
 import { MemberNotFoundException } from '@app/domain/exception/MemberNotFoundException';
@@ -49,8 +49,8 @@ export class UpdateMemberService implements UpdateMemberUseCase {
     private readonly saveMember: SaveMemberPort,
     @Inject(LOAD_ROLE_PORT)
     private readonly loadRole: LoadRolePort,
-    @Inject(CLEAR_MEMBER_CONTEXT_PORT)
-    private readonly clearMemberContext: ClearMemberContextPort,
+    @Inject(MEMBER_CONTEXT_CACHE_PORT)
+    private readonly memberContextCache: MemberContextCachePort,
     @Inject(BCRYPT_ROUNDS)
     private readonly bcryptRounds: number,
     private readonly passwordPolicy: PasswordPolicyService,
@@ -132,7 +132,7 @@ export class UpdateMemberService implements UpdateMemberUseCase {
       await this.saveMember.updateMember(member);
     }
 
-    await this.clearMemberContext.clearMemberContext(command.id);
+    await this.memberContextCache.clearByMemberId(command.id);
 
     if (statusChanged) {
       // 清快取只讓「下一次請求」被擋下，既有的 WebSocket 連線不受影響——

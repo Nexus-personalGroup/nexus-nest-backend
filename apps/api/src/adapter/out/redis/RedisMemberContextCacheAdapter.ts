@@ -6,7 +6,7 @@ import { getEnv } from '../../../infrastructure/validate-env';
 
 /**
  * Outbound Adapter：將 MemberContextCachePort 委派給 RedisService。
- * Key 組合由此處統一管理，確保與 ClearMemberContextPort 使用相同格式。
+ * 同一份快取的 get / set / clear 都在這裡，key 組合不外流。
  */
 @Injectable()
 export class RedisMemberContextCacheAdapter
@@ -37,6 +37,16 @@ export class RedisMemberContextCacheAdapter
       buildMemberContextKey(this.keyPrefix, memberId),
       value,
       ttlSeconds,
+    );
+  }
+
+  async clearByMemberId(memberId: string): Promise<void> {
+    await this.redis.del(buildMemberContextKey(this.keyPrefix, memberId));
+  }
+
+  async clearMany(memberIds: string[]): Promise<void> {
+    await this.redis.delMany(
+      memberIds.map((id) => buildMemberContextKey(this.keyPrefix, id)),
     );
   }
 }

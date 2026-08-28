@@ -11,7 +11,21 @@
 - **登入**：POST `/auth/login` → 後端回 `{ accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn, member }` → 前端存 `localStorage.access_token` → 導向 `/`。
 - **每次請求**：`apiClient` 的 onRequest middleware 自動帶 `Authorization: Bearer <token>`，token 由 `tokenStorage.get()` 即時讀（**不快取**，更新後立即生效）。
 - **JwtAuthGuard 安全檢查**：payload 必須有 `type: 'access'`，否則拒絕（防止 refresh token 當 access 用）。
-- **快取一致性**：變更 member `status` / `roleId` / 密碼後必須呼叫 `clearMemberContext(memberId)`，否則最長延遲 `PERMISSION_CACHE_TTL` 秒（預設 300s）。
+- **快取一致性**：`MemberContext` 快取的 get / set / clear 全部由 `MemberContextCachePort` 一個 port 負責（`RedisMemberContextCacheAdapter`）。**任何會讓 `MemberContext` 過時的變更都必須清快取**，否則最長延遲 `PERMISSION_CACHE_TTL` 秒（預設 300s）。完整清單：
+
+  | 變更 | 位置 | 清除方式 |
+  | --- | --- | --- |
+  | member `status` / `roleId` / 密碼 | `UpdateMemberService` | `clearByMemberId` |
+  | 登出 | `LogoutService` | `clearByMemberId` |
+  | refresh 輪替 | `RefreshTokenService` | `clearByMemberId` |
+  | 重設密碼 | `ResetPasswordService` | `clearByMemberId` |
+  | **角色的名稱 / 權限 / 狀態** | `UpdateRoleService` | `clearMany`（該角色全體成員） |
+
+  角色那條**一律清、不判斷「這次改的是不是授權」**：`MemberContext` 三者都帶，
+  而「只在授權真的變了才清」需要比對前後的權限集合，寫錯的方向是**該清沒清**。
+  清除失敗**不吞掉**——語意是「權限改了但沒有生效」，回成功會讓呼叫端處於一個
+  他不知道的狀態。兩條路徑各由架構守則盯著
+  （`session-revocation.spec.ts` / `role-permission-cache.spec.ts`）。
 - **401 處理**：前端 apiClient 統一清 token + 跳 login（middleware 處理）。
 
 ---
