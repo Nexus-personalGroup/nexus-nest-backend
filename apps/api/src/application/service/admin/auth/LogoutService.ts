@@ -9,9 +9,9 @@ import {
   TokenBlacklistPort,
 } from '../../../port/out/auth/TokenBlacklistPort';
 import {
-  CLEAR_MEMBER_CONTEXT_PORT,
-  ClearMemberContextPort,
-} from '../../../port/out/member/ClearMemberContextPort';
+  MEMBER_CONTEXT_CACHE_PORT,
+  MemberContextCachePort,
+} from '../../../port/out/member/MemberContextCachePort';
 import {
   SAVE_AUTH_LOG_PORT,
   SaveAuthLogPort,
@@ -31,8 +31,8 @@ export class LogoutService implements LogoutUseCase {
     private readonly jwtService: JwtService,
     @Inject(TOKEN_BLACKLIST_PORT)
     private readonly tokenBlacklist: TokenBlacklistPort,
-    @Inject(CLEAR_MEMBER_CONTEXT_PORT)
-    private readonly clearMemberContext: ClearMemberContextPort,
+    @Inject(MEMBER_CONTEXT_CACHE_PORT)
+    private readonly memberContextCache: MemberContextCachePort,
     @Inject(SAVE_AUTH_LOG_PORT)
     private readonly saveAuthLog: SaveAuthLogPort,
     private readonly featureFlags: FeatureFlagService,
@@ -54,7 +54,7 @@ export class LogoutService implements LogoutUseCase {
           'logout',
         );
       }
-      await this.clearMemberContext.clearMemberContext(accessPayload.sub);
+      await this.memberContextCache.clearByMemberId(accessPayload.sub);
 
       await this.logAuth(command, accessPayload.sub);
     }

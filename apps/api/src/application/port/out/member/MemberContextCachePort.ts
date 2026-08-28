@@ -9,6 +9,13 @@ export interface MemberContextCachePort {
     value: string,
     ttlSeconds: number,
   ): Promise<void>;
+  /** 清除單一成員的快取，強制下次請求重新查詢 */
+  clearByMemberId(memberId: string): Promise<void>;
+  /**
+   * 批次清除多名成員的快取（角色權限變更時使用）
+   * @param memberIds - 要清除的成員 ID；空陣列為無操作
+   */
+  clearMany(memberIds: string[]): Promise<void>;
   /** Redis 是否可用（快取未命中時用來決定是否記錄降級警告） */
   readonly isAvailable: boolean;
 }

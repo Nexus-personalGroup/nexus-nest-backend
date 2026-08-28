@@ -1,7 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { LogoutService } from './LogoutService';
 import { TokenBlacklistPort } from '../../../port/out/auth/TokenBlacklistPort';
-import { ClearMemberContextPort } from '../../../port/out/member/ClearMemberContextPort';
+import { MemberContextCachePort } from '../../../port/out/member/MemberContextCachePort';
 import { SaveAuthLogPort } from '../../../port/out/auth/SaveAuthLogPort';
 import { FeatureFlagService } from '../../shared/FeatureFlagService';
 
@@ -24,8 +24,8 @@ const mockTokenBlacklist = {
 } as unknown as jest.Mocked<TokenBlacklistPort>;
 
 const mockClearContext = {
-  clearMemberContext: jest.fn(),
-} as unknown as jest.Mocked<ClearMemberContextPort>;
+  clearByMemberId: jest.fn(),
+} as unknown as jest.Mocked<MemberContextCachePort>;
 
 const mockSaveAuthLog = {
   saveAuthLog: jest.fn(),
@@ -61,9 +61,7 @@ describe('LogoutService', () => {
       7200,
       'logout',
     );
-    expect(mockClearContext.clearMemberContext).toHaveBeenCalledWith(
-      'member-1',
-    );
+    expect(mockClearContext.clearByMemberId).toHaveBeenCalledWith('member-1');
   });
 
   it('access + refresh 皆有效 → blacklist 兩次', async () => {
@@ -82,7 +80,7 @@ describe('LogoutService', () => {
     await makeService().execute({ accessToken: 'bad' });
 
     expect(mockTokenBlacklist.addToBlacklist).not.toHaveBeenCalled();
-    expect(mockClearContext.clearMemberContext).not.toHaveBeenCalled();
+    expect(mockClearContext.clearByMemberId).not.toHaveBeenCalled();
   });
 
   it('authLog flag 開啟 → 寫入 LOGOUT 日誌', async () => {
@@ -106,8 +104,6 @@ describe('LogoutService', () => {
     await makeService().execute({ accessToken: 'acc' });
 
     expect(mockTokenBlacklist.addToBlacklist).not.toHaveBeenCalled();
-    expect(mockClearContext.clearMemberContext).toHaveBeenCalledWith(
-      'member-1',
-    );
+    expect(mockClearContext.clearByMemberId).toHaveBeenCalledWith('member-1');
   });
 });

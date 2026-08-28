@@ -1,29 +1,17 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { RedisService } from '../../../infrastructure/redis/redis.service';
 import {
   TokenBlacklistPort,
   type BlacklistLookup,
   type BlacklistReason,
 } from '../../../application/port/out/auth/TokenBlacklistPort';
-import { ClearMemberContextPort } from '../../../application/port/out/member/ClearMemberContextPort';
-import { buildMemberContextKey } from '../../../infrastructure/redis/cache-keys';
-import { getEnv } from '../../../infrastructure/validate-env';
 
 /**
- * Outbound Adapter：同時實作 TokenBlacklistPort 和 ClearMemberContextPort。
- * 兩者都委派給 RedisService，但在應用層保持職責分離。
+ * Outbound Adapter：將 TokenBlacklistPort 委派給 RedisService。
  */
 @Injectable()
-export class RedisTokenBlacklistAdapter
-  implements TokenBlacklistPort, ClearMemberContextPort, OnModuleInit
-{
-  private keyPrefix = '';
-
+export class RedisTokenBlacklistAdapter implements TokenBlacklistPort {
   constructor(private readonly redis: RedisService) {}
-
-  onModuleInit(): void {
-    this.keyPrefix = getEnv().REDIS_KEY_PREFIX;
-  }
 
   addToBlacklist(
     token: string,
@@ -44,9 +32,5 @@ export class RedisTokenBlacklistAdapter
     // 而放行，等於部署當下把所有既存的已登出 / 已輪替 token 全部復活。
     if (stored === null) return null;
     return stored === 'rotated' || stored === 'logout' ? stored : 'unknown';
-  }
-
-  async clearMemberContext(memberId: string): Promise<void> {
-    await this.redis.del(buildMemberContextKey(this.keyPrefix, memberId));
   }
 }

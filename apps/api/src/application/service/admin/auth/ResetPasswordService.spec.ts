@@ -4,7 +4,7 @@ import { ResetPasswordService } from './ResetPasswordService';
 import { PasswordResetTokenPort } from '../../../port/out/auth/PasswordResetTokenPort';
 import { LoadMemberPort } from '../../../port/out/member/LoadMemberPort';
 import { UpdateMemberPasswordPort } from '../../../port/out/member/UpdateMemberPasswordPort';
-import { ClearMemberContextPort } from '../../../port/out/member/ClearMemberContextPort';
+import { MemberContextCachePort } from '../../../port/out/member/MemberContextCachePort';
 import { SaveAuthLogPort } from '../../../port/out/auth/SaveAuthLogPort';
 import { PasswordPolicyService } from '../../shared/PasswordPolicyService';
 import { FeatureFlagService } from '../../shared/FeatureFlagService';
@@ -36,8 +36,8 @@ const mockUpdatePassword = {
 } as jest.Mocked<UpdateMemberPasswordPort>;
 
 const mockClearContext = {
-  clearMemberContext: jest.fn(),
-} as unknown as jest.Mocked<ClearMemberContextPort>;
+  clearByMemberId: jest.fn(),
+} as unknown as jest.Mocked<MemberContextCachePort>;
 
 const mockSaveAuthLog = {
   saveAuthLog: jest.fn(),
@@ -116,9 +116,7 @@ describe('ResetPasswordService', () => {
 
     await makeService().execute({ token: 'tok', newPassword: 'NewPass1!' });
 
-    expect(mockClearContext.clearMemberContext).toHaveBeenCalledWith(
-      'member-1',
-    );
+    expect(mockClearContext.clearByMemberId).toHaveBeenCalledWith('member-1');
   });
 
   it('authLog flag 開啟 → 補查 email 並寫入 PASSWORD_RESET 日誌', async () => {

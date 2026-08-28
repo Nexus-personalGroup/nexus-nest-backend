@@ -97,6 +97,16 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * 一次刪除多個 key
+   * @param keys - 要刪除的 key；空陣列直接返回，不送出指令
+   */
+  async delMany(keys: string[]): Promise<void> {
+    if (keys.length === 0) return;
+    if (!this.client?.isOpen) return;
+    await this.client.del(keys);
+  }
+
+  /**
    * 建立一條獨立的 Redis 連線
    *
    * `@socket.io/redis-adapter` 需要 pub 與 sub **兩條各自獨立**的連線——進入

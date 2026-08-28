@@ -22,9 +22,9 @@ import {
   UpdateMemberPasswordPort,
 } from '../../../port/out/member/UpdateMemberPasswordPort';
 import {
-  CLEAR_MEMBER_CONTEXT_PORT,
-  ClearMemberContextPort,
-} from '../../../port/out/member/ClearMemberContextPort';
+  MEMBER_CONTEXT_CACHE_PORT,
+  MemberContextCachePort,
+} from '../../../port/out/member/MemberContextCachePort';
 import {
   SAVE_AUTH_LOG_PORT,
   SaveAuthLogPort,
@@ -48,8 +48,8 @@ export class ResetPasswordService implements ResetPasswordUseCase {
     private readonly loadMember: LoadMemberPort,
     @Inject(UPDATE_MEMBER_PASSWORD_PORT)
     private readonly updatePassword: UpdateMemberPasswordPort,
-    @Inject(CLEAR_MEMBER_CONTEXT_PORT)
-    private readonly clearMemberContext: ClearMemberContextPort,
+    @Inject(MEMBER_CONTEXT_CACHE_PORT)
+    private readonly memberContextCache: MemberContextCachePort,
     @Inject(SAVE_AUTH_LOG_PORT)
     private readonly saveAuthLog: SaveAuthLogPort,
     private readonly passwordPolicy: PasswordPolicyService,
@@ -78,7 +78,7 @@ export class ResetPasswordService implements ResetPasswordUseCase {
 
     // 強制登出（清除 MemberContext 快取）
     if (env.APPLICATION_IS_LOGOUT_AFTER_PASSWORD_RESET) {
-      await this.clearMemberContext.clearMemberContext(result.memberId);
+      await this.memberContextCache.clearByMemberId(result.memberId);
     }
 
     // 記錄日誌：audit 表的核心價值是「事件當下的快照」，email 不該事後 join，故在此補查

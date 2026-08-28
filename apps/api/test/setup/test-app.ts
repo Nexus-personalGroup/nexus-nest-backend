@@ -71,6 +71,7 @@ export const createMockRedis = () => ({
   get: jest.fn().mockResolvedValue(null),
   set: jest.fn().mockResolvedValue(undefined),
   del: jest.fn().mockResolvedValue(undefined),
+  delMany: jest.fn().mockResolvedValue(undefined),
   addToBlacklist: jest.fn().mockResolvedValue(undefined),
   isTokenBlacklisted: jest.fn().mockResolvedValue(false),
   getBlacklistReason: jest.fn().mockResolvedValue(null),
@@ -87,6 +88,38 @@ export const createMockRedis = () => ({
   setCard: jest.fn().mockResolvedValue(0),
   setMembers: jest.fn().mockResolvedValue([]),
 });
+
+/**
+ * 有狀態的 Redis mock：get / set / del / delMany 走一份 in-memory Map。
+ *
+ * `createMockRedis()` 的 `get` 永遠回 null，快取因此**永遠不會命中**——
+ * 任何「快取過時了嗎」的測試在那個 mock 之下都是空的：不修也會過。
+ * 要驗證 MemberContext 快取的失效行為，必須讓寫進去的值真的讀得回來。
+ *
+ * 只給需要驗快取的 spec 用，不改 `createMockRedis()`——其他 spec 依賴
+ * 「每個請求都重新查資料庫」的無狀態行為。
+ */
+export const createStatefulMockRedis = () => {
+  const store = new Map<string, string>();
+  return {
+    ...createMockRedis(),
+    store,
+    get: jest.fn((key: string) => Promise.resolve(store.get(key) ?? null)),
+    set: jest.fn((key: string, value: string) => {
+      // TTL 在測試裡沒有意義（PERMISSION_CACHE_TTL 是 300 秒，測試以毫秒計）
+      store.set(key, value);
+      return Promise.resolve();
+    }),
+    del: jest.fn((key: string) => {
+      store.delete(key);
+      return Promise.resolve();
+    }),
+    delMany: jest.fn((keys: string[]) => {
+      keys.forEach((key) => store.delete(key));
+      return Promise.resolve();
+    }),
+  };
+};
 
 /** 每次呼叫回傳全新的 SaveSystemLog mock 實例 */
 export const createMockSaveSystemLog = () => ({
