@@ -1,7 +1,16 @@
 # platform-public-surface Specification
 
 ## Purpose
-TBD - created by archiving change fix-unauthenticated-surface. Update Purpose after archive.
+
+定義「未認證就到得了的東西」有哪些、以及它們各自被什麼約束。
+
+涵蓋三類：**不需要 token 的路徑**（health、metrics、登入）、
+**對外暴露的 API 文件**（可關閉、預設在 production 關閉），
+以及**所有回應共用的安全標頭**（CSP 的適用範圍與豁免）。
+
+貫穿的判準是：**豁免必須跟著它的理由走**。每一條豁免都有一個當初成立的前提，
+而前提會因為部署形態改變而失效——失效時不會有任何錯誤訊息，
+所以豁免的範圍要寫得比理由更窄，不是更寬。
 ## Requirements
 ### Requirement: 未認證可達的路徑必須明示
 
@@ -79,4 +88,43 @@ Swagger UI 與 OpenAPI spec 的掛載 SHALL 由 `SWAGGER_ENABLED` 控制。
 
 - **WHEN** `SWAGGER_ENABLED=false`
 - **THEN** `pnpm --filter @app/api swagger:check` 與 api-client 產生 MUST 照常成功
+
+### Requirement: CSP 預設全站啟用，只有 API 文件路徑豁免
+
+服務 SHALL 對所有回應套用 Content-Security-Policy，**MUST NOT 全域關閉**。
+只有 API 文件路徑（`/api/admin/docs*`、`/api/front/docs*`）MAY 放寬，
+因為 Swagger UI 依賴 inline script/style。
+
+**豁免 MUST 以路徑為界，MUST NOT 以「本服務是純 API」為理由整組關閉。**
+那個理由**曾經**成立，但同一份 `app.module.ts` 有 `ServeStaticModule` +
+`WEB_STATIC_ROOT` 的單一埠部署模式——在那個模式下後台 SPA 由同一個 Express
+服務，於是整個後台介面也沒有 CSP。**前提在部署形態改變時失效了**，
+而失效的方式不會有任何錯誤訊息。
+
+這條需求的重點不是「CSP 是好東西」，是**豁免的範圍必須跟著理由走**：
+理由只涵蓋文件路徑，豁免就只能是文件路徑。
+
+放寬與否 MUST 由路徑決定，MUST NOT 由 `NODE_ENV` 決定——
+開發與正式環境跑的若是不同的 CSP，正式環境才會發現的違規就不會在開發時出現。
+
+#### Scenario: 一般 API 回應
+
+- **WHEN** 請求任一非文件路徑（如 `/api/admin/members`）
+- **THEN** 回應 MUST 帶 `Content-Security-Policy` header
+
+#### Scenario: 單一埠部署下的後台 SPA
+
+- **WHEN** 設定 `WEB_STATIC_ROOT`，由同一個服務吐出後台 SPA 的 HTML
+- **THEN** 該回應 MUST 帶 CSP——這正是全域關閉時被漏掉的那一塊
+
+#### Scenario: Swagger UI
+
+- **WHEN** 請求 `/api/admin/docs` 或 `/api/front/docs`
+- **THEN** CSP MAY 放寬至足以讓 Swagger UI 的 inline script/style 執行，
+  且該頁面 MUST 仍可正常運作
+
+#### Scenario: 有人重新全域關閉 CSP
+
+- **WHEN** 實作改回 `helmet({ contentSecurityPolicy: false })`
+- **THEN** 違反本需求
 

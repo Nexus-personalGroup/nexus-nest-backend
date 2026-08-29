@@ -34,6 +34,7 @@ import {
   UpdateIpWhitelistService,
 } from '../../application/service/admin/security/SecurityServices';
 import { JwtModule } from '../jwt.module';
+import { MetricsModule } from '../metrics.module';
 import { MemberModule } from './member.module';
 
 /**
@@ -43,7 +44,7 @@ import { MemberModule } from './member.module';
  */
 @Global()
 @Module({
-  imports: [JwtModule, MemberModule],
+  imports: [JwtModule, MemberModule, MetricsModule],
   controllers: [SecurityController],
   providers: [
     PrismaAccountLockAdapter,

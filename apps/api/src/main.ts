@@ -51,7 +51,6 @@ class BootFilteredLogger implements LoggerService {
   }
 }
 
-import helmet from 'helmet';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 import cookieParser = require('cookie-parser');
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -65,6 +64,10 @@ import { AppModule } from './app.module';
 import { getEnv, isSwaggerEnabled } from './infrastructure/validate-env';
 import { RedisIoAdapter } from './infrastructure/redis-io.adapter';
 import { RedisService } from './infrastructure/redis/redis.service';
+import {
+  SWAGGER_SIDES,
+  applySecurityHeaders,
+} from './infrastructure/security-headers';
 
 const loadSwaggerDocument = (relPath: string): object => {
   try {
@@ -103,10 +106,7 @@ const bootstrap = async (): Promise<void> => {
           : trustProxy,
   );
 
-  // 設定 HTTP 安全標頭（X-Frame-Options、HSTS、X-Content-Type-Options 等）。
-  // 關閉 CSP：本服務為純 API + 獨立前端，且 /api/docs 的 Swagger UI 依賴 inline
-  // script/style，預設 CSP 會將其擋下；其餘標頭維持預設保護。
-  app.use(helmet({ contentSecurityPolicy: false }));
+  applySecurityHeaders(app);
 
   app.use(cookieParser(env.COOKIE_SECRET));
 
@@ -187,14 +187,9 @@ const bootstrap = async (): Promise<void> => {
   // docs-json 才是真正有價值的那份（完整結構、可直接餵給工具），而它沒有介面所以不顯眼。
   // 關掉不影響開發流程：swagger:check 與 api-client codegen 走的是本機檔案而非 HTTP 端點
   if (isSwaggerEnabled()) {
-    mountSwagger(
-      '/api/admin',
-      loadSwaggerDocument('docs/swagger/admin/openapi.bundle.yaml'),
-    );
-    mountSwagger(
-      '/api/front',
-      loadSwaggerDocument('docs/swagger/front/openapi.bundle.yaml'),
-    );
+    for (const side of SWAGGER_SIDES) {
+      mountSwagger(side.basePath, loadSwaggerDocument(side.bundle));
+    }
   }
 
   app.useLogger(new BootFilteredLogger(app.get(Logger)));

@@ -29,8 +29,8 @@
 | 4 | ~~`migrate-chat-to-front-users`~~ | 聊天領域改指向 `users`；後台審閱跟著改；**停權拆成兩支**（停後台帳號 vs 停前台使用者） | 已合併（#23） |
 | 5 | ~~`add-admin-front-user-management`~~ | 後台的前台使用者管理：列表／搜尋／詳情／停權／解除／強制登出。**解除了「進入點只有檢舉」的限制** | 已合併（#24） |
 | 3b | `add-front-user-registration` | 註冊 + 信箱驗證 + 重發 + 密碼重設；未驗證不能聊天 | **待合併** |
-| 6 | ~~`fix-permission-cache-consistency`~~ | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | **待合併** |
-| 7 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | 未開始 |
+| 6 | ~~`fix-permission-cache-consistency`~~ | 改角色權限時清 MemberContext 快取；`clearByMemberId` 併回 `MemberContextCachePort` | 已合併（#26） |
+| 7 | ~~`fix-security-cleanup`~~ | CSP 分路徑、refresh 效期、Redis fail-open 可觀測、心跳批次與防重入、文件漂移 | **待合併** |
 
 **2 排在 3 之前的理由**：`countOnlineMembers` 是我自己剛加的錯（用了明確標注
 「不可用於請求路徑」的 scan pattern），而分表會動到 presence key 的語意——先修乾淨再動。
@@ -78,10 +78,10 @@
 
 ### 已知缺口（知情，非遺漏）
 
-- **7 份 master spec 的 `## Purpose` 還是 archive 留下的 `TBD` 佔位字串**：
-  `platform-token-scope`、`platform-public-surface`、`api-dashboard`、
-  `ui-member-profile`、`ui-room-overview`、`ui-moderation`、`ui-dashboard`。
-  （`api-front-auth` 那一份在 3b 順手補掉了。）`openspec archive` 只合併 `## Requirements`，**Purpose 要手動補**，
+- **5 份 master spec 的 `## Purpose` 還是 archive 留下的 `TBD` 佔位字串**：
+  `api-dashboard`、`ui-member-profile`、`ui-room-overview`、`ui-moderation`、`ui-dashboard`。
+  （`api-front-auth` 在 3b、`platform-token-scope` 與 `platform-public-surface`
+  在 change 7 順手補掉了——那兩支本來就要動。）`openspec archive` 只合併 `## Requirements`，**Purpose 要手動補**，
   而 `openspec validate --specs --strict` 不會抓（38/38 全過）。
   **值得開一個小 cleanup change**：補完 8 份之後加一條守則擋住
   「Purpose 含 `TBD - created by archiving`」——在補完之前那條守則會是紅的，
@@ -89,7 +89,14 @@
   （順帶：archive 也不會發現舊 Purpose 與新合併的 Requirements 互相矛盾，
   `api-account-suspension` 就發生過，那個要靠人看。）
 
-（其餘無。連線層事件限流已補上；審查報告的 🔴 在 change 1 修掉。）
+- **WS 連線數上限有 TOCTOU**（審查報告問題 10）：`ChatGateway` 先 `getConnections()` 讀、
+  再比對 `WS_MAX_CONNECTIONS_PER_MEMBER`、再 `markOnline()` 寫——兩條同時進來會都通過檢查。
+  **change 7 刻意不做**：預設上限 10，超個一兩條沒有實質危害，
+  而修法要在寫入後回讀、超額再回收自己剛寫的那筆，複雜度與收益不成比例。
+  真的要準確時再處理，屆時 `markOnline` 是唯一要改的地方。
+
+（其餘無。連線層事件限流已補上；審查報告的 🔴 在 change 1 修掉，
+🟡🟢 在 change 7 收完。）
 
 ### 技術債（小，隨手可修）
 

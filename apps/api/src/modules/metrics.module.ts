@@ -48,6 +48,21 @@ const metricsProviders = (): Provider[] =>
           name: METRIC_NAMES.CONNECTIONS,
           help: '目前的 WebSocket 連線數（單一實例）',
         }),
+        makeHistogramProvider({
+          name: METRIC_NAMES.HEARTBEAT_SECONDS,
+          help: '單輪心跳的耗時（秒）',
+          // 桶取到心跳間隔的量級：逼近週期時要看得出來
+          buckets: [0.01, 0.05, 0.1, 0.5, 1, 2.5, 5, 10, 15],
+        }),
+        makeCounterProvider({
+          name: METRIC_NAMES.HEARTBEAT_SKIPPED,
+          help: '因上一輪未完成而被跳過的心跳輪數',
+        }),
+        makeCounterProvider({
+          name: METRIC_NAMES.SECURITY_DEGRADED,
+          help: '安全防護因相依不可用而降級放行的次數，依防護分類',
+          labelNames: ['guard'],
+        }),
         PrometheusMetricsAdapter,
         { provide: METRICS_PORT, useExisting: PrometheusMetricsAdapter },
       ]

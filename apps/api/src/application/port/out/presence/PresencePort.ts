@@ -17,6 +17,13 @@ export interface PresenceConnection {
  * 每筆紀錄都帶最後心跳時間，因此**實例被強制終止時不需要任何協調機制**——
  * 它留下的紀錄會因為停止續期而自動被判定為陳舊。
  */
+/** 一條待續期的連線 */
+export interface PresenceRenewal {
+  memberId: string;
+  instanceId: string;
+  socketId: string;
+}
+
 export interface PresencePort {
   /**
    * 記錄一條新連線
@@ -46,6 +53,19 @@ export interface PresencePort {
     instanceId: string,
     socketId: string,
   ): Promise<void>;
+
+  /**
+   * 批次續期多條連線
+   *
+   * 心跳每輪要為本實例的所有連線續期。逐條 `heartbeat` 是 N 次往返，
+   * 而心跳掛在固定週期的計時器上——單輪耗時一旦逼近週期就會開始堆疊，
+   * 續期落後超過連線紀錄的 TTL 時，**還連著的人會開始被判定離線**。
+   *
+   * 單條失敗 MUST NOT 影響其他條。
+   *
+   * @param entries - 要續期的連線；空陣列為無操作
+   */
+  heartbeatMany(entries: PresenceRenewal[]): Promise<void>;
 
   /** 該成員是否還有未逾時的連線 */
   isOnline(memberId: string): Promise<boolean>;

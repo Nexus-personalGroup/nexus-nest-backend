@@ -20,6 +20,7 @@ const makePresence = (): jest.Mocked<PresencePort> => ({
   markOnline: jest.fn(),
   markOffline: jest.fn(),
   heartbeat: jest.fn(),
+  heartbeatMany: jest.fn(),
   isOnline: jest.fn(),
   getConnections: jest.fn(),
   sweepStale: jest.fn().mockResolvedValue(0),

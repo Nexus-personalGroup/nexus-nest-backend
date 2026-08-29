@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   MetricsPort,
+  SecurityGuard,
   WsEventOutcome,
 } from '@app/application/port/out/MetricsPort';
 
@@ -30,4 +31,14 @@ export class NoopMetricsAdapter implements MetricsPort {
   setConnections(count: number): void {
     void count;
   }
+
+  incrementSecurityDegraded(guard: SecurityGuard): void {
+    void guard;
+  }
+
+  observeHeartbeatSeconds(seconds: number): void {
+    void seconds;
+  }
+
+  incrementHeartbeatSkipped(): void {}
 }

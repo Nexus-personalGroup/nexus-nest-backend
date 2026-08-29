@@ -7,6 +7,7 @@ import { AbstractLoader } from '@nestjs/serve-static/dist/loaders/abstract.loade
 import { ExpressLoader } from '@nestjs/serve-static/dist/loaders/express.loader';
 import { AppModule } from '@app/app.module';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
+import { applySecurityHeaders } from '@app/infrastructure/security-headers';
 import { SEND_EMAIL_PORT } from '@app/application/port/out/shared/SendEmailPort';
 import { SAVE_SYSTEM_LOG_PORT } from '@app/application/port/out/shared/SaveSystemLogPort';
 
@@ -168,6 +169,9 @@ export async function createE2EApp(overrides: TestAppOverrides = {}): Promise<{
     { forceCloseConnections: true },
   );
   app.setGlobalPrefix('api');
+  // 與 main.ts 共用同一支：不套的話 e2e 跑的是一組沒有安全標頭的 app，
+  // 任何 header 斷言都會是空的
+  applySecurityHeaders(app);
   await app.init();
 
   return { app, moduleRef };
