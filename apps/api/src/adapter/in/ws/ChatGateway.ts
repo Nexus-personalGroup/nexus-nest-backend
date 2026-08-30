@@ -110,6 +110,9 @@ export class ChatGateway
   private readonly ownedSockets = new Map<string, string>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
 
+  /** 上一輪心跳是否還在進行中；用於擋掉重入（見 sendHeartbeats） */
+  private heartbeatInFlight = false;
+
   constructor(
     @Inject(RESOLVE_USER_CONTEXT_USE_CASE)
     private readonly resolveUserContext: ResolveUserContextUseCase,
@@ -155,23 +158,51 @@ export class ChatGateway
     if (this.heartbeatTimer) clearInterval(this.heartbeatTimer);
   }
 
-  /** 為本實例持有的所有連線續期。單條失敗不影響其他連線 */
+  /**
+   * 為本實例持有的所有連線續期。
+   *
+   * **不重入**：上一輪還沒跑完就直接跳過這一輪，而不是排隊等——
+   * 排隊只是堆疊的另一種寫法。跳過是安全的，連線紀錄的 TTL 涵蓋數個心跳週期，
+   * 漏一輪不會讓任何人掉線，而堆疊會：續期一旦落後超過那個 TTL，
+   * **還連著的人會開始被判定離線**，而觸發它的是負載。
+   *
+   * **批次送出**：逐條 await 是 N 條連線 N 次往返，第 N 條要等前面跑完。
+   * 批次讓單輪變快，但變快不等於不會超時（Redis 延遲抬高時照樣會）——
+   * 旗標才是那個保證的來源，兩者都要。
+   */
   private async sendHeartbeats(): Promise<void> {
+    // 上一輪未完成 → 跳過。堆疊之後只會更慢，而慢正是問題本身
+    if (this.heartbeatInFlight) {
+      this.metrics.incrementHeartbeatSkipped();
+      this.logger.warn('上一輪心跳尚未完成，跳過本輪');
+      return;
+    }
+    this.heartbeatInFlight = true;
+
     // 連線數在心跳時一併更新：ownedSockets 是本實例持有的連線，
     // 而 Prometheus 依 scrape target 自動帶實例標籤——此處不要自己加 instanceId，
     // 否則實例重啟會產生一條新的時間序列，舊的永遠停在最後一個值
     this.metrics.setConnections(this.ownedSockets.size);
 
-    for (const [socketId, memberId] of this.ownedSockets) {
-      try {
-        await this.presence.heartbeat(memberId, this.instanceId, socketId);
-      } catch (error) {
-        this.logger.warn(
-          `心跳失敗 socketId=${socketId}: ${
-            error instanceof Error ? error.message : '未知錯誤'
-          }`,
-        );
+    const startedAt = Date.now();
+    try {
+      const entries = [...this.ownedSockets].map(([socketId, memberId]) => ({
+        memberId,
+        instanceId: this.instanceId,
+        socketId,
+      }));
+      if (entries.length > 0) {
+        await this.presence.heartbeatMany(entries);
       }
+    } catch (error) {
+      this.logger.warn(
+        `心跳失敗：${error instanceof Error ? error.message : '未知錯誤'}`,
+      );
+    } finally {
+      // 一定要在 finally 重置：拋出時漏掉的話心跳會永久停擺，
+      // 而症狀是「所有人陸續被判定離線」，指不到這一行
+      this.heartbeatInFlight = false;
+      this.metrics.observeHeartbeatSeconds((Date.now() - startedAt) / 1000);
     }
   }
 

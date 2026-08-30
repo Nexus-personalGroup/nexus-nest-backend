@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   PresenceConnection,
   PresencePort,
+  PresenceRenewal,
 } from '@app/application/port/out/presence/PresencePort';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
 import {
@@ -102,6 +103,20 @@ export class RedisPresenceAdapter implements PresencePort {
       this.field(instanceId, socketId),
       String(Date.now()),
       this.keyTtlSeconds,
+    );
+  }
+
+  async heartbeatMany(entries: PresenceRenewal[]): Promise<void> {
+    if (entries.length === 0) return;
+    const ttl = this.keyTtlSeconds;
+    const now = String(Date.now());
+    await this.redis.hashSetMany(
+      entries.map(({ memberId, instanceId, socketId }) => ({
+        key: buildPresenceKey(this.redis.keyPrefix, memberId),
+        field: this.field(instanceId, socketId),
+        value: now,
+        ttlSeconds: ttl,
+      })),
     );
   }
 

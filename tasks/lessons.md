@@ -219,6 +219,68 @@ export {};
 
 ## 測試
 
+### 2026-08 — `createE2EApp` 不套 `main.ts` 的中介層，header 斷言會是空的
+
+**踩到什麼**：要驗「一般路徑有 CSP、文件路徑放寬」，照既有 e2e 的寫法直接斷言
+`res.headers['content-security-policy']`——但 `createE2EApp` 只做
+`setGlobalPrefix('api')` + `init()`，**`main.ts` 裡 `app.use(helmet(...))` 那一整段
+根本沒跑**。測試會全紅（或改成「不存在」時全綠），兩種都不是在驗真的東西。
+
+**Why**：`bootstrap()` 與 `createE2EApp()` 是兩條各自組裝 app 的路徑。
+`app.use()` 掛的原生 middleware 只存在於前者，Nest 層的 guard / filter /
+interceptor 則因為在 `AppModule` 裡而兩邊都有——**差異只在原生中介層**，
+而那正是安全標頭所在的地方。
+
+**How to apply**：要驗原生中介層的行為，先把它抽成一支共用函式
+（本次是 `infrastructure/security-headers.ts` 的 `applySecurityHeaders(app)`），
+`main.ts` 與 `createE2EApp` 都呼叫它。**不要在測試裡自己再掛一次 helmet**——
+那驗的是測試自己掛的那份，不是產品程式碼。
+同一個判準適用於 CORS、cookie-parser、static 的 setHeaders。
+
+### 2026-08 — 新增建構子相依時，build 與單元測試都不會抓到 DI 沒接線
+
+**踩到什麼**：`PrismaAccountLockAdapter` 加了 `@Inject(METRICS_PORT)`，
+`pnpm typecheck` / `pnpm lint` / `pnpm test` / `pnpm build` **四個全綠**，
+跑 e2e 才炸出 `Nest can't resolve dependencies ... METRICS_PORT at index [2]
+is available in the SecurityModule`——10 支 e2e suite 一起紅。
+
+**Why**：DI 的接線在**執行期**才解析。單元測試是自己 `new` 出來的（繞過容器），
+`nest build` 只做編譯與 emit，兩者都碰不到 module graph。
+`MetricsModule` 有 `exports: [METRICS_PORT]` 但**不是 `@Global()`**，
+所以只有 `imports: [MetricsModule]` 過的模組拿得到。
+
+**How to apply**：**替既有 provider 加新的注入相依時，一定要跑 e2e**，
+不能只看那四個綠燈。加完先確認提供該 token 的模組是不是 `@Global()`；
+不是的話，找出所有 provide 該 class 的模組，逐一加 `imports`。
+（本次是 `SecurityModule` 同時提供兩支 adapter，一個 import 就補齊。）
+
+### 2026-08 — `advanceTimersByTime` + `runOnlyPendingTimersAsync` 會讓每次觸發兩輪
+
+**踩到什麼**：測 `setInterval` 的心跳，helper 寫成
+`jest.advanceTimersByTime(ms); await jest.runOnlyPendingTimersAsync();`。
+一條連線跑兩輪，斷言 2 次卻拿到 4 次。
+
+**Why**：`advanceTimersByTime` 先燒掉一次計時器，而 interval **會立刻重新排程**；
+接著的 `runOnlyPendingTimersAsync` 看到那個剛排好的計時器又燒一次。
+兩個 API 疊用在 interval 上必然翻倍，在 `setTimeout` 上則不會——所以很容易誤判。
+
+**How to apply**：測 interval 一律用 `await jest.advanceTimersByTimeAsync(ms)`
+一支就好，它會推進時間並把 promise 鏈跑完。
+
+### 2026-08 — characterization test 要寫成「機制無關」才擋得住重構
+
+**踩到什麼**：要把逐條 `await heartbeat()` 改成批次 `heartbeatMany()`，
+第一版安全網直接斷言 `heartbeatMany` 被呼叫——那不是 characterization test，
+是對著還沒寫的實作寫的測試，改壞了照樣綠。
+
+**Why**：characterization test 的用途是「重構前後行為不變」。
+斷言綁在**機制**（呼叫哪一支）上時，機制一換測試就得改，
+而改測試的同時就失去了它要提供的保護。
+
+**How to apply**：斷言寫在**行為**上——本次是「哪些連線被續期了」，
+用一個 helper 同時從新舊兩支 mock 收集結果。這樣同一組測試在改動前後都成立，
+反向驗證把實作改回逐條時它們照樣綠，證明守住的是行為而不是寫法。
+
 ### 2026-08 — 無狀態的 Redis mock 會讓「快取過時了嗎」的測試變成空的
 
 **踩到什麼**：要驗「改完角色權限，既有 token 的下一個請求就被擋」，

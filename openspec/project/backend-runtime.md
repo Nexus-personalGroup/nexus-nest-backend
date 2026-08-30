@@ -8,7 +8,7 @@
 
 ## 認證流程
 
-- **登入**：POST `/auth/login` → 後端回 `{ accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn, member }` → 前端存 `localStorage.access_token` → 導向 `/`。
+- **登入**：POST `/auth/login` → 後端回 `{ accessToken, refreshToken, accessTokenExpiresIn, refreshTokenExpiresIn, member }` → 前端把 **access 與 refresh 兩個 token 都存進 `localStorage`**（`access_token` / `refresh_token`）→ 導向 `/`。refresh 也在 `localStorage` 是刻意記下來的：它決定了 `REFRESH_TOKEN_EXPIRES_IN` 只能是短的（預設 1 天）——XSS 讀得到、而 refresh 輪替會續命。改成 `httpOnly` cookie 之後才適合放長。
 - **每次請求**：`apiClient` 的 onRequest middleware 自動帶 `Authorization: Bearer <token>`，token 由 `tokenStorage.get()` 即時讀（**不快取**，更新後立即生效）。
 - **JwtAuthGuard 安全檢查**：payload 必須有 `type: 'access'`，否則拒絕（防止 refresh token 當 access 用）。
 - **快取一致性**：`MemberContext` 快取的 get / set / clear 全部由 `MemberContextCachePort` 一個 port 負責（`RedisMemberContextCacheAdapter`）。**任何會讓 `MemberContext` 過時的變更都必須清快取**，否則最長延遲 `PERMISSION_CACHE_TTL` 秒（預設 300s）。完整清單：

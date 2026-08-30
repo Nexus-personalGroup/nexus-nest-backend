@@ -1,7 +1,9 @@
+import { Logger } from '@nestjs/common';
 import { PrismaAccountLockAdapter } from './PrismaAccountLockAdapter';
 import { getEnv } from '@app/infrastructure/validate-env';
 import type { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import type { RedisService } from '@app/infrastructure/redis/redis.service';
+import type { MetricsPort } from '@app/application/port/out/MetricsPort';
 
 jest.mock('@app/infrastructure/validate-env', () => ({
   getEnv: jest.fn(),
@@ -35,7 +37,11 @@ describe('PrismaAccountLockAdapter.checkLock', () => {
       increment: jest.fn(),
     } as unknown as RedisService;
 
-    adapter = new PrismaAccountLockAdapter(prisma, redis);
+    const metrics = {
+      incrementSecurityDegraded: jest.fn(),
+    } as unknown as MetricsPort;
+
+    adapter = new PrismaAccountLockAdapter(prisma, redis, metrics);
   });
 
   it('從未鎖定 → NONE', async () => {
@@ -108,5 +114,70 @@ describe('PrismaAccountLockAdapter.checkLock', () => {
         where: { email: EMAIL, deletedAt: null },
       }),
     );
+  });
+});
+
+/**
+ * Redis 不可用時的降級。
+ *
+ * **放行是刻意的**——擋下來等於把快取故障升級成全站故障。
+ * 這組測試守的不是「該不該放行」，是**放行有沒有留下痕跡**：
+ * 沒有痕跡的話，Redis 掛掉的期間可以無限次猜密碼，
+ * 而事後翻日誌看不出那段時間防護是失效的。
+ */
+describe('PrismaAccountLockAdapter.recordFailedLogin 的降級', () => {
+  const makeAdapter = (isAvailable: boolean) => {
+    const updateMany = jest.fn().mockResolvedValue(undefined);
+    const prisma = {
+      memberRecord: { updateMany },
+    } as unknown as PrismaService;
+    const increment = jest.fn().mockResolvedValue(3);
+    const redis = {
+      keyPrefix: 'nest:',
+      isAvailable,
+      del: jest.fn(),
+      increment,
+    } as unknown as RedisService;
+    const metrics = {
+      incrementSecurityDegraded: jest.fn(),
+    } as unknown as jest.Mocked<MetricsPort>;
+    const warn = jest
+      .spyOn(Logger.prototype, 'warn')
+      .mockImplementation(() => undefined);
+
+    return {
+      adapter: new PrismaAccountLockAdapter(prisma, redis, metrics),
+      metrics,
+      warn,
+      increment,
+    };
+  };
+
+  afterEach(() => {
+    jest.restoreAllMocks();
+  });
+
+  it('⭐ Redis 不可用 → 有警告、指標 +1，且仍然放行', async () => {
+    const { adapter, metrics, warn, increment } = makeAdapter(false);
+
+    const count = await adapter.recordFailedLogin(EMAIL);
+
+    expect(warn).toHaveBeenCalled();
+    expect(metrics.incrementSecurityDegraded).toHaveBeenCalledWith(
+      'account-lock',
+    );
+    // 放行行為不變：回 0 讓門檻永遠不成立，登入流程不被阻塞
+    expect(count).toBe(0);
+    expect(increment).not.toHaveBeenCalled();
+  });
+
+  it('Redis 可用 → 沒有警告、指標不動', async () => {
+    const { adapter, metrics, warn } = makeAdapter(true);
+
+    const count = await adapter.recordFailedLogin(EMAIL);
+
+    expect(warn).not.toHaveBeenCalled();
+    expect(metrics.incrementSecurityDegraded).not.toHaveBeenCalled();
+    expect(count).toBe(3);
   });
 });

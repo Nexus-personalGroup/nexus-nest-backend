@@ -48,8 +48,12 @@ const envSchema = z.object({
     .string()
     .min(32)
     .default('dev-only-front-refresh-secret-min-32-c'),
-  //預設 7 天
-  REFRESH_TOKEN_EXPIRES_IN: z.coerce.number().default(604800),
+  // 預設 1 天。判準是「被偷走之後攻擊者能用多久」，而那取決於它存在哪裡：
+  // 後台 SPA 把 refresh token 放 localStorage，任一處 XSS 都讀得到，
+  // 而 refresh 輪替會續命且 tokenVersion 不會遞增（只在偵測到重用時才動）——
+  // 被偷一次等於可自我續期的完整帳號接管，受害者不會察覺。
+  // 效期與儲存方式是綁在一起的一組決定：改成 httpOnly cookie 之後才適合放長。
+  REFRESH_TOKEN_EXPIRES_IN: z.coerce.number().default(86400),
   // JWT issuer/audience：簽發與驗證一致，避免 token 被共用同 secret 的其他服務重放
   JWT_ISSUER: z.string().default('nexus-api'),
   JWT_AUDIENCE: z.string().default('nexus-web'),

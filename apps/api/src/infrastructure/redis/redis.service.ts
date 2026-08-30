@@ -155,6 +155,41 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     await this.client.expire(key, ttlSeconds);
   }
 
+  /**
+   * 以 pipeline 一次送出多組「寫入 Hash 欄位 + 續期」
+   *
+   * 逐條 `hashSet` 是 N 條連線 N 次往返，且第 N 條要等前面跑完；
+   * 心跳掛在固定週期的計時器上，單輪一旦逼近週期就會開始堆疊。
+   * `multi()` 把整批合成一次往返，成本與連線數幾乎脫鉤。
+   *
+   * **單一命令失敗不影響其他命令**：node-redis 的 multi 不是交易語意的
+   * all-or-nothing，個別命令的錯誤會回在該命令的結果上——這正是心跳要的，
+   * 一條連線續期失敗不該讓整輪其他人都掉線。
+   *
+   * Redis 不可用時**拋出**，理由同 `hashSet`。
+   *
+   * @param entries - 每筆為一組 key / field / value / TTL；空陣列為無操作
+   */
+  async hashSetMany(
+    entries: Array<{
+      key: string;
+      field: string;
+      value: string;
+      ttlSeconds: number;
+    }>,
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    if (!this.client?.isOpen) {
+      throw new ServiceUnavailableException('連線狀態服務暫時不可用');
+    }
+    const pipeline = this.client.multi();
+    for (const { key, field, value, ttlSeconds } of entries) {
+      pipeline.hSet(key, field, value);
+      pipeline.expire(key, ttlSeconds);
+    }
+    await pipeline.exec();
+  }
+
   /** 取出 Hash 的所有欄位。Redis 不可用時拋出，理由同 `hashSet` */
   async hashGetAll(key: string): Promise<Record<string, string>> {
     if (!this.client?.isOpen) {
