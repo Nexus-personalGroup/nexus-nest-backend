@@ -36,6 +36,8 @@ export interface FrontLoginResult extends FrontTokenPair {
 export interface FrontLoginCommand {
   email: string;
   password: string;
+  /** 來源 IP；用於失敗計數與自動封鎖。取不到時（測試、內部呼叫）為 undefined */
+  ip?: string;
 }
 
 export interface FrontLoginUseCase {

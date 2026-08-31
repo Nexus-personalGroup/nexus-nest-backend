@@ -10,6 +10,7 @@ import {
   Req,
   UnauthorizedException,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { Request } from 'express';
 import { FrontAuthFacade } from '@app/application/facade/front/FrontAuthFacade';
 import type { FrontLoginResult } from '@app/application/port/in/front/auth/FrontAuthUseCases';
@@ -43,20 +44,42 @@ import {
  * 本 controller 的三支端點都自行處理 token，**不掛 `FrontJwtAuthGuard`**：
  * login / refresh 本來就不需要既有的 token，而 logout 必須對客戶端冪等。
  */
+/**
+ * 端點層節流的額度。
+ *
+ * 全域預設是 `COMMON_RATE_LIMIT_MAX_REQUESTS`（100／分鐘／IP），那是為一般 API 設計的：
+ * 對登入而言是每天十四萬次密碼嘗試，對註冊而言是每分鐘一百個帳號。
+ * **「有全域節流」不等於「這支端點被保護了」**，而那個差別不會在任何測試裡出現。
+ *
+ * **八支全部宣告，不判斷「哪幾支需要」**——那是一個會被答錯的判斷，
+ * 而答錯不會有徵兆。額度與後台的同類端點對齊。
+ */
+const THROTTLE = {
+  /** 密碼嘗試 */
+  LOGIN: { default: { limit: 5, ttl: 60_000 } },
+  /** 會寄信的：額度用完之後連信都不該寄出去 */
+  MAIL: { default: { limit: 3, ttl: 60_000 } },
+  /** 帶 token 才走得到，但仍然要宣告 */
+  TOKEN: { default: { limit: 10, ttl: 60_000 } },
+} as const;
+
 @Controller('front/auth')
 @Public()
 export class FrontAuthController {
   constructor(private readonly authFacade: FrontAuthFacade) {}
 
   @Post('login')
+  @Throttle(THROTTLE.LOGIN)
   @HttpCode(HttpStatus.OK)
   login(
     @Body(new ZodValidationPipe(frontLoginSchema)) dto: FrontLoginRequest,
+    @Req() request: Request,
   ): Promise<FrontLoginResult> {
-    return this.authFacade.login(dto);
+    return this.authFacade.login({ ...dto, ip: request.ip });
   }
 
   @Post('refresh')
+  @Throttle(THROTTLE.TOKEN)
   @HttpCode(HttpStatus.OK)
   refresh(
     @Body(new ZodValidationPipe(frontRefreshSchema)) dto: FrontRefreshRequest,
@@ -72,6 +95,7 @@ export class FrontAuthController {
    * token 的驗證與黑名單處理在 service 內自行完成，無效的 token 直接視為已登出。
    */
   @Post('logout')
+  @Throttle(THROTTLE.TOKEN)
   @HttpCode(HttpStatus.NO_CONTENT)
   async logout(@Req() request: Request): Promise<void> {
     const auth = request.headers.authorization;
@@ -89,6 +113,7 @@ export class FrontAuthController {
    * 他會以為註冊成功然後永遠等不到信。要擋的是把它自動化，那是限流的工作。
    */
   @Post('register')
+  @Throttle(THROTTLE.MAIL)
   @HttpCode(HttpStatus.CREATED)
   register(
     @Body(new ZodValidationPipe(frontRegisterSchema)) dto: FrontRegisterRequest,
@@ -104,6 +129,7 @@ export class FrontAuthController {
    * 使用者是從信件點進來的，看到一段 JSON 只會不知道發生什麼事。
    */
   @Get('verify-email')
+  @Throttle(THROTTLE.TOKEN)
   // 明寫 302：@Redirect() 自己的預設也是 302，但不寫的話「這支端點回什麼」
   // 只能從裝飾器的預設值推斷，而 swagger 的守則也讀不到它
   @HttpCode(HttpStatus.FOUND)
@@ -127,6 +153,7 @@ export class FrontAuthController {
    * 就是一個乾淨的帳號探測點——而重發沒有「給使用者有用回饋」的需求可以拿來抵。
    */
   @Post('resend-verification')
+  @Throttle(THROTTLE.MAIL)
   @HttpCode(HttpStatus.NO_CONTENT)
   async resendVerification(
     @Body(new ZodValidationPipe(frontEmailOnlySchema))
@@ -142,6 +169,7 @@ export class FrontAuthController {
    * 而重設信本身就會送到那個信箱——能收到就證明他擁有它。
    */
   @Post('forgot-password')
+  @Throttle(THROTTLE.MAIL)
   @HttpCode(HttpStatus.NO_CONTENT)
   async forgotPassword(
     @Body(new ZodValidationPipe(frontEmailOnlySchema))
@@ -158,6 +186,7 @@ export class FrontAuthController {
    * 等於只重設了一半。
    */
   @Post('reset-password')
+  @Throttle(THROTTLE.MAIL)
   @HttpCode(HttpStatus.NO_CONTENT)
   async resetPassword(
     @Body(new ZodValidationPipe(frontResetPasswordSchema))

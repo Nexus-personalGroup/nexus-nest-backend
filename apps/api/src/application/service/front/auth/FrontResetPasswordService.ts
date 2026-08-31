@@ -25,6 +25,17 @@ export { FRONT_RESET_PASSWORD_USE_CASE };
  * `SaveUserPort.updatePassword` 會**同時遞增 `tokenVersion`**，讓所有裝置立即登出。
  * 那不是附加功能：會走到「忘記密碼」的情境本來就包含「帳號可能正被別人用著」，
  * 改完密碼卻讓對方的既有 session 繼續有效，等於重設了一半。
+ *
+ * **成功時一併標記信箱已驗證。** 重設信送到那個信箱，
+ * 「能收到就證明他擁有它」——那與驗證信要證明的是**同一件事**，
+ * 用的是同一個信箱、同一組 sha256 雜湊儲存的一次性 token、同一套作廢邏輯，
+ * 憑證的強度並不比驗證信弱（這句話本來就寫在 `FrontForgotPasswordService` 裡，
+ * 只是沒有走完最後一步）。
+ *
+ * 不標記的話會產生一個**使用者自己解不開的死結**：密碼改好了、能登入了，
+ * 但聊天仍被 `EmailVerifiedGuard` 擋著、WS 連線直接被拒，
+ * 而他手上沒有任何線索指向「你還要去點另一封信」——
+ * 而那封信可能就是當初沒收到才走到忘記密碼的。
  */
 @Injectable()
 export class FrontResetPasswordService implements FrontResetPasswordUseCase {
@@ -56,5 +67,9 @@ export class FrontResetPasswordService implements FrontResetPasswordUseCase {
       getEnv().BCRYPT_ROUNDS,
     );
     await this.saveUser.updatePassword(userId, passwordHash);
+
+    // 條件式更新（where 帶 emailVerifiedAt: null），因此已驗證的帳號
+    // 不會被覆寫成新的驗證時間，重複呼叫安全
+    await this.saveUser.markEmailVerified(userId);
   }
 }

@@ -126,6 +126,7 @@ describe('FrontResetPasswordService', () => {
     } as unknown as jest.Mocked<UserTokenPort>;
     saveUser = {
       updatePassword: jest.fn().mockResolvedValue(true),
+      markEmailVerified: jest.fn().mockResolvedValue(true),
     } as unknown as jest.Mocked<SaveUserPort>;
     policy = {
       validateOrThrow: jest.fn(),
@@ -169,5 +170,35 @@ describe('FrontResetPasswordService', () => {
 
     await expect(service.execute(command)).rejects.toThrow('policy');
     expect(userToken.consume).not.toHaveBeenCalled();
+  });
+
+  /**
+   * 重設信送到那個信箱，「能收到就證明他擁有它」——
+   * 那與驗證信要證明的是同一件事。不標記的話使用者會卡在一個
+   * 自己解不開的死結：密碼改好了、能登入了，但聊天仍被擋著，
+   * 而他手上沒有線索指向「你還要去點另一封信」。
+   */
+  it('⭐ 重設成功一併標記信箱已驗證', async () => {
+    await service.execute(command);
+
+    expect(saveUser.markEmailVerified).toHaveBeenCalledWith('user-1');
+  });
+
+  // 條件式更新（where 帶 emailVerifiedAt: null）保證已驗證的帳號不被覆寫成新時間；
+  // 這裡驗的是「service 不做額外判斷」——判斷放在 repository 那一層
+  it('已驗證的帳號重設密碼同樣呼叫（由條件式更新保證不覆寫）', async () => {
+    saveUser.markEmailVerified.mockResolvedValue(false);
+
+    await expect(service.execute(command)).resolves.toBeUndefined();
+    expect(saveUser.markEmailVerified).toHaveBeenCalledTimes(1);
+  });
+
+  it('token 無效時不標記', async () => {
+    userToken.consume.mockResolvedValue(null);
+
+    await expect(service.execute(command)).rejects.toThrow(
+      InvalidTokenException,
+    );
+    expect(saveUser.markEmailVerified).not.toHaveBeenCalled();
   });
 });

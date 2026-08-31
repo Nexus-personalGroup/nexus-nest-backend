@@ -1,5 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
+import { EmailAlreadyExistsException } from '@app/domain/exception/EmailAlreadyExistsException';
 import {
   LOAD_USER_PORT,
   ListUsersPage,
@@ -153,15 +155,32 @@ export class PrismaUserRepository implements LoadUserPort, SaveUserPort {
     displayName: string;
   }): Promise<string> {
     // emailVerifiedAt 刻意不出現在這裡：沒有任何路徑可以在建立當下就標成已驗證
-    const created = await this.prisma.userRecord.create({
-      data: {
-        email: input.email,
-        password: input.passwordHash,
-        displayName: input.displayName,
-      },
-      select: { id: true },
-    });
-    return created.id;
+    try {
+      const created = await this.prisma.userRecord.create({
+        data: {
+          email: input.email,
+          password: input.passwordHash,
+          displayName: input.displayName,
+        },
+        select: { id: true },
+      });
+      return created.id;
+    } catch (err) {
+      // 唯一索引衝突是**正常結果而非錯誤**：呼叫端是「先查再建」，
+      // 兩個併發請求會都通過查詢而在這裡撞上。不接住的話 Prisma 的例外
+      // 會一路冒到 GlobalExceptionFilter 兜成 500，而契約說好的是 409。
+      //
+      // **「先查」的角色因此不是防止衝突**（那是唯一索引的工作），
+      // 而是給出更好的錯誤訊息、並在帳號未驗證時順便重發驗證信——
+      // 少了這個理解，下一個人會以為先查多餘而刪掉它，那條重發路徑就消失了。
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new EmailAlreadyExistsException();
+      }
+      throw err;
+    }
   }
 
   async markEmailVerified(id: string): Promise<boolean> {

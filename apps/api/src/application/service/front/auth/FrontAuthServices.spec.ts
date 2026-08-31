@@ -1,6 +1,9 @@
 import { UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
 import { FrontLoginService } from './FrontLoginService';
+import type { IpBlockPort } from '@app/application/port/out/security/IpBlockPort';
+import type { IpListPort } from '@app/application/port/out/security/IpListPort';
+import type { FeatureFlagService } from '@app/application/service/shared/FeatureFlagService';
 import { FrontRefreshTokenService } from './FrontRefreshTokenService';
 import { ResolveUserContextService } from './ResolveUserContextService';
 import { AccountDisabledException } from '@app/domain/exception/AccountDisabledException';
@@ -22,6 +25,7 @@ jest.mock('@app/infrastructure/validate-env', () => ({
     FRONT_REFRESH_SECRET: 'front-refresh-secret-min-32-character',
     ACCESS_TOKEN_EXPIRES_IN: 7200,
     REFRESH_TOKEN_EXPIRES_IN: 604800,
+    APPLICATION_IP_BLOCK_THRESHOLD: 5,
   }),
 }));
 
@@ -52,6 +56,23 @@ const makeJwt = () =>
     verify: jest.fn(),
   }) as unknown as jest.Mocked<JwtService>;
 
+const makeIpBlock = () =>
+  ({
+    recordFailedIpAttempt: jest.fn().mockResolvedValue(1),
+    resetIpAttempts: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<IpBlockPort>;
+
+const makeIpList = () =>
+  ({
+    addToBlacklist: jest.fn().mockResolvedValue(undefined),
+  }) as unknown as jest.Mocked<IpListPort>;
+
+/** 預設開啟 IP 黑名單，否則計數整段被跳過 */
+const makeFlags = (enabled = true) =>
+  ({
+    isEnabled: jest.fn().mockReturnValue(enabled),
+  }) as unknown as jest.Mocked<FeatureFlagService>;
+
 const makeBlacklist = () =>
   ({
     addToBlacklist: jest.fn().mockResolvedValue(undefined),
@@ -62,13 +83,19 @@ const makeBlacklist = () =>
 describe('FrontLoginService', () => {
   let loadUser: jest.Mocked<LoadUserPort>;
   let jwt: jest.Mocked<JwtService>;
+  let ipBlock: jest.Mocked<IpBlockPort>;
+  let ipList: jest.Mocked<IpListPort>;
+  let flags: jest.Mocked<FeatureFlagService>;
   let service: FrontLoginService;
 
   beforeEach(() => {
     jest.clearAllMocks();
     loadUser = makeLoadUser();
     jwt = makeJwt();
-    service = new FrontLoginService(loadUser, jwt);
+    ipBlock = makeIpBlock();
+    ipList = makeIpList();
+    flags = makeFlags();
+    service = new FrontLoginService(loadUser, jwt, ipBlock, ipList, flags);
   });
 
   it('登入成功回傳 token 對與使用者摘要', async () => {
@@ -188,6 +215,101 @@ describe('FrontLoginService', () => {
     await expect(
       service.execute({ email: 'user1@test.com', password: 'right' }),
     ).resolves.toBeDefined();
+  });
+
+  /**
+   * IP 失敗計數。
+   *
+   * 這條防線**曾經只存在於註解裡**：`FrontLoginService` 的註解寫著防護交給
+   * `APPLICATION_IP_BLOCK_THRESHOLD`，但 `recordFailedIpAttempt` 從來沒有被
+   * 前台呼叫過。**只注入不呼叫、或只寫在註解裡，都是同一種殘骸。**
+   */
+  describe('IP 失敗計數', () => {
+    const IP = '203.0.113.7';
+    const loginWithIp = () =>
+      service.execute({
+        email: 'user1@test.com',
+        password: 'wrong',
+        ip: IP,
+      });
+
+    it('⭐ 密碼錯誤 → 遞增該 IP 的失敗計數', async () => {
+      loadUser.loadByEmail.mockResolvedValue(makeUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(loginWithIp()).rejects.toThrow();
+
+      expect(ipBlock.recordFailedIpAttempt).toHaveBeenCalledWith(IP);
+    });
+
+    // 帳號不存在也要計數，否則攻擊者用不存在的信箱就能繞過整條防線
+    it('⭐ 帳號不存在 → 同樣遞增', async () => {
+      loadUser.loadByEmail.mockResolvedValue(null);
+
+      await expect(loginWithIp()).rejects.toThrow();
+
+      expect(ipBlock.recordFailedIpAttempt).toHaveBeenCalledWith(IP);
+    });
+
+    it('⭐ 達到門檻 → 自動加入黑名單', async () => {
+      loadUser.loadByEmail.mockResolvedValue(makeUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+      ipBlock.recordFailedIpAttempt.mockResolvedValue(5);
+
+      await expect(loginWithIp()).rejects.toThrow();
+
+      expect(ipList.addToBlacklist).toHaveBeenCalledWith(
+        IP,
+        expect.stringContaining('自動封鎖'),
+        true,
+      );
+    });
+
+    it('未達門檻不加入黑名單', async () => {
+      loadUser.loadByEmail.mockResolvedValue(makeUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+      ipBlock.recordFailedIpAttempt.mockResolvedValue(4);
+
+      await expect(loginWithIp()).rejects.toThrow();
+
+      expect(ipList.addToBlacklist).not.toHaveBeenCalled();
+    });
+
+    // 零星打錯的使用者不該慢慢累積到門檻
+    it('⭐ 登入成功 → 重置該 IP 的失敗計數', async () => {
+      loadUser.loadByEmail.mockResolvedValue(makeUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      await service.execute({
+        email: 'user1@test.com',
+        password: 'User1234!',
+        ip: IP,
+      });
+
+      expect(ipBlock.resetIpAttempts).toHaveBeenCalledWith(IP);
+      expect(ipBlock.recordFailedIpAttempt).not.toHaveBeenCalled();
+    });
+
+    it('取不到 IP 時整段略過', async () => {
+      loadUser.loadByEmail.mockResolvedValue(makeUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(
+        service.execute({ email: 'user1@test.com', password: 'wrong' }),
+      ).rejects.toThrow();
+
+      expect(ipBlock.recordFailedIpAttempt).not.toHaveBeenCalled();
+    });
+
+    it('功能開關關閉時不計數', async () => {
+      flags.isEnabled.mockReturnValue(false);
+      loadUser.loadByEmail.mockResolvedValue(makeUser());
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
+
+      await expect(loginWithIp()).rejects.toThrow();
+
+      expect(ipBlock.recordFailedIpAttempt).not.toHaveBeenCalled();
+    });
   });
 });
 
