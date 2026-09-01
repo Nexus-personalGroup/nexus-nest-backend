@@ -56,6 +56,16 @@
 
 **How to apply**：還原一律用 python 字串替換或 `git checkout --`，還原後**實際驗證**（跑一次該檔的載入或測試）。反向驗證的完整循環是「插探針 → 親眼看它紅 → 還原 → **確認 `git status` 乾淨**」，最後一步不能省。
 
+### 2026-09-02 — 反向驗證只看整體 exit code，會被「別支守則的紅燈」冒名頂替
+
+**踩到什麼**：新寫了一支守則斷言 `SecurityController` 仍有 `@Roles(RoleCode.SUPERADMIN)`。反向驗證時把該裝飾器註解掉、跑 `test:arch`、得到 `exit=1`，就判定守則有效。實際上紅的是既有的 `authorization-coverage.spec.ts`（它也在檢查同一個裝飾器），**我那支從頭到尾都是綠的**——因為正規式沒去註解，`// @Roles(RoleCode.SUPERADMIN)` 照樣被比中。
+
+**Why**：一次破壞可能同時踩到多支守則，而 `exit code` 是整包的。「破壞後紅」這個條件對假守則也成立，所以它證明不了任何事。
+
+**How to apply**：反向驗證要看**失敗的測試名稱**，不是 exit code——`pnpm --filter @app/api test:arch 2>&1 | grep -E "^\s+● 架構守則" | sort -u`，確認清單裡有你剛寫的那一支。另外**每支新守則至少要試兩種破壞方式**（這次是「註解掉」與「整行刪掉」）：只試一種時，正好避開你的實作缺陷的機率不低。
+
+（去註解本身的規則已經有一條「2026-08-17 — 字串比對型的守則必須先去註解」，`stripComments` 在 `test/architecture/ws-source.ts`。本條記的是**驗證方法**的缺陷，不是規則寫法。）
+
 ### 2026-08-16 — 「測試全綠」不等於「改動被驗證過」，要先確認有測試載入那段程式碼
 
 **踩到什麼**：驗證 path alias 可行性時，把一支檔案的 import 改成 `@app/*`，跑 `pnpm test` 得到 234 全綠，一度判定「ts-jest 開箱支援 alias」。實際上**沒有任何單元測試會載入那支檔案**——另寫一支探針 spec 直接 import 它，才看到 ts-jest 根本解析不了 `@app/*`，需要 `moduleNameMapper`。
