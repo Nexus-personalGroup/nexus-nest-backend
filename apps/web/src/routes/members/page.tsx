@@ -167,9 +167,9 @@ export const MembersPage = () => {
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">會員管理</h1>
+          <h1 className="text-2xl font-semibold">管理者帳號</h1>
           <p className="text-muted-foreground text-sm">
-            管理後台帳號、角色指派與啟用狀態
+            後台管理員的帳號、角色指派與啟用狀態。聊天服務的使用者在「會員列表」
           </p>
         </div>
         <Button disabled={!canEdit} onClick={() => setCreateOpen(true)}>

@@ -149,7 +149,7 @@ export const FrontUsersTable = ({
       columns={columns}
       data={data}
       isLoading={isLoading}
-      emptyMessage="目前沒有符合條件的前台會員"
+      emptyMessage="目前沒有符合條件的會員"
     />
   );
 };
