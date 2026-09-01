@@ -47,16 +47,29 @@ pnpm docker:prune  # 清 build cache 與 dangling image（不動正在用的 ima
 > 常會長到十幾 GB，`docker system df` 看得到），後者清**資料**。清 build cache 不會
 > 讓你重跑 seed，清資料不會讓你重新 build。
 
-三個入口同時開著，用途不同：
+**入口只有一個**：<http://127.0.0.1:8080>（nginx）。`/api/*` 給後端、其餘給前端。
 
-| 入口 | 位置 | 什麼時候用 |
-| --- | --- | --- |
-| **反向代理（單一 origin）** | http://127.0.0.1:8080 | **與正式的單一埠部署同形狀**——`/api/*` 給後端、其餘給前端。要驗 CORS、cookie 的 SameSite、CSP 這類跟 origin 有關的行為時用這個 |
-| 前端 | http://127.0.0.1:5173 | 直連 Vite，日常開發最直接 |
-| 後台 API | http://127.0.0.1:3000/api/admin/* | 直連後端，打 API 或看 Swagger |
-| Swagger | http://127.0.0.1:3000/api/admin/docs | |
+| 用途 | 位置 |
+| --- | --- |
+| 後台前端 | http://127.0.0.1:8080 |
+| 後台 API | http://127.0.0.1:8080/api/admin/* |
+| Swagger | http://127.0.0.1:8080/api/admin/docs |
+| 健康檢查 | http://127.0.0.1:8080/api/health |
 
 代理的埠可用根目錄 `.env` 的 `APP_PROXY_PORT` 改（預設 8080）。
+
+> **api 與 web 刻意不發布對外埠**，`127.0.0.1:3000` / `:5173` 在容器模式下連不上
+> （症狀是 connection refused，而那個訊息指不到原因，所以寫在這裡）。
+> 這是為了讓開發時的 origin 與正式的單一埠部署一致——留一條直連的備援看似無害，
+> 但它讓「單一 origin」變成可選的，而且**代理設定漂掉時沒有人會發現**。
+>
+> 要直連 api / web 就用下面的「只起資料庫」模式，那條路本來就是 3000 / 5173。
+> 要分辨「代理壞了還是應用壞了」，從代理容器內部打後端——比開一個 host 埠更精準，
+> 它涵蓋了代理的網路路徑：
+>
+> ```bash
+> docker compose exec nginx wget -qO- http://api:3000/api/health
+> ```
 
 原始碼以 bind mount 掛進容器，**前後端都支援熱重載**——改 `apps/web` 走 Vite HMR，
 改 `apps/api` 約 15 秒內自動重啟生效。預設帳號 `admin@test.com` / `Admin1234!`。
@@ -68,8 +81,8 @@ pnpm docker:prune  # 清 build cache 與 dangling image（不動正在用的 ima
 > 之後得重跑 `docker:init`）。
 
 > **用 `127.0.0.1` 而不是 `localhost`。** 容器只綁 IPv4，而 macOS 的 `localhost` 會優先
-> 解析成 IPv6 `::1`——若你機器上另有服務綁在 `::1:5173`（例如另一個 Vite 專案），
-> 用 `localhost` 會連到它而不是這裡，症狀是「畫面完全不對」。
+> 解析成 IPv6 `::1`——若你機器上另有服務綁在 `::1:8080`，用 `localhost` 會連到它
+> 而不是這裡，症狀是「畫面完全不對」。
 
 ### 只起資料庫（api / web 跑在 host）
 
@@ -91,9 +104,8 @@ REDIS_HOST=127.0.0.1
 REDIS_PORT=6389       # 非預設 6379
 ```
 
-要改埠或密碼就在 repo 根目錄的 `.env` 設 `APP_API_PORT` / `APP_WEB_PORT` /
-`APP_PROXY_PORT` / `DEV_DB_PORT` / `DEV_REDIS_PORT` / `DEV_DB_PASSWORD`
-（compose 會讀，預設值即上表）。
+要改埠或密碼就在 repo 根目錄的 `.env` 設 `APP_PROXY_PORT` / `DEV_DB_PORT` /
+`DEV_REDIS_PORT` / `DEV_DB_PASSWORD`（compose 會讀，預設值即上表）。
 
 > **這份 `.env` 與 `apps/api/.env` 是兩回事。** 根目錄那份是**基礎設施設定**
 > （埠、密碼），由 compose 在展開 `${...}` 時讀取；`apps/api/.env` 是**應用程式設定**，

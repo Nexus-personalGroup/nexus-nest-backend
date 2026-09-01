@@ -5,28 +5,26 @@
 
 ## 進行中
 
-**`improve-admin-orientation`** 已完成待合併——後台的方向感兩塊：
-Sidebar 依「管理誰」重新分組（管理者與權限 / 會員管理），
-以及首頁從模板佔位頁改成營運摘要 + 個人資料。
-
-**下一個已決定但還沒開文件**：把 api / web 的對外埠關掉，
-讓 `docker compose up` 之後**只有 nginx 那個埠通**。
-理由是三扇門的結果是大家照舊走習慣的那扇，代理那條路從來沒被真的走過——
-那它也就驗證不到 CORS / cookie / CSP 的實際行為。
-**必須另開 change**：它推翻 `platform-container-dev` 剛寫進去的
-「api 與 web 的對外埠 MUST 保留」，推翻自己上週寫的需求要留得下紀錄。
+**`enforce-single-entry-container`** 已完成待合併——關掉 api / web 的對外埠，
+`docker compose up` 之後只有 nginx（8080）通得了。
+**它推翻了 `add-nginx-proxy-and-containerised-e2e` 上週才寫進
+`platform-container-dev` 的「api 與 web 的對外埠 MUST 保留」**，
+所以獨立成一個 change——推翻自己寫的需求要留得下紀錄。
+反轉的理由與當初「保留」的理由都記在該 change 的 `design.md` D1。
 
 ## 路線圖
 
-在飛與待開的兩項見「進行中」。**那兩項之後沒有已排程的序列**
+在飛的一項見「進行中」。**它之後沒有已排程的序列**
 ——候選與各自卡在什麼，見下面的「待辦」。
 
-### 已走完：2026-08-20 → 09-01，29 支 PR
+### 已走完：2026-08-20 → 09-02，31 支 PR（#31 待合併）
 
 M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽，
 接著是**分表工程**（把前台使用者從後台帳號表拆出來），
-中間穿插兩輪審查報告的修補，最後補上容器環境的兩塊
-（nginx 單一入口、e2e 進容器）。逐支見「已完成」的索引。
+中間穿插兩輪審查報告的修補，然後是容器環境的兩塊
+（nginx 單一入口、e2e 進容器），最後補上後台的方向感
+（Sidebar 依管理對象分組、首頁改營運摘要）與容器的單一入口收口。
+逐支見「已完成」的索引。
 
 **分表工程的四支拆成四個 change 是刻意的**，那三個排序判斷值得留著
 ——它們是**判斷**而不是結果：
@@ -94,8 +92,8 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
   **值得開一個小 cleanup change**：補完這 5 份之後加一條守則擋住
   「Purpose 含 `TBD - created by archiving`」——在補完之前那條守則會是紅的，
   所以兩件事必須同一個 change 做完。
-  （`improve-admin-orientation` 新開的 `ui-home` 也要一併寫 Purpose，
-  否則它會變成第 6 份。）
+  （`improve-admin-orientation` 新開的 `ui-home` 已在該 change 內手動補上 Purpose，
+  沒有變成第 6 份——新開能力時順手寫，比事後回收便宜。）
   （順帶：archive 也不會發現舊 Purpose 與新合併的 Requirements 互相矛盾，
   `api-account-suspension` 就發生過，那個要靠人看。）
 
@@ -124,6 +122,14 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 修掉、🟡🟢 由 `fix-security-cleanup` 收完；第二輪的問題 1～5 是 `fix-front-registration-gaps`。）
 
 ### 技術債（小，隨手可修）
+
+- **api 沒有 healthcheck，`docker compose up -d --wait` 只等到 running**。
+  容器起來了但 Nest 還在編譯 / 連 DB 的那段空窗期，`--wait` 已經回報成功，
+  這時打過去會失敗。這是舊有狀況，但 `enforce-single-entry-container` 關掉
+  api 的對外埠之後**症狀會被歸錯因**——現在唯一的入口是代理，
+  「起來了卻打不通」的第一直覺會變成「代理壞了」。
+  補一條 `test: wget -qO- http://localhost:3000/api/health` 的 healthcheck 即可，
+  **併進下一個會動到 compose 的 change**。
 
 - **布林環境變數的解析不一致**：既有變數用 `z.string().default('false').transform(v => v === 'true')`，
   它把任何非 `'true'` 的值都當成 false——`FOO=TRUE`（大寫）或 `FOO=1` 會**靜默失效**。
@@ -254,7 +260,9 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 | #26 | 08-28 | `fix-permission-cache-consistency` | 角色權限變更後清成員快取；`clearByMemberId` 併回 `MemberContextCachePort` |
 | #27 | 08-30 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、fail-open 可觀測、心跳防重入、文件漂移 |
 | #28 | 08-31 | `fix-front-registration-gaps` | 第二輪審查的 1～5；驗證信連結、前台節流、IP 失敗計數、併發註冊、重設密碼標記已驗證 |
-| — | 09-01 | `add-nginx-proxy-and-containerised-e2e` | nginx 單一入口 + `TRUST_PROXY`；e2e 的測試行程進容器；修掉 `down -v` 會清光開發環境的既有 bug |
+| #29 | 09-01 | `add-nginx-proxy-and-containerised-e2e` | nginx 單一入口 + `TRUST_PROXY`；e2e 的測試行程進容器；修掉 `down -v` 會清光開發環境的既有 bug |
+| #30 | 09-01 | `improve-admin-orientation` | Sidebar 依「管理誰」分組；首頁從佔位頁改成營運摘要。**捷徑卡做到一半砍掉**——sidebar 常駐，再列一次是純重複 |
+| #31 | 09-02 | `enforce-single-entry-container` | 關掉 api / web 的對外埠，容器模式只剩 nginx。**推翻 #29 剛寫進 spec 的「對外埠 MUST 保留」** |
 
 ### 幾個反覆出現的教訓
 

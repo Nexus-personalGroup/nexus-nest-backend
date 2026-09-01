@@ -31,6 +31,26 @@ const composeFiles = (): string[] =>
     .filter((f) => /^compose(\..+)?\.ya?ml$/.test(f))
     .sort();
 
+/**
+ * 取出 `services:` 底下某個服務的區塊（不含服務名那行）。
+ *
+ * 終止條件只認「下一個服務鍵」（`  name:`）與頂層鍵，**不認註解**——
+ * 服務之間的說明註解同樣縮排兩格，拿它當邊界的話，區塊會在註解處被截斷，
+ * 截斷之後漏掉的宣告是**靜默通過**，不是報錯。
+ */
+const serviceBlock = (body: string, name: string): string | null => {
+  const lines = body.split('\n');
+  const start = lines.indexOf(`  ${name}:`);
+  if (start === -1) return null;
+
+  const rest = lines.slice(start + 1);
+  const end = rest.findIndex((l) => /^ {2}[\w-]+:/.test(l) || /^\S/.test(l));
+  return (end === -1 ? rest : rest.slice(0, end)).join('\n');
+};
+
+/** 服務區塊裡有沒有 `ports:` 宣告（服務屬性縮排四格） */
+const declaresPorts = (block: string): boolean => /^ {4}ports:/m.test(block);
+
 /** 取出 `- '127.0.0.1:3316:3306'` 這類對外埠宣告中的主機埠 */
 const publishedPorts = (body: string): string[] => [
   ...new Set(
@@ -141,6 +161,46 @@ describe('架構守則：compose 檔的執行路徑與埠號文件', () => {
         : `compose.yml 的對外埠未寫進 README：\n${undocumented
             .map((p) => `  ${p}`)
             .join('\n')}\n照 README 設 .env 的人會連不上，且錯誤訊息指不到原因`,
+    ).toBe('');
+  });
+
+  /**
+   * 容器模式的入口只有反向代理。
+   *
+   * 這條防的不是「有人不同意單一入口」，是**「為了 debug 暫時開一下然後忘了拿掉」**
+   * ——那個回歸沒有任何症狀，只會讓下一次驗 CORS 或 cookie 的人得到錯的結論。
+   *
+   * 用服務名稱表述而非「只有 nginx 可以有 ports」的白名單：白名單會在有人加新服務時
+   * 誤報，而誤報的處理方式是把服務加進白名單，規則從此空轉。
+   */
+  it('api 與 web 不得宣告對外埠——容器模式的入口只有代理', () => {
+    const body = read('compose.yml');
+    const blocks = Object.fromEntries(
+      ['api', 'web', 'nginx'].map((n) => [n, serviceBlock(body, n)]),
+    );
+
+    // 掃不到服務就等於規則不存在，服務改名時要在這裡失敗而不是靜默通過
+    for (const [name, block] of Object.entries(blocks)) {
+      expect(block === null ? `compose.yml 找不到服務 ${name}` : '').toBe('');
+    }
+
+    // nginx 是正對照組：它一定有 ports。這裡若為 false 代表解析或正規式失效，
+    // 而失效的表現正好是「api / web 也都看起來沒有 ports」——規則空轉
+    expect(declaresPorts(blocks.nginx ?? '')).toBe(true);
+
+    const offenders = ['api', 'web'].filter((n) =>
+      declaresPorts(blocks[n] ?? ''),
+    );
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下服務宣告了對外埠：${offenders.join(
+            ' / ',
+          )}\n容器模式的入口只有 nginx（${'${APP_PROXY_PORT:-8080}'}）——多一條直連的路，` +
+            `\n「單一 origin」就變成可選的，而代理設定漂掉時沒有人會發現。` +
+            `\n要直連 api / web 請改跑 host 模式：pnpm docker:deps + pnpm dev（3000 / 5173）。` +
+            `\n只是想確認代理有沒有壞：docker compose exec nginx wget -qO- http://api:3000/api/health`,
     ).toBe('');
   });
 });

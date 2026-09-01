@@ -1,18 +1,24 @@
 # =============================================================================
 # 開發與驗證環境（單一檔案）
 # -----------------------------------------------------------------------------
-# 三種用法，靠「指定服務」與「profile」區分，不需要多份 compose 檔：
+# 四種用法，靠「指定服務」與「profile」區分，不需要多份 compose 檔：
 #
-#   docker compose up -d                    整套跑在容器裡（api + web + postgres + redis）
+#   docker compose up -d                    整套跑在容器裡（api + web + postgres + redis + nginx）
 #   docker compose up -d postgres redis     只起相依服務，api / web 跑在 host
 #   docker compose --profile verify up      重現 CI 的 e2e 環境（由 pnpm verify:ci 呼叫）
+#   docker compose --profile e2e up         連 e2e 的測試行程也跑在容器裡（pnpm test:e2e:docker）
 #
 # 對應的 pnpm 指令見 README。verify 的 PostgreSQL 獨立成一個服務而非共用上面那個，
 # 因為兩者對資料的要求相反：開發要 named volume 重啟保留，驗證要 tmpfs 每次乾淨。
 # 它掛在 profile 底下，平常的 `up` 不會啟動它。
 #
+# **整套跑在容器裡時，唯一的入口是 nginx（8080）**——api 與 web 刻意不發布對外埠。
+# 留一條直連的備援看似無害，實際上它讓「單一 origin」變成可選的，而且代理設定漂掉時
+# 沒有人會發現（日常還有另一條路能用）。要直連請改用上面第二種：api / web 跑在 host，
+# 那條路本來就是 3000 / 5173。
+#
 # 對外埠一律避開預設的 5432 / 6379——多數開發機已經有一組資料庫在跑。
-# 可用 repo 根目錄 .env 的 DEV_DB_PORT / DEV_REDIS_PORT / DEV_DB_PASSWORD 覆寫。
+# 可用 repo 根目錄 .env 的 DEV_DB_PORT / DEV_REDIS_PORT / DEV_DB_PASSWORD / APP_PROXY_PORT 覆寫。
 # =============================================================================
 name: nexus-nest-backend
 
@@ -64,8 +70,12 @@ services:
       pnpm --filter @app/api exec concurrently -n build,run -c blue,green
       \"nest build --watch --config nest-cli.docker.json\"
       \"sh -c 'until [ -f dist/main.js ]; do sleep 1; done; exec node --watch --enable-source-maps dist/main'\""
-    ports:
-      - '127.0.0.1:${APP_API_PORT:-3000}:3000'
+    # 刻意沒有 ports：容器模式的入口只有 nginx。api 提供的東西全在 /api 與
+    # /socket.io 之下，兩條都在代理的路由表裡，沒有功能因此失去入口
+    # （Swagger 走 http://127.0.0.1:8080/api/admin/docs）。
+    # 要分辨「代理壞了還是應用壞了」從代理容器內部打後端，比開一個 host 埠更精準
+    # ——它涵蓋了代理的網路路徑：
+    #   docker compose exec nginx wget -qO- http://api:3000/api/health
     environment:
       NODE_ENV: development
       # 開發容器一律吐 debug：這是「開發環境就該看得到細節」的決定，
@@ -96,7 +106,15 @@ services:
       AWS_MEDIA_LIBRARY_ROOT: local
       STORAGE_DRIVER: local
       APP_TIMEZONE: Asia/Taipei
-      CORS_ORIGIN: http://localhost:${APP_WEB_PORT:-5173}
+      # 指向代理——web 的對外埠已關閉，指著連不上的位址不會報錯，
+      # 只會在真的有跨 origin 請求時才炸。
+      # 兩個主機名都列：文件一律寫 127.0.0.1（macOS 的 localhost 會先解析成 ::1），
+      # 但人還是會打 localhost，而 CORS 比對的是字串不是解析結果。
+      #
+      # ⚠️ **容器模式從此是同源的，這條設定不會被走到。** 改 CORS 行為要驗，
+      # 得跑 host 模式（`pnpm docker:deps` + `pnpm dev`，5173 → 3000 才是真跨 origin）。
+      # 在容器裡改了看不到差別，不是沒生效，是根本沒有跨 origin 請求。
+      CORS_ORIGIN: http://127.0.0.1:${APP_PROXY_PORT:-8080},http://localhost:${APP_PROXY_PORT:-8080}
       # macOS 的 bind mount 不傳遞 inotify 事件，tsc watch 必須改輪詢才看得到改動
       TSC_WATCHFILE: UseFsEventsWithFallbackDynamicPolling
     depends_on:
@@ -106,17 +124,21 @@ services:
   web:
     <<: *app-base
     command: pnpm --filter @app/web dev
-    ports:
-      - '127.0.0.1:${APP_WEB_PORT:-5173}:5173'
+    # 刻意沒有 ports：同 api，容器模式的入口只有 nginx。
+    # Vite 的 HMR 走頁面自己的 origin，因此經由代理（8080）連線，nginx 的
+    # `location /` 有 upgrade 設定，熱重載不受影響
     environment:
-      # 容器內 localhost 是 web 自己，proxy 必須指向 api service
+      # 容器內 localhost 是 web 自己，proxy 必須指向 api service。
+      # 正常流程走不到這裡——nginx 的 `location /api` 攔在 Vite 前面。留著是因為
+      # 它「不會錯」而拿掉會錯：只起 api + web 不起 nginx 時，沒有這個值 Vite 會
+      # 退回 localhost:3000，在容器裡指向它自己
       VITE_API_PROXY_TARGET: http://api:3000
       VITE_USE_POLLING: 'true'
     depends_on:
       - api
 
   # 開發環境的單一入口：/api → api、其餘 → web。
-  # api / web 原本的埠仍然可用——這是多一條路，不是取代。
+  # **「單一」是字面意思**——api 與 web 沒有 ports，這裡是容器模式唯一的進入方式。
   # 用官方映像 + 掛設定檔，不自建：自建只為了塞 logrotate 之類的東西，
   # 而那是部署主機的需求，不是開發環境的。
   nginx:
@@ -140,7 +162,8 @@ services:
       # 必須用 pg_isready 並指定 -U/-d：官方映像在首次初始化時會**先起一次臨時伺服器**
       # 跑 initdb 與初始化腳本，該階段行程存在、但對外連線尚未開放。
       # 只檢查行程或埠會得到「已就緒」的錯誤結論，症狀是 api 在初始化中途連線並認證失敗。
-      test: ['CMD-SHELL', 'pg_isready -U postgres -d ${DEV_DB_DATABASE:-nexus_db}']
+      test:
+        ['CMD-SHELL', 'pg_isready -U postgres -d ${DEV_DB_DATABASE:-nexus_db}']
       interval: 2s
       timeout: 3s
       retries: 30
