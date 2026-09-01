@@ -21,11 +21,13 @@ const PERM_VIEW = 'BACKEND:FRONT_USER:VIEW';
 type SearchKey = 'email' | 'displayName';
 
 /**
- * 前台會員列表。
+ * 會員列表（前台使用者）。
  *
- * 「前台會員」與 `/members` 的「會員管理」是**兩個不同的帳號體系**：
+ * 與 `/members`（管理者帳號）是**兩個不同的帳號體系**：
  * 這裡是聊天的使用者（`users`），那裡是後台管理員（`members`）。
- * 這一頁存在的理由就是讓後台不必再「從檢舉點進去」才找得到一個人。
+ * 兩者在 Sidebar 分屬不同群組——區別由分組承擔，不靠標籤前綴。
+ *
+ * 這一頁存在的理由是讓後台不必再「從檢舉點進去」才找得到一個人。
  */
 export const FrontUsersPage = () => {
   const canView = useHasPermission(PERM_VIEW);
@@ -76,9 +78,9 @@ export const FrontUsersPage = () => {
   return (
     <div className="flex flex-col gap-4">
       <header>
-        <h1 className="text-2xl font-semibold">前台會員</h1>
+        <h1 className="text-2xl font-semibold">會員列表</h1>
         <p className="text-muted-foreground text-sm">
-          聊天服務的使用者。與「會員管理」的後台帳號是兩個獨立的體系
+          聊天服務的使用者。後台管理員的帳號在「管理者帳號」，兩者是獨立的體系
         </p>
       </header>
 

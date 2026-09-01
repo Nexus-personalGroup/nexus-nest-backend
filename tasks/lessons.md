@@ -219,6 +219,61 @@ export {};
 
 ## 測試
 
+### 2026-09 — design 裡列為「風險」的東西，實作後要回頭確認它發生了沒
+
+**踩到什麼**：首頁設計了一張「快速入口」卡，design 的 Risks 有一條
+「快速入口與 Sidebar 顯示同一批東西，可能顯得重複」，緩解寫的是
+「真的覺得吵時該調的是呈現密度」。實作完看畫面——**它就是重複的**，
+正確答案是整張拿掉，不是調密度。
+
+**Why**：版面的重複**只有看到畫面才判斷得出來**。寫 design 時能想到那個風險，
+但想不出它的嚴重程度；而「緩解措施」是在還沒看到東西時寫的，
+所以它猜錯了方向。
+
+**How to apply**：Risks 不是寫完就結案的清單。**實作完要逐條回去問
+「這個發生了嗎」**，發生了就處理，並把結論寫回 design——
+那比原本的預測有價值得多。順帶：功能拿掉之後，
+**為它抽出的抽象也要收回**（本次是 `filterNavItems`），
+沒有第二個呼叫端的抽象不該存在。
+
+### 2026-09 — 人工驗收步驟如果每次都要重跑，就該寫成測試
+
+**踩到什麼**：tasks 寫「用兩種權限的帳號各登入一次看畫面」。
+實際做的時候發現 seed 只有一個 SUPERADMIN——要驗低權限得先開帳號、
+指派角色、再登入一次，**而那個流程每次驗證都要重跑一遍**。
+
+**Why**：把驗證寫成人工步驟時，很容易只想到「這次怎麼驗」，
+沒想到「每次都要這樣驗」。一個需要五分鐘前置的人工步驟，
+第二次就不會有人做了。
+
+**How to apply**：人工驗收留給**只有人眼判斷得出來的東西**
+（版面、文案、體感）。「有權限看得到、沒權限看不到」是**邏輯**，
+寫成元件測試每次 `pnpm test` 都跑，比點兩次可靠。
+本次改成 `home/page.test.tsx` 6 條，並反向驗證它們真的會紅。
+
+### 2026-09 — 容器跑著的時候在 host 跑 `pnpm build`，會把容器打死
+
+**踩到什麼**：容器全部 healthy，但登入回 502。nginx 的日誌是
+`connect() failed (111: Connection refused)`——**直連 :3000 也是連不上**。
+api 容器狀態顯示 `Up 33 minutes`，看起來完全正常。
+真正的錯誤埋在日誌裡：`Cannot find module '/app/apps/api/dist/main'`。
+
+**Why**：`apps/api` 有兩份 nest 設定——`nest-cli.json`（`deleteOutDir: true`）
+與容器專用的 `nest-cli.docker.json`（`false`）。容器的 watch 用後者，
+所以 rebuild 不會清空 `dist/`。但**在 host 跑 `pnpm build` 用的是前者**，
+它會先刪掉整個 `dist/`，而那個目錄是 bind mount ——
+容器裡的 `node --watch dist/main` 在那個空窗期重啟、`MODULE_NOT_FOUND`、
+然後**放棄不再重試**（"Waiting for file changes before restarting..."）。
+
+`compose.yml` 的註解早就寫了這個機制，但只設想容器內部的 rebuild，
+沒設想 host 端的 build 會從外面觸發同一件事。
+
+**How to apply**：**容器跑著的時候不要在 host 跑 `pnpm build`。**
+需要驗證 build 就先 `pnpm docker:down`，或跑完之後
+`docker compose restart api` 讓它重新產生 `dist/`。
+判準通用：**bind mount 的產出目錄有兩個寫入者時，兩邊的清空行為必須一致**
+——不一致的那一邊會在對方最不預期的時候把它的檔案抽走。
+
 ### 2026-09 — `docker compose down -v` 的 `-v` 是「專案的所有 volume」
 
 **踩到什麼**：容器化 e2e 的收尾寫成
