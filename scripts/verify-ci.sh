@@ -14,7 +14,15 @@ cd "$ROOT"
 
 cleanup() {
   echo "→ 收拾容器"
-  docker compose --profile verify down -v >/dev/null 2>&1 || true
+  # **不可用 `down -v`**：`-v` 移除的是**專案的所有 named volume**，
+  # 不只這裡起的那個——包含 postgres-data、redis-data 與五個 node_modules volume。
+  # 也就是說每跑一次就清掉開發環境的資料庫與已安裝的依賴，
+  # 而症狀是下一次啟動時「找不到 .prisma/client」或「資料庫是空的」，
+  # 完全指不到是這一行造成的。（本 change 的驗收階段真的踩到了。）
+  #
+  # 用 `rm -fsv <服務>` 只針對指定的服務：-f 不問、-s 先停、-v 移除該容器的
+  # 匿名 volume。postgres-verify 用 tmpfs，容器一消失資料就跟著消失。
+  docker compose --profile verify rm -fsv postgres-verify >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 

@@ -12,12 +12,20 @@ import { collectSourceFiles, readSource } from './helpers';
 const MINIMUM_GUARDRAIL_FILES = 29;
 
 /** 文件裡「N 個規則檔」這類寫死的規模描述 */
-const HARDCODED_COUNT = /\d+\s*(?:rule files|個規則檔|條守則檔|個守則檔)/i;
+const HARDCODED_COUNT =
+  /\d+\s*(?:rule files|個規則檔|條守則檔|個守則檔|支\s*\/\s*\d+\s*項斷言)/i;
 
-/** 會被檢查的文件：專案說明與 CLAUDE.md */
+/**
+ * 會被檢查的文件：專案說明、CLAUDE.md 與 README。
+ *
+ * README 一開始不在清單裡，於是它繼續寫著「19 支規則檔 / 79 項斷言」
+ * 而實際是 29 / 207——**同一種漂移在沒被掃到的地方原封不動地留著**。
+ * 規則的涵蓋範圍要跟著「哪裡會寫這種數字」走，不是跟著目錄結構走。
+ */
 const DOC_FILES = [
   ...collectSourceFiles(['../../openspec/project'], { extensions: ['.md'] }),
   '../../CLAUDE.md',
+  '../../README.md',
 ];
 
 /**
@@ -70,12 +78,42 @@ describe('架構守則：守則清單必須自我維護', () => {
     ).toBe('');
   });
 
+  /**
+   * 守則清單的文件必須完整。
+   *
+   * `testing.md` 有一張「每一支守則守住什麼」的表。它曾經列 19 支而實際有 29 支
+   * ——**漏掉的 10 支裡有好幾支是當時剛加的**，加的人沒想到要回頭補表。
+   *
+   * 靠自律維護的清單一定會漂移。改成機器檢查之後，
+   * **新增一支守則卻沒補文件就會紅**，而那正是唯一會被記得的時機。
+   */
+  it('testing.md 必須涵蓋每一支守則', () => {
+    const documented = new Set(
+      [
+        ...readSource('../../openspec/project/testing.md').matchAll(
+          /`([a-z0-9-]+\.spec\.ts)`/g,
+        ),
+      ].map((m) => m[1]),
+    );
+    const missing = guardrails
+      .map((file) => file.split('/').pop() ?? file)
+      .filter((name) => !documented.has(name))
+      .map((name) => `  ${name}`);
+
+    expect(
+      missing.length === 0
+        ? ''
+        : `以下守則沒有記錄在 openspec/project/testing.md 的規則表：\n${missing.join('\n')}\n新增守則時要一併補一列說明它守住什麼——那是唯一會被記得的時機。`,
+    ).toBe('');
+  });
+
   // 規則自身的測試：樣式抓不到東西的話，上一條會永遠通過
   describe('判定邏輯（合成輸入）', () => {
     it.each([
       ['11 rule files / 32 assertions', true],
       ['28 個規則檔', true],
       ['11 條守則檔', true],
+      ['19 支 / 79 項斷言', true],
       ['架構守則（數量見 test:arch 輸出）', false],
       ['共 11 支 e2e 測試', false],
     ])('%s → %s', (text, expected) => {

@@ -8,6 +8,24 @@ const REPO_ROOT = join(API_ROOT, '..', '..');
 const read = (relative: string): string =>
   readFileSync(join(REPO_ROOT, relative), 'utf8');
 
+/**
+ * 遞迴列出目錄下的所有檔案（相對 REPO_ROOT）。
+ *
+ * `docker/` 底下一度只有檔案，於是原本直接 `readdirSync().map()`——
+ * 加入 `docker/nginx/` 之後那個假設就壞了，`readFileSync` 對目錄丟 EISDIR。
+ * 掃描清單的規則要能承受「有人在裡面開子目錄」，否則它會在**別人加東西的那一刻**
+ * 壞掉，而錯誤訊息（EISDIR）完全指不到原因。
+ */
+const filesUnder = (relativeDir: string): string[] => {
+  const absolute = join(REPO_ROOT, relativeDir);
+  if (!existsSync(absolute)) return [];
+  return readdirSync(absolute, { withFileTypes: true }).flatMap((entry) =>
+    entry.isDirectory()
+      ? filesUnder(`${relativeDir}/${entry.name}`)
+      : [`${relativeDir}/${entry.name}`],
+  );
+};
+
 const composeFiles = (): string[] =>
   readdirSync(REPO_ROOT)
     .filter((f) => /^compose(\..+)?\.ya?ml$/.test(f))
@@ -54,9 +72,7 @@ describe('架構守則：compose 檔的執行路徑與埠號文件', () => {
       ...files,
       'Dockerfile',
       '.dockerignore',
-      ...(existsSync(join(REPO_ROOT, 'docker'))
-        ? readdirSync(join(REPO_ROOT, 'docker')).map((f) => `docker/${f}`)
-        : []),
+      ...filesUnder('docker'),
     ].filter((f) => existsSync(join(REPO_ROOT, f)));
 
     const broken: string[] = [];

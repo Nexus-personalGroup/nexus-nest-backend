@@ -68,6 +68,17 @@ services:
       - '127.0.0.1:${APP_API_PORT:-3000}:3000'
     environment:
       NODE_ENV: development
+      # 開發容器一律吐 debug：這是「開發環境就該看得到細節」的決定，
+      # 與開發者本機 .env 的偏好無關——容器的 .env 是被遮蔽的（見 x-app-base），
+      # 所以不寫在這裡就只會拿到 envSchema 的預設值 info
+      LOG_LEVEL: debug
+      # 反向代理擋在前面時，request.ip 會變成 nginx 容器的位址。
+      # **不設這個的話三個功能會同時靜默失效**：IP 黑名單擋不到真正的來源、
+      # 前台登入的失敗計數把所有人算成同一個、全域節流變成全站共用一份額度
+      # ——三者都不會報錯，只是判斷的對象全錯。
+      # 用 '1'（信任一層代理）而非 true：後者無條件採信整條 XFF 鏈，
+      # 等於讓任何人偽造來源 IP（見 backend-runtime.md）
+      TRUST_PROXY: '1'
       # 連線指向 service 名稱，不是 localhost
       DB_HOST: postgres
       DB_PORT: '5432'
@@ -103,6 +114,21 @@ services:
       VITE_USE_POLLING: 'true'
     depends_on:
       - api
+
+  # 開發環境的單一入口：/api → api、其餘 → web。
+  # api / web 原本的埠仍然可用——這是多一條路，不是取代。
+  # 用官方映像 + 掛設定檔，不自建：自建只為了塞 logrotate 之類的東西，
+  # 而那是部署主機的需求，不是開發環境的。
+  nginx:
+    image: nginx:alpine
+    ports:
+      - '127.0.0.1:${APP_PROXY_PORT:-8080}:80'
+    volumes:
+      - ./docker/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+    restart: unless-stopped
 
   postgres:
     image: postgres:17
@@ -145,7 +171,9 @@ services:
   # 這裡要 tmpfs 跑在記憶體——快，而且測試庫本來就該每次拋棄。
   # tmpfs 掛在 PGDATA 的父層會讓 initdb 因目錄非空而拒絕啟動，故指定子目錄並設 PGDATA。
   postgres-verify:
-    profiles: [verify]
+    # 掛在兩個 profile：verify（host 跑測試）與 e2e（容器內跑測試）共用同一份定義。
+    # 分成兩個服務的話兩份定義會各自漂移，而症狀是「兩種跑法結果不同」
+    profiles: [verify, e2e]
     image: postgres:17
     environment:
       POSTGRES_USER: postgres
@@ -161,6 +189,42 @@ services:
       - /var/lib/postgresql/data
     ports:
       - '127.0.0.1:15432:5432'
+
+  # 只在 `--profile e2e` 時啟動；由 pnpm test:e2e:docker 呼叫，跑完即 down -v。
+  #
+  # 與既有的 host 執行方式（pnpm --filter @app/api test:e2e）**並存而非取代**：
+  # host 跑最快，改一行就重跑不必等容器；這一條密封、與 CI 同形，推上去之前用。
+  #
+  # 資料庫複用上面的 postgres-verify（tmpfs），**不另建**——兩份定義會各自漂移，
+  # 而漂移的症狀正是「兩種跑法結果不同」，那恰好是容器化想消除的東西。
+  e2e:
+    <<: *app-base
+    profiles: [e2e]
+    # 不需要 restart：跑完就該結束，退出碼即測試的成敗
+    restart: 'no'
+    # 先 db:generate 再跑測試：Prisma client 產在 node_modules 的具名 volume 裡，
+    # 新建的 volume（或剛被清掉重建的）不會有它，症狀是
+    # 「Cannot find module '.prisma/client/default'」而 23 支 spec 全部 failed to run。
+    # api 服務的 command 也是同樣的理由開頭要先 generate
+    command: >
+      sh -c "pnpm --filter @app/api db:generate &&
+      pnpm --filter @app/api test:e2e"
+    environment:
+      NODE_ENV: test
+      TZ: UTC
+      # 連 service 名稱，不是 127.0.0.1
+      DB_HOST: postgres-verify
+      DB_PORT: '5432'
+      DB_USERNAME: postgres
+      DB_PASSWORD: verify-secret
+      DB_DATABASE: nexus_verify_test
+      # **必須給**：applyE2EDbEnv() 會檢查它存在且名稱含 "test"，否則直接拋出。
+      # 容器內的 apps/api/.env 是被遮蔽的空檔，dotenv 只能補值不能當唯一來源
+      DB_TEST_DATABASE: nexus_verify_test
+      AWS_MEDIA_LIBRARY_ROOT: local
+      APP_TIMEZONE: Asia/Taipei
+    depends_on:
+      postgres-verify: { condition: service_healthy }
 
 volumes:
   postgres-data:

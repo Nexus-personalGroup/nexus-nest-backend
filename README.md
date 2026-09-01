@@ -23,7 +23,7 @@ nexus-nest-backend/
 
 ## 用 Docker 開發
 
-repo 只有**一份** `compose.yml`，三種用法靠「指定服務」與 profile 區分：
+repo 只有**一份** `compose.yml`，四種用法靠「指定服務」與 profile 區分：
 
 ```bash
 pnpm docker:up   # 整套跑在容器裡：api + web + postgres + redis
@@ -40,13 +40,23 @@ pnpm docker:logs # 跟蹤 api / web 的 log
 pnpm docker:down # 停止，資料保留
 pnpm docker:renew  # 改了依賴後用這個：只重建 node_modules，DB / Redis 資料保留
 pnpm docker:reset  # 全部清掉（含 DB 與 Redis 資料），要重跑 docker:init
+pnpm docker:prune  # 清 build cache 與 dangling image（不動正在用的 image / volume / 容器）
 ```
 
-| | 位置 |
-| --- | --- |
-| 前端 | http://127.0.0.1:5173 |
-| 後台 API | http://127.0.0.1:3000/api/admin/* |
-| Swagger | http://127.0.0.1:3000/api/admin/docs |
+> `docker:prune` 與 `docker:reset` 管的是不同東西：前者清**建置產物**（build cache
+> 常會長到十幾 GB，`docker system df` 看得到），後者清**資料**。清 build cache 不會
+> 讓你重跑 seed，清資料不會讓你重新 build。
+
+三個入口同時開著，用途不同：
+
+| 入口 | 位置 | 什麼時候用 |
+| --- | --- | --- |
+| **反向代理（單一 origin）** | http://127.0.0.1:8080 | **與正式的單一埠部署同形狀**——`/api/*` 給後端、其餘給前端。要驗 CORS、cookie 的 SameSite、CSP 這類跟 origin 有關的行為時用這個 |
+| 前端 | http://127.0.0.1:5173 | 直連 Vite，日常開發最直接 |
+| 後台 API | http://127.0.0.1:3000/api/admin/* | 直連後端，打 API 或看 Swagger |
+| Swagger | http://127.0.0.1:3000/api/admin/docs | |
+
+代理的埠可用根目錄 `.env` 的 `APP_PROXY_PORT` 改（預設 8080）。
 
 原始碼以 bind mount 掛進容器，**前後端都支援熱重載**——改 `apps/web` 走 Vite HMR，
 改 `apps/api` 約 15 秒內自動重啟生效。預設帳號 `admin@test.com` / `Admin1234!`。
@@ -82,7 +92,13 @@ REDIS_PORT=6389       # 非預設 6379
 ```
 
 要改埠或密碼就在 repo 根目錄的 `.env` 設 `APP_API_PORT` / `APP_WEB_PORT` /
-`DEV_DB_PORT` / `DEV_REDIS_PORT` / `DEV_DB_PASSWORD`（compose 會讀，預設值即上表）。
+`APP_PROXY_PORT` / `DEV_DB_PORT` / `DEV_REDIS_PORT` / `DEV_DB_PASSWORD`
+（compose 會讀，預設值即上表）。
+
+> **這份 `.env` 與 `apps/api/.env` 是兩回事。** 根目錄那份是**基礎設施設定**
+> （埠、密碼），由 compose 在展開 `${...}` 時讀取；`apps/api/.env` 是**應用程式設定**，
+> 而且**容器內那份是被遮蔽的**——容器的設定只有 compose 的 `environment`
+> 與 envSchema 的預設值兩個來源。詳見 `docker/api.container.env` 的檔頭。
 
 `pnpm verify:ci` 用的 `postgres-verify` 固定綁 **15432**，跑完即拋，不與上面的開發用資料庫共用。
 
@@ -131,12 +147,13 @@ pnpm --filter @app/web dev                    # 只啟動前端
 pnpm typecheck                                # 三個 workspace 全部 tsc --noEmit
 pnpm lint
 pnpm test                                     # 單元測試 + 架構守則（快，開發時用）
-pnpm --filter @app/api test:e2e               # 改 controller / 路由時加跑（走真 test DB：需本機 PostgreSQL 的 *_test 庫；Redis 仍 mock）
+pnpm --filter @app/api test:e2e               # 改 controller / 路由時加跑（走真 test DB：需 pnpm docker:deps 起的 PostgreSQL；Redis 仍 mock）
+pnpm test:e2e:docker                          # 同上但**整個跑在容器內**：不依賴 host 的 Node / 套件 / .env，跑完連容器帶資料一起丟
 pnpm --filter @app/api test:integration       # 跨實例 WebSocket（需 pnpm docker:deps 的 postgres + redis）
 
 # 品質檢查（CI 跑的就是這個）
 pnpm test:cov                                 # 單元測試 + 覆蓋率門檻 + 架構守則
-pnpm --filter @app/api test:arch              # 只跑架構守則（19 支規則檔 / 79 項斷言，約 0.5 秒）
+pnpm --filter @app/api test:arch              # 只跑架構守則（約 0.5 秒；數量見其輸出，不寫死免得過期）
 pnpm --filter @app/api swagger:check          # 驗證 swagger bundle 與 api-client 產物是否最新（產物寫入 tmp，不動工作目錄）
 pnpm verify:ci                                # 以容器重現 CI 的 e2e 環境跑一次（需 docker，約 60 秒）
 
