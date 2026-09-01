@@ -219,6 +219,53 @@ export {};
 
 ## 測試
 
+### 2026-09 — `docker compose down -v` 的 `-v` 是「專案的所有 volume」
+
+**踩到什麼**：容器化 e2e 的收尾寫成
+`docker compose --profile e2e down -v`，跑完一次之後開發環境整個消失——
+五個 `node_modules` volume、`postgres-data`、`redis-data` 全沒。
+下一次跑 e2e 的症狀是 23 支 spec 全部 `Cannot find module '.prisma/client/default'`，
+**完全指不到是收尾那一行造成的**。
+
+**Why**：`--profile X` 只影響「哪些服務被視為啟用」，**不限制 `down` 的作用範圍**。
+`down` 移除專案的所有容器，`-v` 移除 compose 檔裡宣告的**所有 named volume**。
+既有的 `scripts/verify-ci.sh` 有一模一樣的寫法——也就是說
+**`pnpm verify:ci` 一直在清掉開發資料庫**，只是沒有人把兩件事連起來。
+
+**How to apply**：只想收自己起的服務就用 `rm -fsv <服務名>`
+（`-f` 不問、`-s` 先停、`-v` 只移除**該容器的匿名 volume**）。
+`down -v` 保留給「我真的要重置整個專案」——那正是 `pnpm docker:reset` 的定位。
+
+### 2026-09 — Socket.IO 不在 globalPrefix 底下
+
+**踩到什麼**：nginx 反向代理設 `/api` → api、`/` → web，聊天連不上。
+`/socket.io/` 被送去 Vite，而 **Vite 回 200** 讓它看起來像成功——
+HTTP 全部正常，只有 WS handshake 拿到錯的服務。
+
+**Why**：`setGlobalPrefix('api')` 只作用於 **Nest 的路由**。
+Socket.IO 是掛在底層 HTTP server 上的獨立 handler，路徑固定是 `/socket.io/`，
+不受 globalPrefix 影響。`curl :3000/api/socket.io/` 回 404、
+`curl :3000/socket.io/` 回 400（Socket.IO 本人）就是證據。
+
+**How to apply**：任何在後端前面加代理 / 路由的地方，
+**`/api` 之外還要單獨處理 `/socket.io`**。判準通用：
+「掛在 HTTP server 上而非 Nest router 上」的東西都不吃 globalPrefix。
+
+### 2026-09 — 靠自律維護的清單一定會漂移，即使寫它的人就是加東西的人
+
+**踩到什麼**：`openspec/project/testing.md` 有一張「每支守則守住什麼」的表，
+列 19 支而實際 29 支。**漏掉的 10 支裡有好幾支是我自己前幾個 change 剛加的**
+——加的時候完全沒想到要回頭補表。
+
+**Why**：那張表沒有任何機制檢查完整性，而「新增守則」與「更新那張表」
+是兩個分開的動作，中間沒有東西把它們綁在一起。
+
+**How to apply**：清單型的文件要由機器檢查完整性。本次在
+`guardrail-inventory.spec.ts` 加了一條：**每一支 `test/architecture/*.spec.ts`
+都必須出現在 `testing.md` 裡**，沒補就紅。判準：
+**如果一份文件的正確性取決於「有人記得更新」，那它遲早會錯**——
+而唯一會被記得的時機是 CI 變紅的那一刻。
+
 ### 2026-08 — 共用同一支計數器的兩種限流，會讓測試在錯的地方變綠
 
 **踩到什麼**：驗前台端點節流的 e2e，把 `throttleIncrement` mock 成一個

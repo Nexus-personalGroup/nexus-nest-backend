@@ -45,23 +45,21 @@ apps/web/src/
   依賴 pointer capture 與 `scrollIntoView`，jsdom 都沒有實作，缺了會讓下拉在測試中
   **永遠打不開**，而錯誤訊息是「找不到 role=option」——指不到真正的原因。
 
-### 已知取捨：localStorage token × 無 CSP
+### localStorage token 的取捨（已收斂一半）
 
-**這是知情的取捨，不是疏漏。** fork 這個模板的人要清楚自己承擔什麼：
+`tokenStorage` 把 access 與 **refresh 兩枚 token 都放 `localStorage`**，
+任何 XSS 都能一次帶走。這是知情的取捨，但**兩個放大器已經拆掉了**：
 
-`tokenStorage` 把 access 與 **refresh 兩枚 token 都放 `localStorage`**，任何 XSS 都能一次帶走
-長效憑證。同時 `apps/api/src/main.ts` 的 `helmet({ contentSecurityPolicy: false })`
-關掉了 CSP——理由（Swagger UI 需要 inline script）對 `/api/*/docs` 成立。
+- **CSP 不再全域關閉**（`fix-security-cleanup`）：只有 `/api/admin/docs` 與
+  `/api/front/docs` 放寬（Swagger UI 需要 inline script），其餘路徑套 helmet 預設。
+  單一埠部署時 SPA 的 HTML 因此**有** CSP。豁免範圍由 `SWAGGER_SIDES` 單一來源決定。
+- **refresh token 效期壓到 1 天**（同一個 change，預設 86400）：
+  判準是「被偷走之後攻擊者能用多久」，而那取決於它存在哪裡。
+  **效期與儲存位置是綁在一起的一組決定**——存 `localStorage` 就不能配長效期。
 
-單獨看各有道理，但**單一埠部署時兩者會疊在同一個 origin 上**：`ServeStaticModule` 讓 API
-一併服務 `apps/web/dist`，而 helmet 是全域 middleware，SPA 自己的 HTML 也跟著沒有 CSP。
-於是「無 CSP 的頁面」與「localStorage 裡的長效 refresh token」變成同源。
-
-以 admin 後台工具、部署在受控網段的預設情境，這個風險可接受。要收斂的話依成本排序：
-
-1. **只對 Swagger 路徑關閉 CSP**，其餘路徑給一份合理 policy。改動最小、收益最直接。
-2. **refresh token 改走 `httpOnly` + `SameSite=Strict` cookie**，access token 留在記憶體。
-   `cookieParser` 與 `COOKIE_SECRET` 都已就緒，但會動到前端的換發流程，屬獨立的 change。
+還沒做的只剩一項：**refresh token 改走 `httpOnly` + `SameSite=Strict` cookie**，
+access token 留在記憶體。`cookieParser` 與 `COOKIE_SECRET` 都已就緒，
+但會動到前端的換發流程，屬獨立的 change。**做完之後效期才適合重新評估。**
 
 ---
 

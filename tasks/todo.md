@@ -5,7 +5,7 @@
 
 ## 進行中
 
-無。`fix-front-registration-gaps`（路線圖 8）已完成待合併。
+無。`add-nginx-proxy-and-containerised-e2e` 已完成待合併。
 
 **下一步沒有已排程的項目**——候選見「待辦」，其中
 **前台專案（獨立 repo）現在真的可以開工了**：註冊流程的兩個 🔴 都修掉，
@@ -15,11 +15,12 @@
 
 **目前沒有在飛的項目**，也**沒有已排程的序列**——候選與各自卡在什麼，見下面的「待辦」。
 
-### 已走完：2026-08-20 → 08-31，28 支 PR
+### 已走完：2026-08-20 → 09-01，29 支 PR
 
 M0 骨架 → M1 WS 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽，
 接著是**分表工程**（3a 建新體系 → 4 切換指向 → 5 補後台入口 → 3b 註冊流程），
-中間穿插兩輪審查報告的修補（1、2、6、7、8）。詳見「已完成」的索引。
+中間穿插兩輪審查報告的修補（1、2、6、7、8），最後補上容器環境的兩塊
+（nginx 單一入口、e2e 進容器）。詳見「已完成」的索引。
 
 三個排序判斷值得留著，因為它們是**判斷**而不是結果：
 
@@ -108,6 +109,11 @@ M0 骨架 → M1 WS 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽
 
 （其餘無。連線層事件限流已補上；第一輪審查報告的 🔴 在 change 1 修掉、
 🟡🟢 在 change 7 收完；第二輪的 1～5 是 change 8。）
+
+- **`~/.orbstack/config/docker.json` 是空的**，走 Docker 預設的 build cache GC 門檻——
+  實測長到 19GB（16.5GB 可回收）才會開始清。**這是機器設定不是 repo 設定**，
+  repo 只能提供 `pnpm docker:prune` 手動清。要它自己清就在那份檔案設
+  `{"builder":{"gc":{"enabled":true,"defaultKeepStorage":"5GB"}}}` 後重啟 OrbStack。
 
 ### 技術債（小，隨手可修）
 
@@ -317,7 +323,8 @@ M0 骨架 → M1 WS 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽
 | #25 | 08-23 | `add-front-user-registration` | **3b**：註冊 / 驗證 / 重發 / 密碼重設；未驗證不能聊天 |
 | #26 | 08-28 | `fix-permission-cache-consistency` | 角色權限變更後清成員快取；`clearByMemberId` 併回 `MemberContextCachePort` |
 | #27 | 08-30 | `fix-security-cleanup` | CSP 分路徑、refresh 效期、fail-open 可觀測、心跳防重入、文件漂移 |
-| — | 08-31 | `fix-front-registration-gaps` | 第二輪審查的 1～5；驗證信連結、前台節流、IP 失敗計數、併發註冊、重設密碼標記已驗證 |
+| #28 | 08-31 | `fix-front-registration-gaps` | 第二輪審查的 1～5；驗證信連結、前台節流、IP 失敗計數、併發註冊、重設密碼標記已驗證 |
+| — | 09-01 | `add-nginx-proxy-and-containerised-e2e` | nginx 單一入口 + `TRUST_PROXY`；e2e 的測試行程進容器；修掉 `down -v` 會清光開發環境的既有 bug |
 
 ### 幾個反覆出現的教訓
 

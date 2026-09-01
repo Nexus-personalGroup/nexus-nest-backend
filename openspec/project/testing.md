@@ -133,29 +133,44 @@ pnpm --filter @app/api test:arch   # 只跑架構守則
 pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行）
 ```
 
-現有規則（19 支 / 79 項斷言）：
+現有規則（**數量與斷言數見 `test:arch` 的輸出**——寫在這裡的數字會過期，
+而過期的基準值比沒有基準值更糟）：
 
-| 檔案 | 項 | 守住的規則 |
-| --- | --- | --- |
-| `no-native-error.spec.ts` | 3 | `src/**` 不得 `throw new Error`（業務錯誤一律 domain exception） |
-| `layering.spec.ts` | 2 | controller 不得 import Prisma / persistence / `*Repository` |
-| `side-isolation.spec.ts` | 2 | 路徑含 `/admin/` 與 `/front/` 的檔案不得互相 import |
-| `response-codes.spec.ts` | 3 | domain exception 不得寫字面值 code；`ResponseCodes` 不得有死碼 |
-| `no-inline-message.spec.ts` | 2 | exception 不得內嵌文案（文案只在 `response-messages.ts`） |
-| `env-schema.spec.ts` | 3 | 每個 `process.env.X` 都必須宣告於 `envSchema` |
-| `dto-from-zod.spec.ts` | 3 | DTO 一律由 `z.infer` 推導，不得手寫 class / interface |
-| `commonjs-baseline.spec.ts` | 2 | root 與 `apps/api` 不得出現 `"type": "module"` |
-| `e2e-real-database.spec.ts` | 4 | e2e 不得 mock DB；spec 一律放 `test/e2e/` |
-| `swagger-sync.spec.ts` | 6 | 契約三段轉換同步；**成功狀態碼須與 `@HttpCode` 一致** |
-| `hook-scripts.spec.ts` | 4 | `.agents/hooks/*.sh` 語法正確且都有註冊 |
-| `openspec-schema.spec.ts` | 5 | 自訂 schema 存在；建立 change 一律帶 `--schema`；opsx 指令維持薄殼 |
-| `openspec-spec-format.spec.ts` | 5 | 能力命名前綴；`api-*` 的 endpoint 需求須寫請求與回應 |
-| `project-docs.spec.ts` | 4 | `project.md` 索引連結有效、無孤兒子檔、全 repo 引用有效 |
-| `compose-files.spec.ts` | 4 | 每份 compose 都有 script 會啟動；對外埠須寫進 README；docker 相關檔案提到的 `pnpm <script>` 須存在 |
-| `global-guards.spec.ts` | 3 | 認證與授權 guard 全域註冊，且授權排在 `JwtAuthGuard` 之後 |
-| `sanitize-coverage.spec.ts` | 2 | request DTO 中看起來敏感的欄位，實際餵進 `sanitize()` 驗證真被遮蔽 |
-| `traditional-chinese.spec.ts` | 2 | 全專案不得混入日文假名或非繁體漢字 |
-| `authorization-coverage.spec.ts` | 9 | 收外部輸入的 handler 必須有 `@Permissions` / `@Roles` / `@Public`——本專案第一條「檢查應存在而不存在」的規則。**自帶合成輸入的自我測試**（註解冒充裝飾器、識別碼走 body、裝飾器寫在 method 上方等七個判定） |
+> 這張表由 `guardrail-inventory.spec.ts` 檢查完整性：
+> **新增一支守則卻沒在這裡補一列，`test:arch` 會紅**。
+> 沒有那道檢查的話，這張表曾經漏掉 10 支——包含好幾支是當時剛加的。
+
+| 檔案 | 守住的規則 |
+| --- | --- |
+| `no-native-error.spec.ts` | `src/**` 不得 `throw new Error`（業務錯誤一律 domain exception） |
+| `layering.spec.ts` | controller 不得 import Prisma / persistence / `*Repository` |
+| `side-isolation.spec.ts` | 路徑含 `/admin/` 與 `/front/` 的檔案不得互相 import |
+| `response-codes.spec.ts` | domain exception 不得寫字面值 code；`ResponseCodes` 不得有死碼 |
+| `no-inline-message.spec.ts` | exception 不得內嵌文案（文案只在 `response-messages.ts`） |
+| `env-schema.spec.ts` | 每個 `process.env.X` 都必須宣告於 `envSchema` |
+| `dto-from-zod.spec.ts` | DTO 一律由 `z.infer` 推導，不得手寫 class / interface |
+| `commonjs-baseline.spec.ts` | root 與 `apps/api` 不得出現 `"type": "module"` |
+| `e2e-real-database.spec.ts` | e2e 不得 mock DB；spec 一律放 `test/e2e/` |
+| `swagger-sync.spec.ts` | 契約三段轉換同步；**成功狀態碼須與 `@HttpCode` 一致** |
+| `hook-scripts.spec.ts` | `.agents/hooks/*.sh` 語法正確且都有註冊 |
+| `openspec-schema.spec.ts` | 自訂 schema 存在；建立 change 一律帶 `--schema`；opsx 指令維持薄殼 |
+| `openspec-spec-format.spec.ts` | 能力命名前綴；`api-*` 的 endpoint 需求須寫請求與回應 |
+| `project-docs.spec.ts` | `project.md` 索引連結有效、無孤兒子檔、全 repo 引用有效 |
+| `compose-files.spec.ts` | 每份 compose 都有 script 會啟動；對外埠須寫進 README；docker 相關檔案提到的 `pnpm <script>` 須存在 |
+| `global-guards.spec.ts` | 認證與授權 guard 全域註冊，且授權排在 `JwtAuthGuard` 之後 |
+| `sanitize-coverage.spec.ts` | request DTO 中看起來敏感的欄位，實際餵進 `sanitize()` 驗證真被遮蔽 |
+| `traditional-chinese.spec.ts` | 全專案不得混入日文假名或非繁體漢字 |
+| `authorization-coverage.spec.ts` | 收外部輸入的 handler 必須有 `@Permissions` / `@Roles` / `@Public`——本專案第一條「檢查應存在而不存在」的規則。**自帶合成輸入的自我測試**（註解冒充裝飾器、識別碼走 body、裝飾器寫在 method 上方等七個判定） |
+| `guardrail-inventory.spec.ts` | 守則檔數量不得低於基準（**只擋變少**）；文件不得寫死守則數量；本表必須涵蓋每一支守則 |
+| `public-surface.spec.ts` | 免認證路徑必須精確比對；`app.use()` 掛載須列入豁免清單（那些完全不經過 Nest 的 guard） |
+| `session-revocation.spec.ts` | 停用帳號的路徑必須撤銷既有 WS 連線——**只注入不呼叫不算** |
+| `role-permission-cache.spec.ts` | 變更角色授權的路徑必須清除成員的 `MemberContext` 快取 |
+| `presence-scan.spec.ts` | 請求路徑不得使用 Redis 的 keyspace 掃描（判定以**方法**為單位，不是檔案） |
+| `observability.spec.ts` | 稽核 port 的呼叫必須接住錯誤；application 層不得相依 `prom-client` |
+| `retention-scope.spec.ts` | 保留策略的清理範圍不得擴及訊息（`seq` 缺口會讓補齊的客戶端分不出「被清掉」與「我漏收了」） |
+| `chat-message-single-entry.spec.ts` | 訊息的持久層存取只能有一個入口（多入口會讓撤回的內容遮蔽漏掉其中一條讀取路徑） |
+| `ws-rate-limit.spec.ts` | WebSocket 事件必須表態限流；豁免不得以「連線層已有限流」為理由 |
+| `ws-resource-authorization.spec.ts` | WebSocket 事件的資源存取必須經授權判斷（連線層的認證只回答「你是誰」） |
 
 **新增一條規則的作法**（三步缺一不可）：
 

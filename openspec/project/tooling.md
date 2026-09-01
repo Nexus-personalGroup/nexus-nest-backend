@@ -74,13 +74,25 @@ CI 不另外宣告版號。
 
 ### 容器化（單一 `compose.yml`）
 
-三種用法靠「指定服務」與 profile 區分，不需要多份檔案：
+四種用法靠「指定服務」與 profile 區分，不需要多份檔案：
 
 | 指令 | 起什麼 | 用途 |
 | --- | --- | --- |
 | `pnpm docker:up` | api + web + postgres + redis | 整套跑在容器裡，原始碼 bind mount + 熱重載 |
 | `pnpm docker:deps` | postgres + redis | 只要資料庫，api / web 跑在 host |
-| `pnpm verify:ci` | postgres-verify（`--profile verify`） | 重現 CI e2e 環境，跑完即 `down -v` |
+| `pnpm verify:ci` | postgres-verify（`--profile verify`） | 重現 CI e2e 環境；測試行程跑在 host |
+| `pnpm test:e2e:docker` | postgres-verify + e2e（`--profile e2e`） | **測試行程也跑在容器內**，不依賴 host 的 Node / 套件 / `.env` |
+
+`pnpm docker:up` 另會起 **nginx**（`${APP_PROXY_PORT:-8080}`）作為單一入口：
+`/api` 與 `/socket.io` 給 api、其餘給 web。api / web 原本的埠仍然可用。
+加了它就**必須同時設 `TRUST_PROXY`**，否則 IP 黑名單、登入失敗計數與全域節流
+會把所有請求當成同一個來源，而且不會有任何錯誤訊息。
+
+**收尾一律用 `rm -fsv <服務>` 而不是 `down -v`**：後者的 `-v` 移除的是
+**專案的所有 named volume**，包含 `postgres-data`、`redis-data` 與五個
+`node_modules` volume——等於每跑一次測試就清掉開發環境，
+而症狀是下一次啟動時「找不到 `.prisma/client`」或「資料庫是空的」，
+完全指不到是那一行造成的。
 
 `postgres-verify` 獨立成一個服務而非共用開發用的那個，因為兩者對資料的要求相反：
 開發要 named volume 重啟保留，驗證要 `tmpfs` 每次乾淨。它掛在 profile 底下，
