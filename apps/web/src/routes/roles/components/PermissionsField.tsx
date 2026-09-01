@@ -14,6 +14,8 @@ import {
   type PermissionItem,
   type ModuleGroup,
 } from '../lib/group-permissions';
+import { moduleLabel, platformLabel } from '../lib/permission-labels';
+import { UNASSIGNABLE_GROUP } from '../lib/unassignable-permissions';
 
 type PermissionsFieldProps = {
   value: string[];
@@ -94,8 +96,8 @@ export const PermissionsField = ({
     <div className="max-h-[60vh] space-y-4 overflow-auto rounded-md border p-3">
       {groups.map((platform) => (
         <div key={platform.platform} className="space-y-2">
-          <div className="text-muted-foreground text-xs font-medium uppercase tracking-wide">
-            {platform.platform}
+          <div className="text-muted-foreground text-xs font-medium tracking-wide">
+            {platformLabel(platform.platform)}
           </div>
           <div className="space-y-2">
             {platform.modules.map((g) => {
@@ -107,10 +109,11 @@ export const PermissionsField = ({
               const allChecked =
                 (!view || viewChecked) && (!edit || editChecked);
               const viewLocked = isViewLockedByEdit(g, selected);
+              const label = moduleLabel(g.module);
               return (
                 <div key={g.module} className="rounded-sm border bg-card p-2">
                   <div className="flex items-center justify-between gap-2 border-b pb-1.5 mb-2">
-                    <div className="text-sm font-medium">{g.module}</div>
+                    <div className="text-sm font-medium">{label}</div>
                     <Button
                       type="button"
                       size="sm"
@@ -130,7 +133,7 @@ export const PermissionsField = ({
                               <Checkbox
                                 checked={true}
                                 disabled
-                                aria-label={`${g.module} 檢視（已鎖定）`}
+                                aria-label={`${label} 檢視（已鎖定）`}
                               />
                               <span>{view.name}</span>
                             </label>
@@ -147,7 +150,7 @@ export const PermissionsField = ({
                             onCheckedChange={(checked) =>
                               toggleCode(view.permissionCode, checked === true)
                             }
-                            aria-label={`${g.module} 檢視`}
+                            aria-label={`${label} 檢視`}
                           />
                           <span>{view.name}</span>
                         </label>
@@ -161,7 +164,7 @@ export const PermissionsField = ({
                           onCheckedChange={(checked) =>
                             toggleEdit(g, checked === true)
                           }
-                          aria-label={`${g.module} 編輯`}
+                          aria-label={`${label} 編輯`}
                         />
                         <span>{edit.name}</span>
                       </label>
@@ -173,6 +176,52 @@ export const PermissionsField = ({
           </div>
         </div>
       ))}
+      <UnassignableGroup />
     </div>
   );
 };
+
+/**
+ * 後台存在、但無法透過角色指派的功能區塊（目前只有安全管理）。
+ *
+ * 純展示：checkbox 恆為 disabled 且沒有 onCheckedChange，因此不可能進入表單的
+ * permissionCodes。**「disabled 但仍會進表單」是這種區塊最典型的壞法**，
+ * 所以這裡連 handler 都不接，而不是靠 disabled 擋。
+ */
+const UnassignableGroup = () => (
+  // 不再畫一次 platform 標題：目前全部權限都屬於「後台」，多一個同名標題看起來像壞掉。
+  // 改用虛線邊框與 badge 表達「這一組跟上面不同」
+  <div className="space-y-2">
+    <div className="rounded-sm border border-dashed bg-muted/30 p-2">
+      <div className="mb-2 flex items-center justify-between gap-2 border-b pb-1.5">
+        <div className="text-sm font-medium">{UNASSIGNABLE_GROUP.module}</div>
+        <span className="text-muted-foreground rounded-sm border px-1.5 py-0.5 text-xs">
+          {UNASSIGNABLE_GROUP.badge}
+        </span>
+      </div>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="flex w-fit cursor-not-allowed flex-col gap-2 pl-1">
+            {UNASSIGNABLE_GROUP.items.map((item) => (
+              <label
+                key={item}
+                className="inline-flex w-fit cursor-not-allowed items-center gap-2 text-sm opacity-60"
+              >
+                <Checkbox
+                  checked={false}
+                  disabled
+                  aria-label={`${item}（不可指派）`}
+                />
+                <span>{item}</span>
+              </label>
+            ))}
+          </div>
+        </TooltipTrigger>
+        {/* 預設的 top 會蓋住「安全管理」那行標題，說明反而擋掉了它在說明的東西 */}
+        <TooltipContent side="right">
+          {UNASSIGNABLE_GROUP.reason}
+        </TooltipContent>
+      </Tooltip>
+    </div>
+  </div>
+);

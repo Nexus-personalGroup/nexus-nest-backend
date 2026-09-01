@@ -165,6 +165,7 @@ pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行�
 | `public-surface.spec.ts` | 免認證路徑必須精確比對；`app.use()` 掛載須列入豁免清單（那些完全不經過 Nest 的 guard） |
 | `session-revocation.spec.ts` | 停用帳號的路徑必須撤銷既有 WS 連線——**只注入不呼叫不算** |
 | `role-permission-cache.spec.ts` | 變更角色授權的路徑必須清除成員的 `MemberContext` 快取 |
+| `permission-catalog-sync.spec.ts` | 權限樹的中文對照須涵蓋 `PERMISSION_CATALOG` 的每個 platform / module（且無死字串）；`SecurityController` 須維持 `@Roles(SUPERADMIN)`——前端有一段寫死的「不可指派」說明靠它才成立 |
 | `presence-scan.spec.ts` | 請求路徑不得使用 Redis 的 keyspace 掃描（判定以**方法**為單位，不是檔案） |
 | `observability.spec.ts` | 稽核 port 的呼叫必須接住錯誤；application 層不得相依 `prom-client` |
 | `retention-scope.spec.ts` | 保留策略的清理範圍不得擴及訊息（`seq` 缺口會讓補齊的客戶端分不出「被清掉」與「我漏收了」） |
