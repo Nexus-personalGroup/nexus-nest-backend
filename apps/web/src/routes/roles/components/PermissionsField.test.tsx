@@ -48,27 +48,31 @@ describe('PermissionsField', () => {
 
     expect(screen.getByText(UNASSIGNABLE_GROUP.module)).toBeInTheDocument();
     expect(screen.getByText(UNASSIGNABLE_GROUP.badge)).toBeInTheDocument();
+    expect(screen.getByText(UNASSIGNABLE_GROUP.note)).toBeInTheDocument();
     for (const item of UNASSIGNABLE_GROUP.items) {
-      expect(
-        screen.getByRole('checkbox', { name: `${item}（不可指派）` }),
-      ).toBeDisabled();
+      expect(screen.getByText(item)).toBeInTheDocument();
     }
   });
 
   /**
-   * 「disabled 但仍會進表單」是純展示區塊最典型的壞法——disabled 只擋滑鼠，
-   * 擋不住程式把值加進去。這裡驗的是 onChange 完全沒有被呼叫。
+   * **這一區不得有 checkbox。**
+   *
+   * 取代了原本的「三項皆 disabled」與「點擊不改變 permissionCodes」兩支——
+   * 沒有 checkbox 就不可能被點、不可能有值進表單，連「disabled 但程式仍把值加進去」
+   * 都一併排除，是更強的保證。
+   *
+   * 它同時是本次 bug 的回歸測試：恆為未勾的方框對**超級管理者**是假的
+   * （那個角色恰恰做得到這三件事），而檢視既有角色時就會顯形。
    */
-  it('⭐ 點擊不可指派的項目不會改變 permissionCodes', async () => {
-    const { onChange } = renderField();
+  it('⭐ 安全管理不得貢獻任何 checkbox——方框會宣稱一個不存在的授予狀態', () => {
+    // 模擬超級管理者：所有可指派的權限都已授予
+    renderField(ITEMS.map((i) => i.permissionCode));
 
-    for (const item of UNASSIGNABLE_GROUP.items) {
-      await userEvent.click(
-        screen.getByRole('checkbox', { name: `${item}（不可指派）` }),
-      );
-    }
-
-    expect(onChange).not.toHaveBeenCalled();
+    // ITEMS 只有 ACCOUNT 一組（VIEW + EDIT），整張表因此應該剛好兩個方框。
+    // 多出來的必然來自安全管理區塊——不依賴 DOM 結構，改版面或改名都不會誤判
+    expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+    // 確認該區塊確實有渲染，否則上面那條會因為「整塊不見了」而假性通過
+    expect(screen.getByText(UNASSIGNABLE_GROUP.module)).toBeInTheDocument();
   });
 
   // 既有行為，本次改動不得弄壞

@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { Lock } from 'lucide-react';
 
 import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
@@ -184,9 +185,13 @@ export const PermissionsField = ({
 /**
  * 後台存在、但無法透過角色指派的功能區塊（目前只有安全管理）。
  *
- * 純展示：checkbox 恆為 disabled 且沒有 onCheckedChange，因此不可能進入表單的
- * permissionCodes。**「disabled 但仍會進表單」是這種區塊最典型的壞法**，
- * 所以這裡連 handler 都不接，而不是靠 disabled 擋。
+ * **刻意不用 checkbox。** 一個恆為未勾的 disabled 方框對超級管理者是假的
+ * ——那個角色恰恰做得到這三件事；而改成「SUPERADMIN 時顯示已勾」也修不掉
+ * 真正的問題：同一張表上會有兩種未勾（「還沒給，你可以給」與
+ * 「不由角色決定，永遠給不了」），同一個圖示兩種語意，使用者只能猜。
+ *
+ * 改成純說明列表之後**沒有狀態需要被表達**，也就沒有東西會錯——
+ * 「這些功能不透過角色權限指派」不論在看哪一個角色都成立。
  */
 const UnassignableGroup = () => (
   // 不再畫一次 platform 標題：目前全部權限都屬於「後台」，多一個同名標題看起來像壞掉。
@@ -201,19 +206,18 @@ const UnassignableGroup = () => (
       </div>
       <Tooltip>
         <TooltipTrigger asChild>
-          <div className="flex w-fit cursor-not-allowed flex-col gap-2 pl-1">
+          <div className="flex w-fit flex-col gap-2 pl-1">
+            <p className="text-muted-foreground text-xs">
+              {UNASSIGNABLE_GROUP.note}
+            </p>
             {UNASSIGNABLE_GROUP.items.map((item) => (
-              <label
+              <span
                 key={item}
-                className="inline-flex w-fit cursor-not-allowed items-center gap-2 text-sm opacity-60"
+                className="text-muted-foreground inline-flex w-fit items-center gap-2 text-sm"
               >
-                <Checkbox
-                  checked={false}
-                  disabled
-                  aria-label={`${item}（不可指派）`}
-                />
-                <span>{item}</span>
-              </label>
+                <Lock className="size-3.5 shrink-0" aria-hidden />
+                {item}
+              </span>
             ))}
           </div>
         </TooltipTrigger>
