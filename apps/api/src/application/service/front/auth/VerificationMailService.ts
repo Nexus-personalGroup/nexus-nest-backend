@@ -46,7 +46,12 @@ export class VerificationMailService {
       'VERIFY_EMAIL',
       env.EMAIL_VERIFICATION_EXPIRES_IN,
     );
-    const url = `${env.APP_FRONT_URL.replace(/\/$/, '')}/api/front/auth/verify-email?token=${token}`;
+    // base 是 **API_BASE_URL 而非 APP_FRONT_URL**：/api/front/auth/verify-email
+    // 是後端路由，由後端接完再 302 導回前台。兩個變數長得像但角色相反——
+    // 用前台的 origin 組出來的連結會指向前台網站上不存在的路徑，
+    // 而那個錯誤沒有任何徵兆：信寄出去了、狀態碼是對的，
+    // 只有點下去的人看到 404，而他沒有管道回報。
+    const url = `${env.API_BASE_URL.replace(/\/$/, '')}/api/front/auth/verify-email?token=${token}`;
     const hours = Math.round(env.EMAIL_VERIFICATION_EXPIRES_IN / 3600);
 
     // **不 await**：SMTP 設定了卻連不上時會走滿 connectionTimeout（預設 10 秒），

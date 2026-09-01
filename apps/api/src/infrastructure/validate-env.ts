@@ -8,7 +8,17 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   LOG_LEVEL: z.string().default('info'),
   SERVICE_NAME: z.string().default('nexus-api'),
-  API_BASE_URL: z.string().optional(),
+  /**
+   * 後端自己的對外位址。
+   *
+   * **驗證信裡的連結由它組成**——`GET /api/front/auth/verify-email` 是後端路由，
+   * 因此連結的 base 必須是後端。不要與 `APP_FRONT_URL` 混用：
+   * 後者是**驗證完成後 302 的導回目標**，兩者長得像但角色相反。
+   *
+   * 不從請求推導（`req.protocol + req.host`）：寄信發生在 service 層而非請求脈絡裡，
+   * 硬傳進去等於讓 domain 相依 HTTP，而反向代理之後那個值本來就不可信。
+   */
+  API_BASE_URL: z.string().default('http://localhost:3000'),
 
   // 單一埠部署：前端打包產物根目錄；未設則相對 api 編譯輸出往上找 apps/web/dist
   WEB_STATIC_ROOT: z.string().optional(),
@@ -569,11 +579,16 @@ export const getEnv = (): Env => {
     if (_env.FRONT_REFRESH_SECRET === _env.REFRESH_SECRET) {
       productionErrors.push('FRONT_REFRESH_SECRET: 不可與 REFRESH_SECRET 相同');
     }
-    // 驗證信的連結指向這裡；留著 localhost 的話寄出去的信全部是壞的，
-    // 而寄信本身不會失敗——沒有這道檢查就不會有任何徵兆
+    // 兩者都會出現在寄給使用者的信與導向裡；留著 localhost 的話那些連結全部是壞的，
+    // 而寄信與導向本身都不會失敗——沒有這兩道檢查就不會有任何徵兆
     if (_env.APP_FRONT_URL.includes('localhost')) {
       productionErrors.push(
-        'APP_FRONT_URL: 生產環境必須指向實際的前台網址，驗證信的連結由它組成',
+        'APP_FRONT_URL: 生產環境必須指向實際的前台網址，驗證完成後由它決定導回哪裡',
+      );
+    }
+    if (_env.API_BASE_URL.includes('localhost')) {
+      productionErrors.push(
+        'API_BASE_URL: 生產環境必須指向實際的後端網址，驗證信的連結由它組成',
       );
     }
     if (
