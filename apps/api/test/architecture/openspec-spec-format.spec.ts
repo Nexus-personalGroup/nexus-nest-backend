@@ -170,6 +170,40 @@ describe('架構守則：openspec master spec 的命名與格式', () => {
     ).toBe('');
   });
 
+  /**
+   * `openspec archive` **只合併 `## Requirements`**，Purpose 會被寫成
+   * 「TBD - created by archiving change X. Update Purpose after archive.」留給人補。
+   * 那串字面上已經在提醒了，而它被忽略了 5 次——**提醒放在產出物裡卻沒有東西會讀它，
+   * 等於沒有提醒**。`openspec validate --specs --strict` 也不會抓（那是 CLI 的行為）。
+   *
+   * 判定用「含 TBD」而不是精確比對那串字：精確比對只擋得住原封不動的佔位字串，
+   * 有人改成「TBD - 待補」就過關，而那正是最可能發生的「補一半」。
+   */
+  it('master spec 的 Purpose 必須寫完', () => {
+    const items = capabilities();
+    // 掃不到 spec 時這條規則會空轉
+    expect(items.length).toBeGreaterThan(0);
+
+    const unfinished = items
+      .map((c) => ({
+        name: c.name,
+        purpose: /^## Purpose\s*$([\s\S]*?)^## /m.exec(c.body)?.[1] ?? '',
+      }))
+      .filter((c) => c.purpose.trim() === '' || c.purpose.includes('TBD'));
+
+    expect(
+      unfinished.length === 0
+        ? ''
+        : `以下 master spec 的 Purpose 沒有寫完：\n${unfinished
+            .map((c) => `  openspec/specs/${c.name}/spec.md`)
+            .join(
+              '\n',
+            )}\nopenspec archive 只合併 ## Requirements，**Purpose 要手動補**——` +
+            `\n剛 archive 完新能力的話，現在就是補的時機。` +
+            `\nPurpose 要寫「讀的人最需要先知道的那件事」，不是需求摘要（底下就寫著）`,
+    ).toBe('');
+  });
+
   it('api-* 的每個 endpoint 需求都要寫出成功與失敗回應', () => {
     const missing: string[] = [];
     let checked = 0;

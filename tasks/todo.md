@@ -5,26 +5,31 @@
 
 ## 進行中
 
-**`enforce-single-entry-container`** 已完成待合併——關掉 api / web 的對外埠，
-`docker compose up` 之後只有 nginx（8080）通得了。
-**它推翻了 `add-nginx-proxy-and-containerised-e2e` 上週才寫進
-`platform-container-dev` 的「api 與 web 的對外埠 MUST 保留」**，
-所以獨立成一個 change——推翻自己寫的需求要留得下紀錄。
-反轉的理由與當初「保留」的理由都記在該 change 的 `design.md` D1。
+**`fix-spec-purpose-and-permission-naming`** 已完成待合併——兩件收尾併成一支：
+補完 5 份 master spec 的 `TBD` Purpose（並加守則擋住它再累積），
+以及把 `MODERATION:VIEW` 改名為「後台-聊天管理-檢視」以反映它實際涵蓋三個頁面。
+
+⚠️ **合併後要跑 `pnpm --filter @app/api db:seed`**——權限名稱存在 DB，
+不跑的話畫面還是舊字串，而症狀是「程式碼改了、畫面沒變」。
 
 ## 路線圖
 
 在飛的一項見「進行中」。**它之後沒有已排程的序列**
 ——候選與各自卡在什麼，見下面的「待辦」。
 
-### 已走完：2026-08-20 → 09-02，31 支 PR（#31 待合併）
+### 已走完：2026-08-20 → 09-02，33 支 PR（#33 待合併）
 
 M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽，
 接著是**分表工程**（把前台使用者從後台帳號表拆出來），
-中間穿插兩輪審查報告的修補，然後是容器環境的兩塊
-（nginx 單一入口、e2e 進容器），最後補上後台的方向感
-（Sidebar 依管理對象分組、首頁改營運摘要）與容器的單一入口收口。
+中間穿插兩輪審查報告的修補，然後是容器環境的三塊
+（nginx 單一入口、e2e 進容器、關掉直連埠），
+最後是後台的可讀性（Sidebar 依管理對象分組、首頁改營運摘要、權限樹中文化）。
 逐支見「已完成」的索引。
+
+**最後那批的共同點值得記**：它們修的都不是 bug，是**「做到一半而且沒有東西會提醒」**
+——nginx 做了但沒關舊埠、權限樹分了組但標題還是英文碼、
+5 份 spec 封存了但 Purpose 留著 `TBD`。三者的解法也一致：
+補完之後**加一支守則**，讓同樣的半成品不可能再累積。
 
 **分表工程的四支拆成四個 change 是刻意的**，那三個排序判斷值得留著
 ——它們是**判斷**而不是結果：
@@ -84,18 +89,11 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 
 ### 已知缺口（知情，非遺漏）
 
-- **5 份 master spec 的 `## Purpose` 還是 archive 留下的 `TBD` 佔位字串**：
-  `api-dashboard`、`ui-member-profile`、`ui-room-overview`、`ui-moderation`、`ui-dashboard`。
-  （`api-front-auth`、`platform-token-scope` 與 `platform-public-surface`
-  已在各自要動到它們的 change 裡順手補掉。）`openspec archive` 只合併 `## Requirements`，**Purpose 要手動補**，
-  而 `openspec validate --specs --strict` 不會抓（38/38 全過）。
-  **值得開一個小 cleanup change**：補完這 5 份之後加一條守則擋住
-  「Purpose 含 `TBD - created by archiving`」——在補完之前那條守則會是紅的，
-  所以兩件事必須同一個 change 做完。
-  （`improve-admin-orientation` 新開的 `ui-home` 已在該 change 內手動補上 Purpose，
-  沒有變成第 6 份——新開能力時順手寫，比事後回收便宜。）
-  （順帶：archive 也不會發現舊 Purpose 與新合併的 Requirements 互相矛盾，
-  `api-account-suspension` 就發生過，那個要靠人看。）
+- **`openspec archive` 不會發現舊 Purpose 與新合併的 Requirements 互相矛盾**
+  ——`api-account-suspension` 發生過。**這個要靠人看**：改動既有能力時，
+  除了看 Requirements 有沒有寫對，也要回頭確認 Purpose 描述的還是同一件事。
+  （「Purpose 留空或含 `TBD`」已由 `openspec-spec-format.spec.ts` 擋住，
+  但守則只看得出「沒寫」，看不出「寫的跟內容不符」。）
 
 - **WS 連線數上限有 TOCTOU**（審查報告問題 10）：`ChatGateway` 先 `getConnections()` 讀、
   再比對 `WS_MAX_CONNECTIONS_PER_MEMBER`、再 `markOnline()` 寫——兩條同時進來會都通過檢查。
@@ -206,6 +204,10 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
   先 `pnpm --filter @app/api test:e2e > /tmp/e2e.log 2>&1` 再從檔案 grep，
   並記下當下還有什麼在跑、以及 `--detectOpenHandles` 的輸出。
 
+  **現況**：最後一次是 08-28（第 8 次），此後 #29–#33 共五支 PR 的 CI E2E **都一次過**。
+  **安靜不等於修好了**——中間沒有任何針對它的改動，所以這段空窗只是還沒再抽中，
+  不是證據。條目保留，計數維持 8。
+
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 
 ### 延後功能（繼承自模板的預留）
@@ -263,6 +265,8 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 | #29 | 09-01 | `add-nginx-proxy-and-containerised-e2e` | nginx 單一入口 + `TRUST_PROXY`；e2e 的測試行程進容器；修掉 `down -v` 會清光開發環境的既有 bug |
 | #30 | 09-01 | `improve-admin-orientation` | Sidebar 依「管理誰」分組；首頁從佔位頁改成營運摘要。**捷徑卡做到一半砍掉**——sidebar 常駐，再列一次是純重複 |
 | #31 | 09-02 | `enforce-single-entry-container` | 關掉 api / web 的對外埠，容器模式只剩 nginx。**推翻 #29 剛寫進 spec 的「對外埠 MUST 保留」** |
+| #32 | 09-02 | `improve-permission-tree-legibility` | 權限樹群組標題中文化；安全管理顯示為不可指派（維持 `@Roles(SUPERADMIN)` 不下放）；把「列內隱藏／頁面級 disabled」寫成明文 |
+| #33 | 09-02 | `fix-spec-purpose-and-permission-naming` | 補完 5 份 `TBD` Purpose 並加守則；`MODERATION:VIEW` 改名反映它涵蓋三個頁面（EDIT **刻意不對稱**） |
 
 ### 幾個反覆出現的教訓
 

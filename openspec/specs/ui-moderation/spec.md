@@ -1,7 +1,28 @@
 # ui-moderation Specification
 
 ## Purpose
-TBD - created by archiving change add-admin-moderation-ui. Update Purpose after archive.
+
+定義檢舉審閱的兩頁：佇列（`/moderation/reports`）與詳情
+（`/moderation/reports/:reportId`），以及詳情頁上的四個處置動作。
+
+**兩條規則在這裡與專案其他地方相反，都值得先知道：**
+
+**① 詳情頁不得預先載入。** 查看詳情每次都會在後端寫入一筆 `REPORT_VIEWED` 稽核，
+而稽核量必須與「實際看到敏感內容的次數」對齊。這條**看程式碼看不出來**——
+一個 hover prefetch 只有一行，加上去畫面更順、沒有任何測試會變紅，
+而稽核從此記錄一堆沒有人真的看過的「查看」。
+
+**② 處置動作在無權限時 disabled 並說明理由，不隱藏。**
+`platform-frontend-conventions` 的通則是列內動作隱藏，這裡是頁面上的處置動作：
+只有 `MODERATION:VIEW` 的人看到灰掉的「停權成員」，就知道這個功能存在、
+自己缺 `MODERATION:EDIT`；隱藏則讓他以為功能不存在，也不知道該去要什麼。
+
+其餘的呈現規則都指向同一件事——**審閱的入口問題永遠是「還有什麼沒處理」**：
+狀態篩選預設為待處理、篩選與分頁同步到 URL、帳號已刪除時顯示
+「已刪除的帳號」加 id 尾碼而不是空白。
+
+被檢舉者的當事人資料見 `ui-member-profile`，後端契約見 `api-moderation`。
+
 ## Requirements
 ### Requirement: 檢舉審閱的路由與導航
 
