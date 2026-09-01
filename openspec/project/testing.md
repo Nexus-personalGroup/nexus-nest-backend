@@ -154,7 +154,7 @@ pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行�
 | `swagger-sync.spec.ts` | 契約三段轉換同步；**成功狀態碼須與 `@HttpCode` 一致** |
 | `hook-scripts.spec.ts` | `.agents/hooks/*.sh` 語法正確且都有註冊 |
 | `openspec-schema.spec.ts` | 自訂 schema 存在；建立 change 一律帶 `--schema`；opsx 指令維持薄殼 |
-| `openspec-spec-format.spec.ts` | 能力命名前綴；`api-*` 的 endpoint 需求須寫請求與回應 |
+| `openspec-spec-format.spec.ts` | 能力命名前綴；`api-*` 的 endpoint 需求須寫請求與回應；**Purpose 不得留空或含 `TBD`**（`openspec archive` 只合併 `## Requirements`，Purpose 是留給人補的） |
 | `project-docs.spec.ts` | `project.md` 索引連結有效、無孤兒子檔、全 repo 引用有效 |
 | `compose-files.spec.ts` | 每份 compose 都有 script 會啟動；對外埠須寫進 README；docker 相關檔案提到的 `pnpm <script>` 須存在 |
 | `global-guards.spec.ts` | 認證與授權 guard 全域註冊，且授權排在 `JwtAuthGuard` 之後 |

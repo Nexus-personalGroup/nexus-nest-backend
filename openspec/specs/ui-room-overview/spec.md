@@ -1,7 +1,24 @@
 # ui-room-overview Specification
 
 ## Purpose
-TBD - created by archiving change add-admin-room-overview. Update Purpose after archive.
+
+定義聊天室列表（`/moderation/rooms`）與詳情（`/moderation/rooms/:roomId`）
+兩頁的行為：房間有哪些、誰在裡面、多大。
+
+**它刻意不顯示任何訊息內容，也不提供任何前往訊息的入口。**
+這是本 capability 最重要的一條界線：這兩頁是審閱動線上的一站
+（從房間找到人，再點進 `ui-member-profile`），不是訊息瀏覽器。
+加一個「看訊息」按鈕在技術上只是一個連結，在授權上卻是把
+「能看營運狀況」偷偷擴權成「能讀所有人的對話」。
+
+它**有 Sidebar 入口而成員概覽沒有**，理由是它有列表可以進入，
+而「現在有多少房間」本身就是營運會直接問的問題。
+
+一個容易誤讀的欄位：**「訊息量」是歷史累計**，被撤回與被移除的訊息也計入。
+不標明語意的話它會被讀成「現在有幾則」，而兩者在活躍的房間裡差距很大。
+
+後端契約見 `api-moderation`。
+
 ## Requirements
 ### Requirement: 聊天室頁的路由與導航
 

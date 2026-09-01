@@ -1,7 +1,25 @@
 # api-dashboard Specification
 
 ## Purpose
-TBD - created by archiving change add-admin-dashboard. Update Purpose after archive.
+
+定義後台營運總覽的兩支 endpoint：一次性快照（`GET /moderation/dashboard`）
+與 SSE 串流（`/dashboard/stream`），兩者回傳**完全相同的資料形狀**。
+
+**串流推的是整份快照，不是增量。** 這決定了很多事：客戶端不需要合併狀態、
+斷線重連不會漏資料、而每一筆都帶 `generatedAt`——一組沒有時間戳的即時數字，
+在連線中斷後看起來與即時數字一模一樣。
+
+回應**只有聚合數字**，不含任何訊息內容、成員 email 或房間名稱。
+儀表板回答的是「現在怎麼樣」，具體的識別資訊要去對應的列表頁看。
+這也是它不寫稽核的理由——沒有個資可稽核。
+
+串流的三條約束都來自「多個管理員同時看著」這個場景：查詢是**實例級**的
+（10 個訂閱者也只查一次）、沒有訂閱者時**停止查詢**、單次查詢失敗
+**不中斷連線**。每個連線各自計時、各自查、失敗就斷，是最直覺的實作，
+而它會讓管理員人數直接乘上資料庫負載，並在資料庫短暫不可用時把所有人一起踢下線。
+
+前端行為見 `ui-dashboard`。
+
 ## Requirements
 ### Requirement: 查詢營運快照
 

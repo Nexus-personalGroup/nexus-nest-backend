@@ -1,7 +1,26 @@
 # ui-dashboard Specification
 
 ## Purpose
-TBD - created by archiving change add-admin-dashboard. Update Purpose after archive.
+
+定義營運總覽頁（`/moderation/dashboard`）的行為：五個數字怎麼呈現、
+串流怎麼連、以及連線斷掉時畫面該長什麼樣。
+
+**這份 spec 的重心不在「顯示數字」，在「數字不再更新時會怎樣」。**
+一組即時數字在串流中斷後，畫面上看起來與即時數字**一模一樣**——
+使用者會拿過期的數字做判斷，而且不知道自己在這麼做。
+看不出過期的數字比沒有數字更糟，因此連線狀態與「最後更新於」是必要而非附加。
+
+其餘幾條約束各自擋一個具體的壞法：
+
+- **不能用原生 `EventSource`**——它帶不了 `Authorization` header，
+  而繞道用 query string 傳 token 會讓它進伺服器日誌、瀏覽器歷史與 `Referer`。
+- **重連必須退避**——伺服器重啟期間的密集重試，正好打在它最脆弱的時刻。
+- **五個數字裡只有「待處理檢舉」可點**——它是唯一需要人採取行動的；
+  每個數字都可點，真正該點的那個就失去區別。
+
+首頁不做成儀表板：首頁對所有登入者開放而營運數字需要 `MODERATION:VIEW`
+（首頁的規則見 `ui-home`）。後端契約見 `api-dashboard`。
+
 ## Requirements
 ### Requirement: 營運總覽的路由與導航
 

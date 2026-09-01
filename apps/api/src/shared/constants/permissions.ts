@@ -42,7 +42,11 @@ export const PERMISSION_CATALOG: ReadonlyArray<{
   { code: PermissionCode.BACKEND_ROLE_VIEW, name: '後台-角色管理-檢視' },
   { code: PermissionCode.BACKEND_ROLE_EDIT, name: '後台-角色管理-編輯' },
   { code: PermissionCode.BACKEND_ATTACHMENT_EDIT, name: '後台-附件-編輯' },
-  { code: PermissionCode.BACKEND_MODERATION_VIEW, name: '後台-檢舉審閱-檢視' },
+  // VIEW 與 EDIT 的名稱**刻意不對稱**：VIEW 是營運總覽 / 檢舉審閱 / 聊天室
+  // 三個頁面共同的門檻，只寫「檢舉審閱」會讓想給人看營運總覽的人以為勾錯了；
+  // EDIT 則真的只做檢舉的處置與判定，跟著改成「聊天管理-編輯」會反過來高估它，
+  // 讀的人會以為它能改聊天室或營運資料。不對稱本身在說「EDIT 比 VIEW 窄」
+  { code: PermissionCode.BACKEND_MODERATION_VIEW, name: '後台-聊天管理-檢視' },
   { code: PermissionCode.BACKEND_MODERATION_EDIT, name: '後台-檢舉審閱-判定' },
   { code: PermissionCode.BACKEND_FRONT_USER_VIEW, name: '後台-會員管理-檢視' },
   { code: PermissionCode.BACKEND_FRONT_USER_EDIT, name: '後台-會員管理-編輯' },
