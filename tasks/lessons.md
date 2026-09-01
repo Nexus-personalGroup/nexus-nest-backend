@@ -122,6 +122,24 @@ Aborted. No files were changed.
 
 **還好的一點**：archive 失敗時是 `Aborted. No files were changed.`——它不會做到一半留下半套的 master spec。
 
+### 2026-09-02 — 「埠關掉了沒」不能用 curl 判斷，要看 `docker compose ps` 的 PORTS 欄
+
+**踩到什麼**：驗收 `enforce-single-entry-container` 時，確認 api 的對外埠已移除，
+`curl http://127.0.0.1:3000/api/health` 預期得到 connection refused，實際回 **404**。
+差點下結論說「埠沒關成功」。真相是 host 上另一個專案（`kgie-nest-backend`）
+綁在 `*:3000`，回的是它的 404。
+
+**Why**：curl 測的是「這個位址有沒有人應答」，不是「這個容器有沒有發布這個埠」。
+兩者在單一專案的機器上恰好等價，在同時開好幾個專案的機器上就不等價了——
+而後者才是常態。macOS 的 IPv6 優先解析讓這件事更容易發生：
+另一個服務綁 `*:3000`（IPv6 wildcard）與容器綁 `127.0.0.1:3000` 可以並存。
+
+**How to apply**：驗「有沒有對外發布」看 `docker compose ps` 的 PORTS 欄（權威來源，
+空的就是沒發布）。curl 只能當輔助，而且**得到非預期回應時先查誰在聽**
+（`lsof -nP -iTCP:<埠> -sTCP:LISTEN` 再 `ps -o command= -p <pid>`），
+不要直接推論成自己的改動失敗。同理，得到 connection refused 也不保證是自己關的——
+可能那個服務根本沒起來。
+
 ## WebSocket / 多實例
 
 ### 2026-08-20 — `NestFactory.create()` 不會跑 `onModuleInit`，而 WS adapter 必須在 init 之前掛上
