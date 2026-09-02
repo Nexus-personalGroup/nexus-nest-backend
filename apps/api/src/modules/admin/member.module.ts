@@ -22,18 +22,18 @@ import { LIST_ROLE_OPTIONS_USE_CASE } from '../../application/port/in/admin/memb
 import { GET_ROLE_OPTION_USE_CASE } from '../../application/port/in/admin/member/GetRoleOptionUseCase';
 import { JwtModule } from '../jwt.module';
 import { MemberPersistenceModule } from '../member-persistence.module';
-import { ChatWsModule } from '../chat-ws.module';
+import { SessionRevocationModule } from '../session-revocation.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { RoleModule } from './role.module';
 import { getEnv } from '../../infrastructure/validate-env';
 
 @Module({
-  // ChatWsModule 提供 REVOKE_MEMBER_SESSIONS_USE_CASE（撤銷連線）、
+  // SessionRevocationModule 提供 REVOKE_MEMBER_SESSIONS_USE_CASE（撤銷連線）、
   // ChatRoomCoreModule 提供 CHAT_AUDIT_PORT（停權／解除的稽核）
   imports: [
     JwtModule,
     MemberPersistenceModule,
-    ChatWsModule,
+    SessionRevocationModule,
     ChatRoomCoreModule,
     forwardRef(() => RoleModule),
   ],

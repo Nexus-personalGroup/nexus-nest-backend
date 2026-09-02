@@ -56,6 +56,22 @@
 
 **How to apply**：還原一律用 python 字串替換或 `git checkout --`，還原後**實際驗證**（跑一次該檔的載入或測試）。反向驗證的完整循環是「插探針 → 親眼看它紅 → 還原 → **確認 `git status` 乾淨**」，最後一步不能省。
 
+### 2026-09-02 — Nest 不能 re-export 自己沒 provide 的 token，而只有 e2e 抓得到
+
+**踩到什麼**：把 `EVENT_PUBLISHER_PORT` 從 `ChatWsModule` 移到新的 `EventPublisherModule`，`ChatWsModule` 改成 `imports: [EventPublisherModule]` 但 `exports` 仍留著那個 token。`typecheck` 綠、`lint` 綠、`pnpm test` 綠、**`pnpm build` 也綠**，e2e 則是 **409 支全紅**：`Nest cannot export a provider/module that is not a part of the currently processed module`。
+
+**Why**：`exports` 只能列「本模組自己 provide 的 token」或「自己 import 的 module」。要把 import 來的 token 傳下去必須 re-export **模組**（`exports: [EventPublisherModule]`）而不是 token。這是執行期組裝時才檢查的，靜態分析與編譯都看不到。
+
+**How to apply**：**動到 module 接線就一定要跑 e2e**，`pnpm build` 不算數——它只證明編譯得出來，不證明 DI 組得起來。這是本專案第二次因為 DI 接線吃虧（前一次是 `@Inject(METRICS_PORT)` 打掛 10 支 e2e）。順帶：搬移 provider 時先問「還有誰需要從這裡拿？」——本例答案是沒有，`exports` 直接清空比 re-export 模組更乾淨。
+
+### 2026-09-02 — 寫「實測 N 秒」之前要真的量，否則那個數字會被後人當成依據
+
+**踩到什麼**：給 api 容器加 healthcheck 時，在註解裡寫「實測容器內首次 `nest build` 約 40–60 秒」並據此設 `start_period: 90s`。**那個數字是憑印象寫的。** 實際量（刪掉 `dist/` 與 `.tsbuildinfo` 後重啟）是 **6 秒**。
+
+**Why**：帶「實測」兩個字的數字會被下一個人當成不必再驗證的事實，於是錯誤的依據會一直傳下去——而且它擋住了「這個值是不是太保守」這個該被問的問題（`start_period` 太長時，應用真的壞掉也要等滿才會失敗）。
+
+**How to apply**：註解裡的數字要分兩種寫法——**量到的**要寫出量測條件（「熱機器、映像已建好、node_modules volume 已填充」），**沒量到的**要明說是餘裕並寫出代價。反向驗證同理：這次試著把 `start_period` 改成 `5s` 想看它變紅，結果仍然 healthy——那代表**沒能構造出失敗案例**，就該照實記，而不是當成驗過了。
+
 ### 2026-09-02 — UI 驗收只看一種資料，等於沒驗到那個元件
 
 **踩到什麼**：`improve-permission-tree-legibility` 在權限樹加了「安全管理（不可指派）」區塊，用恆為未勾的 disabled checkbox 呈現。單元測試全綠、守則全綠、我也開瀏覽器看過——**但只看了「新增角色」**。合併後使用者第一次打開**超級管理者的唯讀檢視**就發現三項顯示未勾選，而那個角色恰恰做得到那三件事。畫面在陳述假訊息。

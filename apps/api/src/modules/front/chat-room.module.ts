@@ -21,7 +21,7 @@ import { PrismaChatRoomReadRepository } from '../../adapter/out/persistence/chat
 import { CHAT_ROOM_READ_REPOSITORY_PORT } from '../../application/port/out/chat-message/ChatRoomReadRepositoryPort';
 import { UserPersistenceModule } from '../user-persistence.module';
 import { FrontAuthModule } from './auth.module';
-import { ChatWsModule } from '../chat-ws.module';
+import { EventPublisherModule } from '../event-publisher.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { MetricsModule } from '../metrics.module';
 
@@ -33,11 +33,13 @@ import { MetricsModule } from '../metrics.module';
  */
 @Module({
   // FrontAuthModule 提供 RESOLVE_USER_CONTEXT_USE_CASE：controller 掛的
-  // FrontJwtAuthGuard 需要它。UserPersistenceModule 供建房間時檢查對方是否存在且啟用
+  // FrontJwtAuthGuard 需要它。UserPersistenceModule 供建房間時檢查對方是否存在且啟用。
+  // EventPublisherModule 提供 EVENT_PUBLISHER_PORT——REST 的動作也要推播讓連線端同步；
+  // 不用 ChatWsModule：本模組不需要 gateway 與連線限流
   imports: [
     FrontAuthModule,
     UserPersistenceModule,
-    ChatWsModule,
+    EventPublisherModule,
     ChatRoomCoreModule,
     MetricsModule,
   ],

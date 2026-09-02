@@ -127,6 +127,44 @@ describe('架構守則：環境變數必須宣告於 envSchema', () => {
     expect(used.size).toBeGreaterThan(0);
   });
 
+  /**
+   * 布林變數必須用列舉宣告。
+   *
+   * `z.string().default('false').transform((v) => v === 'true')` 把**任何非 `'true'`
+   * 的值都當成 false**：`FOO=TRUE`（大寫）、`=1`、`=yes` 全都靜默失效。
+   * 對預設關閉的開關只是沒生效，對預設開啟的安全性開關（如稽核）則是**靜默關掉了它**。
+   *
+   * 判定必須認得 transform 前面接的是 `.string()` 還是 `.enum()`——
+   * 接在 `z.enum` 後面是**正確**寫法（列舉負責驗證、transform 負責轉成 boolean），
+   * 誤報會逼人把守則關掉。
+   *
+   * 也不得改用 `z.coerce.boolean()`：它走 JS truthy 規則，而 `'false'` 是非空字串，
+   * `FOO=false` 會變成 `true`——比寬鬆寫法更糟。
+   */
+  it('布林環境變數必須以 z.enum 宣告，不得用 z.string()', () => {
+    const body = readSource(ENV_FILE);
+    const BOOL_TRANSFORM = /\.transform\(\(v\) => v === 'true'\)/g;
+    const LOOSE =
+      /\.string\(\)\s*\n\s*\.(?:default\('(?:true|false)'\)|optional\(\))\s*\n\s*\.transform\(\(v\) => v === 'true'\)/g;
+
+    // 一個布林宣告都掃不到 → 正規式或檔案結構變了，這條規則會空轉
+    expect(body.match(BOOL_TRANSFORM)?.length ?? 0).toBeGreaterThan(0);
+
+    const loose = body.match(LOOSE) ?? [];
+    expect(
+      loose.length === 0
+        ? ''
+        : `${ENV_FILE} 有 ${loose.length} 處布林變數用 z.string() 宣告：\n` +
+            `  改成 z.enum(['true', 'false'])，.default() 的值保持原樣。\n` +
+            `  z.string() 會把 TRUE / 1 / yes 靜默當成 false——對預設開啟的安全性開關` +
+            `\n  等於悄悄關掉它。也不要改用 z.coerce.boolean()：'false' 是非空字串，會變成 true`,
+    ).toBe('');
+  });
+
+  it('不得使用 z.coerce.boolean()', () => {
+    expect(readSource(ENV_FILE)).not.toMatch(/z\.coerce\.boolean\(\)/);
+  });
+
   it('使用到的 process.env 都必須宣告於 envSchema', () => {
     const undeclared = [...used.entries()]
       .filter(
