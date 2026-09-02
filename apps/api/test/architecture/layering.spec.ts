@@ -5,6 +5,7 @@ import {
   violationReport,
   type Violation,
 } from './helpers';
+import { stripComments } from './ws-source';
 
 /** in 側的進入點類型。新增類型時必須加進這裡，否則它會落在守則的掃描範圍外 */
 const ENTRY_POINT_SUFFIXES = ['Controller.ts', 'Gateway.ts'] as const;
@@ -63,6 +64,43 @@ describe('架構守則：in 側進入點不得相依持久層', () => {
         offenders,
         '進入點直接相依持久層：請改為注入 facade，由 facade 呼叫 use case / service，再經 port 存取資料',
       ),
+    ).toBe('');
+  });
+});
+
+/**
+ * admin 模組不得相依 WebSocket 連線層。
+ *
+ * `ChatWsModule` 裝的是連線層：gateway、連線限流、Socket.IO adapter。
+ * admin 側需要的只有「送一個事件」或「把某人踢下線」——分別由
+ * `EventPublisherModule` 與 `SessionRevocationModule` 提供。
+ *
+ * **擋的是回歸不是無知**：下一個要在 admin 側推播的人，最短路徑就是
+ * `import { ChatWsModule }`，而它會通過 typecheck、通過所有測試、功能也正常。
+ * 沒有這條規則的話這個邊界會在幾個月內被磨平。
+ */
+describe('架構守則：admin 模組不得相依 WebSocket 連線層', () => {
+  const adminModules = collectSourceFiles(['src/modules/admin']);
+
+  it('掃描範圍有效', () => {
+    expect(adminModules.length).toBeGreaterThan(0);
+  });
+
+  it('src/modules/admin/ 不得 import ChatWsModule', () => {
+    const offenders = adminModules.filter((file) =>
+      /^\s*import\s[^;]*\bChatWsModule\b/m.test(
+        stripComments(readSource(file)),
+      ),
+    );
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下 admin 模組 import 了 ChatWsModule：\n${offenders
+            .map((f) => `  ${f}`)
+            .join('\n')}\n` +
+            `需要撤銷成員連線 → SessionRevocationModule；需要推播事件 → EventPublisherModule。\n` +
+            `ChatWsModule 是連線層（gateway、連線限流、Socket.IO adapter），admin 側用不到那些`,
     ).toBe('');
   });
 });

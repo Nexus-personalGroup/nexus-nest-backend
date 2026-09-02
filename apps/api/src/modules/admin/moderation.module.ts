@@ -30,7 +30,7 @@ import {
 import { PrismaChatReportRepository } from '../../adapter/out/persistence/chat-report/PrismaChatReportRepository';
 import { CHAT_REPORT_REPOSITORY_PORT } from '../../application/port/out/chat-report/ChatReportRepositoryPort';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
-import { ChatWsModule } from '../chat-ws.module';
+import { EventPublisherModule } from '../event-publisher.module';
 import { UserPersistenceModule } from '../user-persistence.module';
 import { FrontUserSuspensionModule } from './front-user-suspension.module';
 
@@ -42,14 +42,15 @@ import { FrontUserSuspensionModule } from './front-user-suspension.module';
  * 同一個實作，但兩者的相依方向不同，各自 provide 比開一個共用模組單純。
  */
 @Module({
-  // ChatWsModule 提供 EVENT_PUBLISHER_PORT（移除與還原要推播讓畫面同步）
+  // EventPublisherModule 提供 EVENT_PUBLISHER_PORT（移除與還原要推播讓畫面同步）。
+  // 不用 ChatWsModule：這裡只需要「送事件」，不需要 gateway 與連線限流
   // UserPersistenceModule 提供前台使用者的讀取：審閱看到的當事人一律是前台使用者，
   // 因此本模組**不再相依 MemberModule**
   // FrontUserSuspensionModule 提供停權／解除——它有兩個入口（審閱側與會員管理側），
   // 兩邊必須拿到同一份實作，見該模組的說明
   imports: [
     ChatRoomCoreModule,
-    ChatWsModule,
+    EventPublisherModule,
     UserPersistenceModule,
     FrontUserSuspensionModule,
   ],

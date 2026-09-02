@@ -5,29 +5,27 @@
 
 ## 進行中
 
-**`fix-unassignable-permission-display`** 已完成待合併——**這是 #32 的錯誤修正**。
-那支把安全管理畫進權限樹時用了「恆為未勾的 disabled checkbox」，
-而打開**超級管理者**的檢視時三項顯示未勾選——那個角色恰恰做得到那三件事，
-畫面在陳述假訊息。改成純說明列表（無 checkbox）後就沒有狀態需要被表達，
-也就沒有東西會錯。
+**`improve-startup-signals-and-module-boundaries`** 已完成待合併——清掉本清單上
+三條標著「併進下一個會動到 X 的 change」而一直等不到那個 change 的技術債：
+api 的 healthcheck、18 個布林環境變數改用列舉、把撤銷連線與事件送出抽成獨立模組。
 
-**它是怎麼漏掉的值得記**：#32 的單元測試全綠、守則全綠、我也開瀏覽器驗收過，
-但**只看了「新增角色」**——空資料下恆為未勾看起來完全正常。
-已寫進 lessons（「UI 驗收只看一種資料，等於沒驗到那個元件」）。
+⚠️ **你本機的 `apps/api/.env` 若把布林變數寫成 `1` / `TRUE` / `yes`，
+API 會啟動失敗**——那正是這次的目的（以前是靜默當成 false），把值改成
+`true` 或 `false` 即可。`docker/api.container.env` 與 CI 都沒設布林變數，不受影響。
 
 ## 路線圖
 
 在飛的一項見「進行中」。**它之後沒有已排程的序列**
 ——候選與各自卡在什麼，見下面的「待辦」。
 
-### 已走完：2026-08-20 → 09-02，34 支 PR（#34 待合併）
+### 已走完：2026-08-20 → 09-02，35 支 PR（#35 待合併）
 
 M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽，
 接著是**分表工程**（把前台使用者從後台帳號表拆出來），
 中間穿插兩輪審查報告的修補，然後是容器環境的三塊
 （nginx 單一入口、e2e 進容器、關掉直連埠），
-最後是後台的可讀性（Sidebar 依管理對象分組、首頁改營運摘要、權限樹中文化）。
-逐支見「已完成」的索引。
+再來是後台的可讀性（Sidebar 依管理對象分組、首頁改營運摘要、權限樹中文化），
+最後把累積的小技術債一次清掉。逐支見「已完成」的索引。
 
 **最後那批的共同點值得記**：它們修的都不是 bug，是**「做到一半而且沒有東西會提醒」**
 ——nginx 做了但沒關舊埠、權限樹分了組但標題還是英文碼、
@@ -39,6 +37,11 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 原因是驗收**只走了一種資料**（新增角色，空資料），而該元件的錯誤只在
 另一種資料（檢視既有角色）下顯形。**測試齊全不等於驗到了對的東西**——
 挑驗收情境的原則是「哪一種資料會讓我寫死的那個值變成錯的」。
+
+**第三則觀察來自清技術債那一支（#35）**：三條債都標著「併進下一個會動到 X 的 change」，
+而那個 change 一年也不會自己出現——**「順便做」不是排程，是無限期延後**。
+真要做就給它自己的 change。另外那支也示範了一件事：`pnpm build` 綠不代表 DI 組得起來，
+Nest 的模組接線只有 e2e 抓得到（本專案第二次踩）。
 
 **分表工程的四支拆成四個 change 是刻意的**，那三個排序判斷值得留著
 ——它們是**判斷**而不是結果：
@@ -130,27 +133,6 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 
 ### 技術債（小，隨手可修）
 
-- **api 沒有 healthcheck，`docker compose up -d --wait` 只等到 running**。
-  容器起來了但 Nest 還在編譯 / 連 DB 的那段空窗期，`--wait` 已經回報成功，
-  這時打過去會失敗。這是舊有狀況，但 `enforce-single-entry-container` 關掉
-  api 的對外埠之後**症狀會被歸錯因**——現在唯一的入口是代理，
-  「起來了卻打不通」的第一直覺會變成「代理壞了」。
-  補一條 `test: wget -qO- http://localhost:3000/api/health` 的 healthcheck 即可，
-  **併進下一個會動到 compose 的 change**。
-
-- **布林環境變數的解析不一致**：既有變數用 `z.string().default('false').transform(v => v === 'true')`，
-  它把任何非 `'true'` 的值都當成 false——`FOO=TRUE`（大寫）或 `FOO=1` 會**靜默失效**。
-  較新的 `CHAT_AUDIT_ENABLED` / `SWAGGER_ENABLED` 已改用 `z.enum(['true','false'])`
-  讓 typo 在啟動時就失敗。**舊的那些還沒改**。
-
-- **`RevokeMemberSessionsService` 住在 `chat-ws.module` 裡**。於是
-  `admin/member.module` 只是為了「停用帳號要踢掉既有連線」，就得 import 整個聊天 WS 模組。
-  **這是接線的意外，不是設計**——與 `fix-permission-cache-consistency` 修掉的
-  「`clearMemberContext` 長在 `RedisTokenBlacklistAdapter` 裡」是同一類問題：
-  功能落在一個與它名字無關的模組，改動時第一個打開的檔案裡沒有它。
-  拆成獨立的 `session-revocation.module` 即可，成本很小。
-  **併進下一個會動到 module 接線的 change 順手做**，不值得單獨開一個。
-
 - **`domain/exception` 40 支檔案攤平在一層**，而且每個 change 幾乎都會再加一兩支。
   自然的分組是 `auth/`（11）、`member/`（7）、`role/`（6）、`chat/`（9）、
   `attachment/`（3），`DomainException` 與 `IpListNotFoundException` 留根。
@@ -213,9 +195,12 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
   先 `pnpm --filter @app/api test:e2e > /tmp/e2e.log 2>&1` 再從檔案 grep，
   並記下當下還有什麼在跑、以及 `--detectOpenHandles` 的輸出。
 
-  **現況**：最後一次是 08-28（第 8 次），此後 #29–#33 共五支 PR 的 CI E2E **都一次過**。
+  **現況**：最後一次是 08-28（第 8 次），此後 #29–#34 共六支 PR 的 CI E2E **都一次過**。
   **安靜不等於修好了**——中間沒有任何針對它的改動，所以這段空窗只是還沒再抽中，
   不是證據。條目保留，計數維持 8。
+
+  （#35 在本機跑過兩次完整 e2e：一次 409 全紅，但那是真的接線壞了（Nest re-export），
+  修好後 409 全綠。**那不是這個間歇性問題**——它有明確原因且百分之百重現。）
 
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 
@@ -277,6 +262,7 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 | #32 | 09-02 | `improve-permission-tree-legibility` | 權限樹群組標題中文化；安全管理顯示為不可指派（維持 `@Roles(SUPERADMIN)` 不下放）；把「列內隱藏／頁面級 disabled」寫成明文 |
 | #33 | 09-02 | `fix-spec-purpose-and-permission-naming` | 補完 5 份 `TBD` Purpose 並加守則；`MODERATION:VIEW` 改名反映它涵蓋三個頁面（EDIT **刻意不對稱**） |
 | #34 | 09-02 | `fix-unassignable-permission-display` | **#32 的修正**：安全管理改為純說明列表。恆為未勾的方框對超級管理者是假的，而「SUPERADMIN 時顯示已勾」也修不掉「同一個圖示兩種語意」 |
+| #35 | 09-02 | `improve-startup-signals-and-module-boundaries` | 清三條技術債：api healthcheck（`--wait` 不再在編譯中回報成功）、布林 env 改 `z.enum`、抽出 `EventPublisherModule` / `SessionRevocationModule` 讓 admin 側不再相依連線層 |
 
 ### 幾個反覆出現的教訓
 

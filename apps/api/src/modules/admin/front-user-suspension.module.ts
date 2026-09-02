@@ -6,7 +6,7 @@ import {
 import { SuspendFrontUserService } from '../../application/service/admin/moderation/SuspendFrontUserService';
 import { ReinstateFrontUserService } from '../../application/service/admin/moderation/ReinstateFrontUserService';
 import { UserPersistenceModule } from '../user-persistence.module';
-import { ChatWsModule } from '../chat-ws.module';
+import { SessionRevocationModule } from '../session-revocation.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 
 /**
@@ -21,10 +21,10 @@ import { ChatRoomCoreModule } from '../chat-room-core.module';
  * （檢舉 repository、審閱 controller）。抽出來之後兩邊都只拿到需要的東西。
  *
  * 相依：`UserPersistenceModule`（讀寫 `users`）、
- * `ChatWsModule`（撤銷 WS 連線）、`ChatRoomCoreModule`（稽核）。
+ * `SessionRevocationModule`（撤銷 WS 連線）、`ChatRoomCoreModule`（稽核）。
  */
 @Module({
-  imports: [UserPersistenceModule, ChatWsModule, ChatRoomCoreModule],
+  imports: [UserPersistenceModule, SessionRevocationModule, ChatRoomCoreModule],
   providers: [
     { provide: SUSPEND_FRONT_USER_USE_CASE, useClass: SuspendFrontUserService },
     {

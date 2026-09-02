@@ -119,7 +119,7 @@ const envSchema = z.object({
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().default(587),
   SMTP_SECURE: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   SMTP_USER: z.string().optional(),
@@ -147,43 +147,43 @@ const envSchema = z.object({
 
   // ─── 功能開關（Feature Flags） ───
   APPLICATION_ADMIN_ROLE_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
   APPLICATION_AUTH_LOG_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_IP_WHITELIST_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_IP_BLACKLIST_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_ACCOUNT_LOCK_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_PASSWORD_CHANGE_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_SESSION_IDLE_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_GOOGLE_RECAPTCHA_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_API_LOG_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   APPLICATION_OPERATION_LOG_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
 
@@ -193,7 +193,7 @@ const envSchema = z.object({
    * 而這兩張表目前只寫不讀。關掉前請確認你有別的清理機制。
    */
   LOG_PURGE_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('true')
     .transform((v) => v === 'true'),
   /** 日誌保留天數，早於此天數的 system_logs / auth_logs 會被刪除 */
@@ -240,20 +240,20 @@ const envSchema = z.object({
    * 包含登入與 forgot-password——暴力破解防護會在最需要的時刻消失。
    */
   THROTTLE_FAIL_OPEN: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
 
   // ─── 可觀測性（Observability，皆預設關閉） ───
   APPLICATION_SENTRY_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   SENTRY_DSN: z.string().optional(),
   // 0 = 不採樣 trace；production 視流量調至 0.1 等小數
   SENTRY_TRACES_SAMPLE_RATE: z.coerce.number().min(0).max(1).default(0),
   APPLICATION_METRICS_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
 
@@ -288,7 +288,7 @@ const envSchema = z.object({
     .default(1),
   APPLICATION_PASSWORD_CHANGE_PERIOD: z.coerce.number().int().min(0).default(6),
   APPLICATION_IS_LOGOUT_AFTER_PASSWORD_RESET: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
 
@@ -317,7 +317,7 @@ const envSchema = z.object({
   GOOGLE_RECAPTCHA_SITE_KEY: z.string().optional(),
   GOOGLE_RECAPTCHA_VERSION: z.enum(['v2', 'v3']).default('v2'),
   GOOGLE_RECAPTCHA_IS_PRODUCTION: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
 
@@ -477,7 +477,7 @@ const envSchema = z.object({
   // ─── 排程（@nestjs/schedule，範例排程預設關閉） ───
   /** 範例排程是否啟用；正式排程依需求改寫 ExampleScheduler，測試環境保持關閉 */
   SCHEDULE_ENABLED: z
-    .string()
+    .enum(['true', 'false'])
     .default('false')
     .transform((v) => v === 'true'),
   /** 範例排程 cron（@nestjs/schedule 6 欄位含秒），預設每分鐘第 0 秒 */

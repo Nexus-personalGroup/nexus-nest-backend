@@ -10,7 +10,7 @@ import { ListFrontUsersService } from '../../application/service/admin/front-use
 import { GetFrontUserService } from '../../application/service/admin/front-user/GetFrontUserService';
 import { ForceLogoutFrontUserService } from '../../application/service/admin/front-user/ForceLogoutFrontUserService';
 import { UserPersistenceModule } from '../user-persistence.module';
-import { ChatWsModule } from '../chat-ws.module';
+import { SessionRevocationModule } from '../session-revocation.module';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { FrontUserSuspensionModule } from './front-user-suspension.module';
 
@@ -23,13 +23,13 @@ import { FrontUserSuspensionModule } from './front-user-suspension.module';
  * 停權／解除來自 `FrontUserSuspensionModule`：與審閱側是**同一份實作**，
  * 這裡只是多一個授權不同的入口。
  *
- * ChatWsModule 提供 `REVOKE_MEMBER_SESSIONS_USE_CASE`（強制登出要中止既有連線）、
+ * `SessionRevocationModule` 提供 `REVOKE_MEMBER_SESSIONS_USE_CASE`（強制登出要中止既有連線）、
  * ChatRoomCoreModule 提供 `CHAT_AUDIT_PORT`。
  */
 @Module({
   imports: [
     UserPersistenceModule,
-    ChatWsModule,
+    SessionRevocationModule,
     ChatRoomCoreModule,
     FrontUserSuspensionModule,
   ],
