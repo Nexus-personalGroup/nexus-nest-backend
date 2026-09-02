@@ -39,6 +39,7 @@ const mockAccountLock = {
   checkLock: jest.fn(),
   lockAccount: jest.fn(),
   unlockAccount: jest.fn(),
+  listLocks: jest.fn(),
 } as jest.Mocked<AccountLockPort>;
 
 const makeService = () =>

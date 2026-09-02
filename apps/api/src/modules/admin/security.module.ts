@@ -16,6 +16,7 @@ import {
   LIST_IP_WHITELIST_USE_CASE,
   REMOVE_IP_BLACKLIST_USE_CASE,
   REMOVE_IP_WHITELIST_USE_CASE,
+  LIST_ACCOUNT_LOCKS_USE_CASE,
   UNLOCK_ACCOUNT_USE_CASE,
   UPDATE_IP_BLACKLIST_USE_CASE,
   UPDATE_IP_WHITELIST_USE_CASE,
@@ -29,6 +30,7 @@ import {
   ListIpWhitelistService,
   RemoveIpBlacklistService,
   RemoveIpWhitelistService,
+  ListAccountLocksService,
   UnlockAccountService,
   UpdateIpBlacklistService,
   UpdateIpWhitelistService,
@@ -65,6 +67,10 @@ import { MemberModule } from './member.module';
     {
       provide: REMOVE_IP_BLACKLIST_USE_CASE,
       useClass: RemoveIpBlacklistService,
+    },
+    {
+      provide: LIST_ACCOUNT_LOCKS_USE_CASE,
+      useClass: ListAccountLocksService,
     },
     { provide: UNLOCK_ACCOUNT_USE_CASE, useClass: UnlockAccountService },
     { provide: GET_IP_WHITELIST_USE_CASE, useClass: GetIpWhitelistService },

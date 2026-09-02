@@ -28,6 +28,10 @@ import {
   UpdateIpBlacklistUseCase,
   UpdateIpWhitelistCommand,
   UpdateIpWhitelistUseCase,
+  LIST_ACCOUNT_LOCKS_USE_CASE,
+  ListAccountLocksQuery,
+  ListAccountLocksResult,
+  ListAccountLocksUseCase,
 } from '../../port/in/admin/security/SecurityUseCases';
 import {
   IpBlacklistItem,
@@ -35,12 +39,14 @@ import {
 } from '../../port/out/security/IpListPort';
 
 /**
- * 安全管理 Facade：IP 黑白名單 CRUD + 帳號解鎖。
+ * 安全管理 Facade：IP 黑白名單 CRUD + 帳號鎖定列表 + 帳號解鎖。
  * Facade 只負責把 controller 的呼叫分派到對應 use case，不放任何 domain 邏輯
  */
 @Injectable()
 export class SecurityFacade {
   constructor(
+    @Inject(LIST_ACCOUNT_LOCKS_USE_CASE)
+    private readonly listAccountLocksUseCase: ListAccountLocksUseCase,
     @Inject(LIST_IP_WHITELIST_USE_CASE)
     private readonly listIpWhitelist: ListIpWhitelistUseCase,
     @Inject(ADD_IP_WHITELIST_USE_CASE)
@@ -111,5 +117,11 @@ export class SecurityFacade {
 
   unlockAccount(email: string): Promise<void> {
     return this.unlockAccountUseCase.execute(email);
+  }
+
+  listAccountLocks(
+    query: ListAccountLocksQuery,
+  ): Promise<ListAccountLocksResult> {
+    return this.listAccountLocksUseCase.execute(query);
   }
 }

@@ -3911,6 +3911,116 @@ export interface paths {
         };
         trace?: never;
     };
+    "/security/locks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 查詢帳號鎖定列表
+         * @description 分頁取得有鎖定紀錄（`lockedAt` 不為 null）的後台帳號；支援 email 模糊搜尋與狀態過濾。
+         *
+         *     回應另帶 `lockEnabled`：帳號鎖定功能預設關閉，關閉時系統不會產生任何鎖定紀錄。
+         *
+         *     **`status` 預設為 `locked`**：打開這一頁的人問的是「現在有誰被鎖著」。
+         *     已到期但尚未被清除的紀錄（清除發生在下次登入或解鎖時）要指定
+         *     `expired` 或 `all` 才查得到——系統沒有鎖定歷史表，那是唯一能回答
+         *     「這個人今天被鎖過」的地方。
+         *
+         *     到期判定與登入路徑共用同一份規則（`lockedAt` + `APPLICATION_ACCOUNT_LOCK_DURATION_MIN`）。
+         *
+         *     需要 `SUPERADMIN` 角色（粗粒度 role gate，非細粒度 permission）。
+         *     需要 JWT Bearer Token 認證。
+         */
+        get: {
+            parameters: {
+                query?: {
+                    /** @description 頁碼 */
+                    page?: number;
+                    /** @description 每頁筆數（未指定用 env DEFAULT_PAGE_LIMIT） */
+                    limit?: number;
+                    /** @description email 模糊搜尋（contains，不分大小寫）；trim 後為空字串視為未提供 */
+                    search?: string;
+                    /** @description 鎖定狀態過濾；非三者之一回 400 */
+                    status?: "locked" | "expired" | "all";
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description 查詢成功 */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            /** @example true */
+                            success: boolean;
+                            data: {
+                                /**
+                                 * @description 帳號鎖定功能是否啟用（`APPLICATION_ACCOUNT_LOCK_ENABLED`，預設 false）。
+                                 *     **關閉時登入路徑不會寫入 lockedAt，清單於是永遠是空的**——
+                                 *     呼叫端必須用這個旗標分辨「沒有人被鎖」與「根本不會鎖」。
+                                 */
+                                lockEnabled: boolean;
+                                /** @description 有鎖定紀錄的帳號清單，依鎖定時間遞減 */
+                                list: {
+                                    /** Format: uuid */
+                                    id?: string;
+                                    /** Format: email */
+                                    email?: string;
+                                    /** @description 帳號的顯示名稱 */
+                                    member?: string;
+                                    /** Format: date-time */
+                                    lockedAt?: string;
+                                    /**
+                                     * Format: date-time
+                                     * @description 自動解鎖時間（lockedAt + 設定的時效）
+                                     */
+                                    unlocksAt?: string;
+                                    /** @example 3 */
+                                    failedLoginCount?: number;
+                                    /**
+                                     * @description 判定後的狀態；expired 代表該帳號現在已經可以登入
+                                     * @enum {string}
+                                     */
+                                    status?: "locked" | "expired";
+                                }[];
+                                meta: {
+                                    /** @example 1 */
+                                    page?: number;
+                                    /** @example 10 */
+                                    limit?: number;
+                                    /** @example 3 */
+                                    total?: number;
+                                    /** @example 1 */
+                                    totalPages?: number;
+                                };
+                            };
+                            /** Format: date-time */
+                            timestamp: string;
+                        };
+                    };
+                };
+                400: components["responses"]["BadRequest"];
+                401: components["responses"]["NoToken"];
+                403: components["responses"]["Forbidden"];
+                500: components["responses"]["InternalServerError"];
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/security/unlock-account": {
         parameters: {
             query?: never;

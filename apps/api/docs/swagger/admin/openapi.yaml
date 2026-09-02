@@ -395,6 +395,10 @@ paths:
     delete:
       $ref: './security/ip-blacklist-delete.yaml'
 
+  /security/locks:
+    get:
+      $ref: './security/account-locks-list.yaml'
+
   /security/unlock-account:
     post:
       $ref: './security/unlock-account.yaml'

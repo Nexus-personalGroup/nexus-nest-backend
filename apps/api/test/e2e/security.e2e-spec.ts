@@ -112,6 +112,7 @@ describe('Security E2E', () => {
       'post',
       '/api/admin/security/unlock-account',
     );
+    describeUnauthorized(() => app, 'get', '/api/admin/security/locks');
   });
 
   describe('GET /api/admin/security/ip-whitelist', () => {
@@ -355,6 +356,95 @@ describe('Security E2E', () => {
   });
 
   // ── 帳號解鎖 ───────────────────────────────
+
+  describe('GET /api/admin/security/locks', () => {
+    /** 建一個帶 lockedAt 的帳號；分鐘為負代表鎖在過去 */
+    const seedLocked = (email: string, minutesAgo: number) =>
+      prisma.memberRecord.create({
+        data: {
+          member: email,
+          email,
+          password: 'x',
+          roleId: adminRoleId,
+          status: true,
+          isDefault: false,
+          lockedAt: new Date(Date.now() - minutesAgo * 60_000),
+          failedLoginCount: 3,
+        },
+      });
+
+    it('預設只回鎖定中的帳號', async () => {
+      await seedLocked('fresh@test.com', 1);
+      // 預設時效 30 分鐘，兩小時前的已到期
+      await seedLocked('stale@test.com', 120);
+
+      const res = await get('/api/admin/security/locks');
+
+      expect(res.status).toBe(200);
+      const emails = res.body.data.list.map((r: { email: string }) => r.email);
+      expect(emails).toEqual(['fresh@test.com']);
+      expect(res.body.data.list[0].status).toBe('locked');
+      expect(res.body.data.list[0].unlocksAt).toBeDefined();
+    });
+
+    it('status=expired 只回已到期的', async () => {
+      await seedLocked('fresh@test.com', 1);
+      await seedLocked('stale@test.com', 120);
+
+      const res = await get('/api/admin/security/locks?status=expired');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.list.map((r: { email: string }) => r.email)).toEqual(
+        ['stale@test.com'],
+      );
+      expect(res.body.data.list[0].status).toBe('expired');
+    });
+
+    it('status=all 兩者都回', async () => {
+      await seedLocked('fresh@test.com', 1);
+      await seedLocked('stale@test.com', 120);
+
+      const res = await get('/api/admin/security/locks?status=all');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.meta.total).toBe(2);
+    });
+
+    it('email 模糊搜尋', async () => {
+      await seedLocked('alice@test.com', 1);
+      await seedLocked('bob@test.com', 1);
+
+      const res = await get('/api/admin/security/locks?search=ALI');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.list.map((r: { email: string }) => r.email)).toEqual(
+        ['alice@test.com'],
+      );
+    });
+
+    it('沒有任何鎖定紀錄 → 200 空清單', async () => {
+      const res = await get('/api/admin/security/locks');
+
+      expect(res.status).toBe(200);
+      expect(res.body.data.list).toEqual([]);
+      expect(res.body.data.meta.total).toBe(0);
+    });
+
+    // 帳號鎖定預設關閉，e2e 環境沒有開——正好驗到 flag 為 false 的情形。
+    // 沒有這個旗標，畫面分不出「沒有人被鎖」與「根本不會鎖」
+    it('⭐ 回應帶 lockEnabled，反映功能是否啟用', async () => {
+      const res = await get('/api/admin/security/locks');
+
+      expect(res.status).toBe(200);
+      expect(typeof res.body.data.lockEnabled).toBe('boolean');
+    });
+
+    it('非法 status → 400', async () => {
+      const res = await get('/api/admin/security/locks?status=whatever');
+
+      expect(res.status).toBe(400);
+    });
+  });
 
   describe('POST /api/admin/security/unlock-account', () => {
     it('Admin 解鎖鎖定帳號 → 204 且落庫清鎖', async () => {

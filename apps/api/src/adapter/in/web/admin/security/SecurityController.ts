@@ -17,7 +17,10 @@ import {
   IpBlacklistItem,
   IpListItem,
 } from '@app/application/port/out/security/IpListPort';
-import { ListIpListResult } from '@app/application/port/in/admin/security/SecurityUseCases';
+import {
+  ListAccountLocksResult,
+  ListIpListResult,
+} from '@app/application/port/in/admin/security/SecurityUseCases';
 import { RolesGuard } from '../../guard/RolesGuard';
 import { Roles } from '../../decorator/roles.decorator';
 import { RoleCode } from '@app/domain/value-object/Role';
@@ -45,11 +48,15 @@ import {
   UnlockAccountRequest,
   unlockAccountSchema,
 } from './UnlockAccountRequest';
+import {
+  ListAccountLocksQuery,
+  listAccountLocksQuerySchema,
+} from './ListAccountLocksQuery';
 
 /**
  * 安全管理 Controller（SUPERADMIN only）：
  * - IP 黑白名單 CRUD（分頁 + IP 模糊搜尋 + by-id GET/PATCH/DELETE）
- * - 帳號解鎖（成功 204、找不到 email 404、未鎖 409）
+ * - 帳號鎖定列表（誰現在被鎖著）與帳號解鎖（成功 204、找不到 email 404、未鎖 409）
  *
  * 注意：security 模組刻意用 RolesGuard + @Roles(SUPERADMIN) 粗粒度 role gate，
  * 不走其他模組的 PermissionsGuard 細粒度權限
@@ -157,6 +164,16 @@ export class SecurityController {
     @Param('id', ParseUUIDPipe) id: string,
   ): Promise<void> {
     await this.securityFacade.removeFromBlacklist(id);
+  }
+
+  // ── 帳號鎖定 ─────────────────────────────────
+
+  @Get('locks')
+  listAccountLocks(
+    @Query(new ZodValidationPipe(listAccountLocksQuerySchema))
+    query: ListAccountLocksQuery,
+  ): Promise<ListAccountLocksResult> {
+    return this.securityFacade.listAccountLocks(query);
   }
 
   // ── 帳號解鎖 ─────────────────────────────────
