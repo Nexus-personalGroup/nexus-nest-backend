@@ -1,8 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '@app/infrastructure/prisma/prisma.service';
 import {
+  AccountLockPage,
   AccountLockPort,
   AccountLockStatus,
+  ListAccountLocksParams,
 } from '@app/application/port/out/auth/AccountLockPort';
 import { RedisService } from '@app/infrastructure/redis/redis.service';
 import { buildFailedLoginKey } from '@app/infrastructure/redis/cache-keys';
@@ -75,6 +77,27 @@ export class PrismaAccountLockAdapter implements AccountLockPort {
       });
   }
 
+  /** 鎖定時效（毫秒）。設定的唯一讀取點 */
+  private lockDurationMs(): number {
+    return getEnv().APPLICATION_ACCOUNT_LOCK_DURATION_MIN * 60_000;
+  }
+
+  /**
+   * 鎖定時效的**唯一判準**：`lockedAt` 早於（或等於）這個時間點就是已到期。
+   *
+   * `checkLock` 與 `listLocks` 都走這裡。兩邊各自算的話會漂移，
+   * 而漂移的症狀是「列表說鎖著、但那個人登得進去」——
+   * 看起來像資料不同步，實際上是兩份規則。
+   */
+  private lockCutoff(now: Date = new Date()): Date {
+    return new Date(now.getTime() - this.lockDurationMs());
+  }
+
+  /** 自動解鎖時間，供列表顯示「還要等多久」 */
+  private unlocksAt(lockedAt: Date): Date {
+    return new Date(lockedAt.getTime() + this.lockDurationMs());
+  }
+
   async checkLock(email: string): Promise<AccountLockStatus> {
     // 軟刪 model 的 read path 一律加 deletedAt: null（findUnique 不支援非唯一條件 → 改 findFirst）
     const record = await this.prisma.memberRecord.findFirst({
@@ -83,12 +106,62 @@ export class PrismaAccountLockAdapter implements AccountLockPort {
     });
     if (!record?.lockedAt) return 'NONE';
 
-    const expiresAt = new Date(
-      record.lockedAt.getTime() +
-        getEnv().APPLICATION_ACCOUNT_LOCK_DURATION_MIN * 60_000,
-    );
     // 純比對，不寫入：到期後該清的失敗計數由呼叫端處理
-    return new Date() < expiresAt ? 'LOCKED' : 'EXPIRED';
+    return record.lockedAt > this.lockCutoff() ? 'LOCKED' : 'EXPIRED';
+  }
+
+  async listLocks(params: ListAccountLocksParams): Promise<AccountLockPage> {
+    const cutoff = this.lockCutoff();
+    // 過濾條件與逐列判定用同一個 cutoff：分兩次取 `new Date()` 的話，
+    // 邊界上的那一筆可能被查出來卻標成另一個狀態
+    const byStatus =
+      params.status === 'locked'
+        ? { gt: cutoff }
+        : params.status === 'expired'
+          ? { lte: cutoff }
+          : { not: null };
+
+    const where = {
+      deletedAt: null,
+      lockedAt: byStatus,
+      ...(params.search
+        ? { email: { contains: params.search, mode: 'insensitive' as const } }
+        : {}),
+    };
+
+    const [records, total] = await Promise.all([
+      this.prisma.memberRecord.findMany({
+        where,
+        select: {
+          id: true,
+          email: true,
+          member: true,
+          lockedAt: true,
+          failedLoginCount: true,
+        },
+        orderBy: { lockedAt: 'desc' },
+        skip: (params.page - 1) * params.limit,
+        take: params.limit,
+      }),
+      this.prisma.memberRecord.count({ where }),
+    ]);
+
+    return {
+      total,
+      list: records
+        // lockedAt 在型別上可為 null，但 where 已排除；filter 讓型別收斂而非用 !
+        .filter((r): r is typeof r & { lockedAt: Date } => r.lockedAt !== null)
+        .map((r) => ({
+          id: r.id,
+          email: r.email,
+          member: r.member,
+          lockedAt: r.lockedAt,
+          unlocksAt: this.unlocksAt(r.lockedAt),
+          failedLoginCount: r.failedLoginCount,
+          status:
+            r.lockedAt > cutoff ? ('locked' as const) : ('expired' as const),
+        })),
+    };
   }
 
   async lockAccount(email: string): Promise<void> {

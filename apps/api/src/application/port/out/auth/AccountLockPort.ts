@@ -12,7 +12,53 @@ export const ACCOUNT_LOCK_PORT = 'ACCOUNT_LOCK_PORT';
  */
 export type AccountLockStatus = 'NONE' | 'LOCKED' | 'EXPIRED';
 
+/** 列表的狀態過濾；`all` 涵蓋所有有 `lockedAt` 的帳號 */
+export type AccountLockFilter = 'locked' | 'expired' | 'all';
+
+export interface ListAccountLocksParams {
+  page: number;
+  limit: number;
+  /** email 模糊比對（不分大小寫）；未提供則不過濾 */
+  search?: string;
+  status: AccountLockFilter;
+}
+
+export interface AccountLockListItem {
+  id: string;
+  email: string;
+  /** 帳號的顯示名稱 */
+  member: string;
+  lockedAt: Date;
+  /**
+   * 自動解鎖時間（`lockedAt` + 設定的時效）。
+   *
+   * **一併回傳而不是讓呼叫端自己算**：管理員要判斷的是「還要等多久」，
+   * 只給 `lockedAt` 等於要他知道並套用設定值——而那個設定值只有後端知道。
+   */
+  unlocksAt: Date;
+  failedLoginCount: number;
+  /** 判定後的狀態；與 `checkLock` 用同一份時效規則 */
+  status: 'locked' | 'expired';
+}
+
+export interface AccountLockPage {
+  list: AccountLockListItem[];
+  total: number;
+}
+
 export interface AccountLockPort {
+  /**
+   * 分頁列出有鎖定紀錄（`lockedAt != null`）的帳號。
+   *
+   * **放在本 port 而不是 member 的持久層 port**：到期判定
+   * （`lockedAt` + `APPLICATION_ACCOUNT_LOCK_DURATION_MIN`）就住在本 port 的實作裡。
+   * 列表若自己再算一次，兩份規則會漂移，而症狀是
+   * 「列表說鎖著、但那個人登得進去」——看起來像資料不同步，實際是兩份規則。
+   * @param params - 分頁、搜尋與狀態過濾
+   * @returns 該頁的項目與符合條件的總數
+   */
+  listLocks(params: ListAccountLocksParams): Promise<AccountLockPage>;
+
   /**
    * 記錄一次登入失敗，回傳目前累計失敗次數
    * @param email - 帳號 email

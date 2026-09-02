@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { FeatureFlagService } from '../../shared/FeatureFlagService';
 import {
   IP_LIST_PORT,
   IpBlacklistItem,
@@ -20,6 +21,9 @@ import {
   AddIpWhitelistUseCase,
   GetIpBlacklistUseCase,
   GetIpWhitelistUseCase,
+  ListAccountLocksQuery,
+  ListAccountLocksResult,
+  ListAccountLocksUseCase,
   ListIpBlacklistUseCase,
   ListIpListQuery,
   ListIpListResult,
@@ -189,5 +193,38 @@ export class UnlockAccountService implements UnlockAccountUseCase {
 
     // 3. 解鎖（同時重置 failedLoginCount）
     await this.accountLock.unlockAccount(email);
+  }
+}
+
+/**
+ * 帳號鎖定列表。
+ *
+ * 到期判定不在這裡——它住在 `AccountLockPort` 的實作，與登入路徑共用同一份規則。
+ * 本 service 只負責分頁預設值與 `status` 的預設（見下）。
+ */
+@Injectable()
+export class ListAccountLocksService implements ListAccountLocksUseCase {
+  constructor(
+    @Inject(ACCOUNT_LOCK_PORT) private readonly accountLock: AccountLockPort,
+    private readonly featureFlags: FeatureFlagService,
+  ) {}
+
+  async execute(query: ListAccountLocksQuery): Promise<ListAccountLocksResult> {
+    const { page, limit } = getPagination(query);
+    // 預設只看「鎖定中」：打開這一頁的人問的是「現在有誰被鎖著」。
+    // 已到期但尚未被清除的紀錄要靠 status=expired / all 才查得到
+    const { list, total } = await this.accountLock.listLocks({
+      page,
+      limit,
+      search: query.search?.trim() || undefined,
+      status: query.status ?? 'locked',
+    });
+    return {
+      list,
+      meta: buildPaginationMeta(page, limit, total),
+      // flag 關閉時系統不會產生任何鎖定紀錄——呼叫端必須分得出
+      // 「沒有人被鎖」與「根本不會鎖」
+      lockEnabled: this.featureFlags.isEnabled('accountLockEnabled'),
+    };
   }
 }
