@@ -29,9 +29,14 @@ trap cleanup EXIT
 echo "→ 啟動 PostgreSQL（等 healthcheck 通過）"
 docker compose --profile verify up -d --wait postgres-verify
 
-echo "→ 執行 e2e（連線走環境變數，與 CI 的 job variables 等價）"
+# **問 compose 實際開了哪個埠，不要自己組。** 埠可由根目錄 .env 的
+# VERIFY_DB_PORT 覆寫，而寫死或自己解析 .env 都會在使用者調過之後失準
+# ——症狀是「容器起來了但 e2e 連不上」，而錯誤訊息指不到是哪一邊沒同步。
+VERIFY_PORT="$(docker compose --profile verify port postgres-verify 5432 | sed 's/.*://')"
+
+echo "→ 執行 e2e（連線走環境變數，與 CI 的 job variables 等價；DB 埠 ${VERIFY_PORT}）"
 DB_HOST=127.0.0.1 \
-DB_PORT=15432 \
+DB_PORT="${VERIFY_PORT}" \
 DB_USERNAME=postgres \
 DB_PASSWORD=verify-secret \
 DB_DATABASE=nexus_verify_test \

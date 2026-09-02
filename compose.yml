@@ -248,7 +248,7 @@ services:
     tmpfs:
       - /var/lib/postgresql/data
     ports:
-      - '127.0.0.1:15432:5432'
+      - '127.0.0.1:${VERIFY_DB_PORT:-15432}:5432'
 
   # 只在 `--profile e2e` 時啟動；由 pnpm test:e2e:docker 呼叫，跑完即 down -v。
   #

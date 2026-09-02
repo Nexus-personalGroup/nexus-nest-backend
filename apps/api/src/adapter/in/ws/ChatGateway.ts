@@ -301,6 +301,13 @@ export class ChatGateway
    * **也不要「簡化」成只比較總數**（`connections.length > limit`）：
    * 那個條件對所有超額者同時成立，會把「該拒一條」變成「兩條都拒」。
    *
+   * ⚠️ **`lastSeenAt` 是「上次心跳」而不是「連線建立時間」**——`heartbeat()`
+   * 每 `WS_HEARTBEAT_INTERVAL` 秒把在線連線**整批覆寫**成 `Date.now()`。
+   * 拿它當連線年齡的代理成立，是因為整批同時寫，既有連線的相對順序不會變。
+   * **哪天心跳改成分批或錯開送出**（例如為了削峰），既有連線的 `lastSeenAt`
+   * 就會散開，排序與連線年齡的對應會鬆掉——症狀是上限偶爾多算一條，
+   * 而那不會有任何東西失敗。要改心跳的送法時回頭看這裡。
+   *
    * @param memberId - 成員 ID
    * @param socketId - 本次連線的 socket ID
    * @param limit - 單一成員的連線數上限

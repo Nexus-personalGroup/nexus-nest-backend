@@ -205,14 +205,18 @@ const bootstrap = async (): Promise<void> => {
 
   await app.listen(env.PORT);
   const bootLogger = app.get(Logger);
-  bootLogger.log(
-    `Swagger 文件（後台）：http://localhost:${env.PORT}/api/admin/docs`,
-    'Bootstrap',
-  );
-  bootLogger.log(
-    `Swagger 文件（前台）：http://localhost:${env.PORT}/api/front/docs`,
-    'Bootstrap',
-  );
+  // 關閉時不宣告網址：那兩個位址在 Swagger 關掉之後是 404，
+  // 而日誌照樣印出來會讓人以為文件在那裡、然後去查為什麼打不開
+  if (isSwaggerEnabled()) {
+    bootLogger.log(
+      `Swagger 文件（後台）：http://localhost:${env.PORT}/api/admin/docs`,
+      'Bootstrap',
+    );
+    bootLogger.log(
+      `Swagger 文件（前台）：http://localhost:${env.PORT}/api/front/docs`,
+      'Bootstrap',
+    );
+  }
   bootLogger.log(`應用程式啟動：${await app.getUrl()}`, 'Bootstrap');
 };
 
