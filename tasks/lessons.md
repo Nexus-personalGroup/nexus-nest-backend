@@ -56,6 +56,14 @@
 
 **How to apply**：還原一律用 python 字串替換或 `git checkout --`，還原後**實際驗證**（跑一次該檔的載入或測試）。反向驗證的完整循環是「插探針 → 親眼看它紅 → 還原 → **確認 `git status` 乾淨**」，最後一步不能省。
 
+### 2026-09-03 — husky 壞掉時不會報錯，commit 照常成功、只是什麼都沒檢查
+
+**踩到什麼**：以為 commit 前有 lint 把關，實際上 `.husky/pre-commit`（跑 `lint-staged`）**根本沒有被觸發**。檔案在、`package.json` 的 `prepare: husky` 在、`lint-staged` 設定也在——斷的是 `.git/config` 裡的 `core.hooksPath`，它不見了。
+
+**Why**：husky v9 的運作方式是把 git 的 hook 目錄指向 `.husky/_`（由 `prepare` 在 `pnpm install` 時設定）。那一行消失之後 git 只看 `.git/hooks/`，而那裡沒有 `pre-commit`——**git 找不到 hook 不是錯誤，是正常情況**，所以 commit 一路成功。最可能的成因是某次 `pnpm install --ignore-scripts`，或在 `CI=true` 的環境下裝過（husky 會自動跳過註冊）。
+
+**How to apply**：要確認 hook 活著，看的是 `git config --get core.hooksPath` **有沒有值**，不是看 `.husky/` 有沒有檔案。修法就是 `pnpm install`（`prepare` 會重設）。另外**本機 `.git/hooks/` 裡的 hook 不進版控**，換機器或重 clone 就沒了——要跨機器就得放進 `.husky/`（本次已把完整驗證鏈的 pre-push 搬過去）。**同一個 hook 名稱不要兩邊都放**：`core.hooksPath` 一設，`.git/hooks/` 整個被忽略，留著的那份會在 hooksPath 又斷掉時悄悄復活，而兩份內容早就漂移了。
+
 ### 2026-09-03 — 功能有 feature flag 時，讀那份資料的畫面要能分辨「沒有」與「不會有」
 
 **踩到什麼**：做完帳號鎖定列表頁，實機驗收時把某個帳號的 `locked_at` 設成兩分鐘前再用它登入——**登入成功了**。查下去發現 `APPLICATION_ACCOUNT_LOCK_ENABLED` 預設 `false`，而 `LoginService` 檢查鎖定、記錄失敗、寫入鎖定三處全包在那個 flag 底下。也就是**預設部署下系統永遠不會產生鎖定紀錄**，那一頁會永遠是空的，而空狀態寫著「目前沒有帳號被鎖定」。

@@ -1,0 +1,18 @@
+#!/usr/bin/env sh
+
+# nvm 用戶在某些 git / 終端組合下 PATH 不含 nvm 路徑，找不到 pnpm
+# 若 pnpm 不在 PATH，主動載入 nvm.sh 補上
+if ! command -v pnpm >/dev/null 2>&1; then
+  [ -s "$HOME/.nvm/nvm.sh" ] && . "$HOME/.nvm/nvm.sh"
+fi
+
+# 與 CI 的「品質檢查」job 同一條鏈——push 前先在本機跑一次，
+# 免得推上去才發現，而 review 已經開始了。
+#
+# **這是 commit 之外的第二層，不是取代 pre-commit**：
+# pre-commit 只 lint 改到的檔（快，每次 commit 都跑得起），
+# 這裡跑完整驗證鏈（約一分鐘），擋的是「本機沒跑就推」。
+#
+# ⚠️ 它擋得住手滑，擋不住 `git push --no-verify`，更擋不住在 GitHub 網頁上直接
+# merge——branch protection 在 Free 方案的私有 repo 上設不了（見 tasks/todo.md）。
+pnpm typecheck && pnpm lint && pnpm test:cov

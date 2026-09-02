@@ -11,7 +11,8 @@
  *
  * ⚠️ 清單寫死在前端，正確性依賴後端沒有改用 `PermissionsGuard`。
  * 改了的話這裡會繼續顯示「不可指派」而實際上已經可以指派——畫面對使用者說謊，
- * 且不會有任何測試失敗。由 `unassignable-permissions.spec.ts`（api 側守則）盯住那個守衛。
+ * 且不會有任何測試失敗。由 `permission-catalog-sync.spec.ts` 的
+ * `it('安全管理仍由 SUPERADMIN role gate 保護')`（api 側守則）盯住那個守衛。
  */
 export const UNASSIGNABLE_GROUP = {
   module: '安全管理',

@@ -4,7 +4,9 @@
  * 權限樹的群組標題是從 `BACKEND:ACCOUNT:VIEW` 拆出來的碼片段，直接顯示會是英文。
  * 對照表放前端而不是讓 API 多回欄位，是為了不動回應契約——那個標籤只有這一個畫面在用，
  * 為它改 swagger + api-client 不划算。代價是同一份分類法存在前後兩處，
- * 由 `permission-labels.spec.ts`（api 側守則）雙向比對 `PERMISSION_CATALOG` 擋住漂移。
+ * 由 `permission-catalog-sync.spec.ts` 的
+ * `it('每個 platform 與 module 都要有中文對照')`（api 側守則）雙向比對
+ * `PERMISSION_CATALOG` 擋住漂移。
  *
  * ⚠️ **兩份常數的字面值會被守則以正規式讀取**，改寫成動態組裝（map / 迴圈 / 展開）
  * 會讓守則讀不到而失敗。要改結構的話守則也要一起改。
