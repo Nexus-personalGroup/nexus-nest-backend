@@ -241,8 +241,13 @@ export class ChatGateway
 
       (client as AuthenticatedSocket).member = member;
 
+      const limit = getEnv().WS_MAX_CONNECTIONS_PER_MEMBER;
+
+      // 快路徑：明顯超額時直接擋，省掉一次寫入。
+      // **但它不是判準**——讀完到寫入之間有窗口，兩條同時進來會都通過（TOCTOU）。
+      // 真正的判定在下面的「寫入後回讀」
       const connections = await this.presence.getConnections(member.sub);
-      if (connections.length >= getEnv().WS_MAX_CONNECTIONS_PER_MEMBER) {
+      if (connections.length >= limit) {
         this.rejectConnection(client, 'TOO_MANY_CONNECTIONS', '連線數已達上限');
         return;
       }
@@ -256,6 +261,14 @@ export class ChatGateway
         this.instanceId,
         client.id,
       );
+
+      if (await this.exceedsLimitAfterWrite(member.sub, client.id, limit)) {
+        await this.presence.markOffline(member.sub, this.instanceId, client.id);
+        await client.leave(personalRoom(member.sub));
+        this.rejectConnection(client, 'TOO_MANY_CONNECTIONS', '連線數已達上限');
+        return;
+      }
+
       this.ownedSockets.set(client.id, member.sub);
 
       client.emit(SERVER_EVENTS.CONNECTED, {
@@ -272,6 +285,52 @@ export class ChatGateway
       );
       this.rejectConnection(client, 'UNAUTHORIZED', '認證失敗');
     }
+  }
+
+  /**
+   * 寫入 presence 之後回讀，判斷「自己」是不是超額的那一條。
+   *
+   * 只在寫入前檢查會有 TOCTOU：兩條同時進來會都通過，上限退化成建議值。
+   * 因此寫完再讀一次——此時清單含自己，可以算出自己排第幾。
+   *
+   * **排序的次鍵不是防禦性程式碼。** 同一毫秒寫入的兩條連線 `lastSeenAt` 相同，
+   * 沒有次鍵時不同實例可能得到不同排序，結果是**兩條互相禮讓**（少一條）
+   * 或**兩條都認為自己合格**（多一條）。字串次鍵讓所有實例對同一份 Redis 狀態
+   * 得到同一個答案。
+   *
+   * **也不要「簡化」成只比較總數**（`connections.length > limit`）：
+   * 那個條件對所有超額者同時成立，會把「該拒一條」變成「兩條都拒」。
+   *
+   * @param memberId - 成員 ID
+   * @param socketId - 本次連線的 socket ID
+   * @param limit - 單一成員的連線數上限
+   * @returns 自己超出上限時為 true（呼叫端應撤銷並拒絕）
+   */
+  private async exceedsLimitAfterWrite(
+    memberId: string,
+    socketId: string,
+    limit: number,
+  ): Promise<boolean> {
+    const key = (c: { instanceId: string; socketId: string }): string =>
+      `${c.instanceId}:${c.socketId}`;
+
+    const ordered = [...(await this.presence.getConnections(memberId))].sort(
+      (a, b) => a.lastSeenAt - b.lastSeenAt || key(a).localeCompare(key(b)),
+    );
+    const index = ordered.findIndex(
+      (c) => c.instanceId === this.instanceId && c.socketId === socketId,
+    );
+
+    // 找不到自己代表回讀不可信（Redis 降級、欄位被 sweep 清掉…）。
+    // **此時放行而非拒絕**：拒絕會讓一次 Redis 抖動變成全體連不上，
+    // 而放行的代價只是這一條可能超額，且會隨斷線收斂。記 warn 讓它看得見
+    if (index === -1) {
+      this.logger.warn(
+        `連線上限回讀找不到自身紀錄，暫不套用上限: memberId=${memberId} socketId=${socketId}`,
+      );
+      return false;
+    }
+    return index >= limit;
   }
 
   async handleDisconnect(client: Socket): Promise<void> {

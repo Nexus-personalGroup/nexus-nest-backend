@@ -56,6 +56,18 @@
 
 **How to apply**：還原一律用 python 字串替換或 `git checkout --`，還原後**實際驗證**（跑一次該檔的載入或測試）。反向驗證的完整循環是「插探針 → 親眼看它紅 → 還原 → **確認 `git status` 乾淨**」，最後一步不能省。
 
+### 2026-09-02 — 驗競態的測試如果是循序呼叫的，它驗不到競態
+
+**踩到什麼**：修 WS 連線上限的 TOCTOU（改成「寫入後回讀 + 決定性排名」），寫了三支測試，反向驗證時**三種破壞方式全部仍然綠**：拿掉排序次鍵、把排名判定改成 `length > limit`、拿掉被拒時的回滾。三次都是**測試的問題不是程式的問題**。
+
+**Why**：三個各自不同，但根因同一個——測試建構出來的狀態不是那條規則要處理的狀態。
+
+- 「只比較總數」驗不到：我的測試是 `await handleConnection(A); await handleConnection(B);`，**循序**。而 TOCTOU 是交錯的（兩條都先寫入、才各自回讀）。循序時 `index >= limit` 與 `length > limit` 給出同樣的答案。
+- 「拿掉次鍵」驗不到：mock 依插入順序回傳，而 **JS 的 `sort` 是穩定的**，於是次鍵永遠不會被用到。真實情況是 Redis hash 的欄位順序不保證。
+- 「拿掉回滾」驗不到：那支測試的狀態已達上限，被**快路徑**（寫入前的預先檢查）攔下，`markOnline` 根本沒跑，自然沒有東西需要回滾。
+
+**How to apply**：**要驗的規則若只在某個中間狀態下才生效，就直接建構那個狀態**，不要指望走完整流程會經過它——走完整流程時它多半被更早的檢查攔掉了，或被語言的實作細節（穩定排序）遮蔽。這次的解法是把排名語意改成**直接呼叫判定函式**、餵進交錯後的連線清單；回滾那條則刻意模擬「預先檢查通過、但寫入期間別人插隊」。另外過程中還有一次是**測試設錯而非程式錯**（插隊者的時間戳設得比自己晚，那樣超額的本來就是插隊者）——反向驗證變紅時，先確認紅的原因是不是自己預期的那個。
+
 ### 2026-09-02 — Nest 不能 re-export 自己沒 provide 的 token，而只有 e2e 抓得到
 
 **踩到什麼**：把 `EVENT_PUBLISHER_PORT` 從 `ChatWsModule` 移到新的 `EventPublisherModule`，`ChatWsModule` 改成 `imports: [EventPublisherModule]` 但 `exports` 仍留著那個 token。`typecheck` 綠、`lint` 綠、`pnpm test` 綠、**`pnpm build` 也綠**，e2e 則是 **409 支全紅**：`Nest cannot export a provider/module that is not a part of the currently processed module`。

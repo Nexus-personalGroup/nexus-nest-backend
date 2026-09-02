@@ -256,6 +256,20 @@ model UserRecord {
   /// 軟刪除標記。所有查詢必須帶 deletedAt: null
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz(3)
 
+  // 後台的模糊搜尋是 `contains` + `insensitive`（→ `ILIKE '%x%'`），
+  // 前後都有萬用字元時 **B-tree 完全用不上**——email 雖有 unique 索引也一樣。
+  // pg_trgm 的 GIN 索引能加速它，且**不改變比對語意**（不必改成前綴搜尋）。
+  //
+  // **索引宣告在這裡而不是只寫進 migration**：Prisma 比對 schema 與 migration
+  // 產生的 shadow DB 時，會把「DB 有、schema 沒有」的索引當成 drift，
+  // 下一次 `migrate dev` 會產生一支把它刪掉的 migration。
+  // extension 本身相反——未啟用 postgresqlExtensions preview 時 Prisma 不追蹤它，
+  // 所以 `CREATE EXTENSION` 留在 migration SQL 裡。
+  //
+  // 已知限制：pg_trgm 以三字元為單位建索引，**搜尋字串少於 3 字時索引用不上**，
+  // 仍會退回全表掃描。那是預期行為，不是索引沒建成功。
+  @@index([email(ops: raw("gin_trgm_ops"))], map: "idx_users_email_trgm", type: Gin)
+  @@index([displayName(ops: raw("gin_trgm_ops"))], map: "idx_users_display_name_trgm", type: Gin)
   @@map("users")
 }
 
