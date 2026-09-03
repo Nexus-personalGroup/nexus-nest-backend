@@ -43,11 +43,19 @@ x-app-base: &app-base
     - node-modules-web:/app/apps/web/node_modules
     - node-modules-api-client:/app/packages/api-client/node_modules
     - node-modules-eslint-config:/app/packages/eslint-config/node_modules
-    # 遮蔽 host 的 apps/api/.env：bind mount 會把它一併帶進來，而 dotenv 不覆寫
-    # 既有的 process.env，等於「compose 沒設的都由開發者本機的 .env 補」。
-    # 其中連線類變數會直接打壞容器——REDIS_URL 指向 host 的 localhost:6379，
-    # 容器裡連不到，Redis 會重試到放棄然後降級運行。
-    # 遮掉之後設定只有兩個來源：本檔的 environment，與 envSchema 的預設值。
+    # 用 docker/api.container.env 蓋掉 bind mount 帶進來的 host apps/api/.env。
+    #
+    # **這不是為了「不讓容器讀本機設定」**——api 服務下方的 env_file 就是刻意在讀它。
+    # 保留這個掛載是為了讓兩個檔各有職責：
+    #
+    #   docker/api.container.env   進版控 → **隊友共用的容器基準**，所有人跑起來一樣
+    #   apps/api/.env（env_file）  不進版控 → **個人偏好**，只影響自己這台
+    #
+    # 副作用也值得留著：`docker compose exec api head apps/api/.env` 看到的
+    # 永遠是共用基準，而不是某個人的檔案。
+    #
+    # 真正防止「本機設定打壞容器」的是下面 environment 把連線類變數釘死
+    # （compose 的 environment 優先序最高），不是這個掛載。
     - ./docker/api.container.env:/app/apps/api/.env:ro
   init: true
   restart: unless-stopped
@@ -110,11 +118,22 @@ services:
       timeout: 3s
       retries: 5
       start_period: 60s
+    # 讀開發者本機的 apps/api/.env，補足 **compose 沒設的** 變數。
+    #
+    # 優先序（compose 原生語意，已實測）：
+    #   environment: > env_file > 容器內 .env（dotenv）> envSchema 預設
+    # 所以下面 environment 釘死的東西不可能被本機的值蓋掉，
+    # 而「想在容器裡開一個開關」不必再去改進版控的 docker/api.container.env。
+    #
+    # ⚠️ **required: false 不可省**：沒有 apps/api/.env 的機器（剛 clone、CI）
+    # 會直接起不來，而錯誤訊息是 compose 層的，指不到是少了哪個檔。
+    env_file:
+      - path: ./apps/api/.env
+        required: false
     environment:
       NODE_ENV: development
-      # 開發容器一律吐 debug：這是「開發環境就該看得到細節」的決定，
-      # 與開發者本機 .env 的偏好無關——容器的 .env 是被遮蔽的（見 x-app-base），
-      # 所以不寫在這裡就只會拿到 envSchema 的預設值 info
+      # 開發容器一律吐 debug。**寫在這裡就是刻意不讓本機覆寫**
+      # ——「開發環境就該看得到細節」是這個 repo 的決定，不是個人偏好
       LOG_LEVEL: debug
       # 反向代理擋在前面時，request.ip 會變成 nginx 容器的位址。
       # **不設這個的話三個功能會同時靜默失效**：IP 黑名單擋不到真正的來源、
@@ -132,6 +151,17 @@ services:
       DB_TEST_DATABASE: nexus_test
       REDIS_HOST: redis
       REDIS_PORT: '6379'
+      # ⚠️ **空字串是刻意的，不是漏填。** 連線工廠是
+      # `env.REDIS_URL ? createClient({url}) : createClient({host, port})`
+      # ——只要 REDIS_URL 有值就**完全繞過**上面兩行。開發者本機的 .env 常有
+      # `REDIS_URL=redis://localhost:6379`（指向 host），漏進容器就是連不到 Redis
+      # 而降級運行（不會報錯）。釘成 falsy 才能保證走回 HOST/PORT。
+      # 釘一半等於沒釘——這是本檔加上 env_file 之後最容易被繞過的一條
+      REDIS_URL: ''
+      # 同理：本機常跑 mailhog 之類的 mail catcher，那個位址在容器內連不到，
+      # 而寄信失敗要到真的寄才會發現
+      SMTP_HOST: ''
+      SMTP_PORT: '587'
       # 開發用假值，長度須滿足 envSchema 的 min(32)。正式環境一律由部署平台注入
       ACCESS_SECRET: dev-only-access-secret-min-32-chars!!
       REFRESH_SECRET: dev-only-refresh-secret-min-32-chars!
@@ -140,6 +170,12 @@ services:
       AWS_MEDIA_LIBRARY_ROOT: local
       STORAGE_DRIVER: local
       APP_TIMEZONE: Asia/Taipei
+      # 後端自己的對外位址，**信箱驗證信的連結由它組成**。
+      # 預設值是 http://localhost:3000，而 enforce-single-entry-container 關掉
+      # api 的對外埠之後**那個位址從 host 已經連不到**——容器模式產生的驗證連結
+      # 因此是壞的。dev 不會真的觸發寄信，所以沒有人發現。
+      # 釘成代理位址即修正（也順便擋掉本機 .env 的值漏進來）
+      API_BASE_URL: http://127.0.0.1:${APP_PROXY_PORT:-8080}
       # 指向代理——web 的對外埠已關閉，指著連不上的位址不會報錯，
       # 只會在真的有跨 origin 請求時才炸。
       # 兩個主機名都列：文件一律寫 127.0.0.1（macOS 的 localhost 會先解析成 ::1），

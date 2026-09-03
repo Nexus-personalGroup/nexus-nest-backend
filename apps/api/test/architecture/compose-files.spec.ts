@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { join } from 'path';
-import { API_ROOT } from './helpers';
+import { API_ROOT, readSource } from './helpers';
+import { COMPOSE_UNPINNED_CONNECTION_VARS } from './allowlist';
 
 /** repo 根目錄（本檔位於 apps/api/test/architecture） */
 const REPO_ROOT = join(API_ROOT, '..', '..');
@@ -201,6 +202,116 @@ describe('架構守則：compose 檔的執行路徑與埠號文件', () => {
             `\n「單一 origin」就變成可選的，而代理設定漂掉時沒有人會發現。` +
             `\n要直連 api / web 請改跑 host 模式：pnpm docker:deps + pnpm dev（3000 / 5173）。` +
             `\n只是想確認代理有沒有壞：docker compose exec nginx wget -qO- http://api:3000/api/health`,
+    ).toBe('');
+  });
+});
+
+/**
+ * 連線類環境變數必須在 compose 釘死。
+ *
+ * 容器以 `env_file` 讀入開發者本機的 `apps/api/.env`——compose 的 `environment`
+ * 優先序最高，所以**釘死就是保護**；反過來說，**沒釘死的連線類變數會直接採用
+ * host 的值**，而那個值多半指向 `localhost`，在容器裡連不到。
+ *
+ * 這條要在**新增變數的當下**失敗，而不是等有人遇到：症狀全是靜默的
+ * ——Redis 連不上會降級運行、SMTP 要到真的寄信才失敗、信件連結錯了不會失敗。
+ *
+ * **只檢查「有沒有釘」，不檢查「值對不對」**：後者需要知道每個變數的語意。
+ * 值由實機驗收負責，這裡負責的是「新增時有沒有人想過它在容器裡該是什麼」。
+ */
+describe('架構守則：連線類環境變數必須在 compose 釘死', () => {
+  const CONNECTION_SUFFIX = /(_HOST|_PORT|_URL)$/;
+
+  /** envSchema 宣告的所有變數名 */
+  const declaredEnvVars = (): string[] => {
+    const src = readSource('src/infrastructure/validate-env.ts');
+    const body = src.slice(src.indexOf('envSchema'));
+    return [...body.matchAll(/^ {2}([A-Z][A-Z0-9_]*):\s/gm)].map((m) => m[1]);
+  };
+
+  /** compose.yml 的 api 服務 `environment:` 底下宣告的變數名 */
+  const composePinned = (): string[] => {
+    const body = read('compose.yml');
+    const service = body.slice(body.indexOf('  api:'), body.indexOf('  web:'));
+    const start = service.indexOf('    environment:');
+    const end = service.indexOf('    depends_on:');
+    if (start === -1 || end === -1) return [];
+    return [
+      ...service.slice(start, end).matchAll(/^ {6}([A-Z][A-Z0-9_]*):/gm),
+    ].map((m) => m[1]);
+  };
+
+  it('掃描範圍有效', () => {
+    // 任一邊掃不到就代表結構變了，規則會空轉成「全部都釘了」
+    expect(declaredEnvVars().length).toBeGreaterThan(0);
+    expect(composePinned().length).toBeGreaterThan(0);
+    expect(
+      declaredEnvVars().filter((v) => CONNECTION_SUFFIX.test(v)).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('每個連線類變數都必須釘死或列入豁免', () => {
+    const pinned = new Set(composePinned());
+    const exempt = new Map(
+      COMPOSE_UNPINNED_CONNECTION_VARS.map((e) => [e.name, e.reason]),
+    );
+
+    const unpinned = declaredEnvVars()
+      .filter((v) => CONNECTION_SUFFIX.test(v))
+      .filter((v) => !pinned.has(v) && !exempt.has(v));
+
+    expect(
+      unpinned.length === 0
+        ? ''
+        : `以下連線類變數沒有在 compose 的 api environment 釘死：\n${unpinned
+            .map((v) => `  ${v}`)
+            .join('\n')}\n` +
+            `容器會以 env_file 讀入開發者本機的 apps/api/.env，沒釘死就直接採用 host 的值` +
+            `\n——而那個值多半指向 localhost，在容器裡連不到，且症狀是靜默的。` +
+            `\n釘進 compose.yml，或加進 allowlist 的 COMPOSE_UNPINNED_CONNECTION_VARS 並寫理由`,
+    ).toBe('');
+  });
+
+  it('豁免清單不得有過期項目', () => {
+    const declared = new Set(declaredEnvVars());
+    const stale = COMPOSE_UNPINNED_CONNECTION_VARS.filter(
+      (e) => !declared.has(e.name),
+    ).map((e) => e.name);
+
+    expect(
+      stale.length === 0
+        ? ''
+        : `以下豁免項目在 envSchema 已不存在：\n${stale
+            .map((v) => `  ${v}`)
+            .join('\n')}\n變數移除後遺留的死字串，請一併刪除`,
+    ).toBe('');
+  });
+
+  /** x-app-base 錨點到 services: 之間的共用區塊；結構變了回 null 而非空字串 */
+  const sharedBaseBlock = (): string | null => {
+    const body = read('compose.yml');
+    // 行首錨定：`services:` 這串字在檔頭的用法說明裡也出現得到
+    const start = body.search(/^x-app-base:/m);
+    const end = body.search(/^services:/m);
+    if (start === -1 || end === -1 || end <= start) return null;
+    return body.slice(start, end);
+  };
+
+  it('共用區塊的掃描範圍有效', () => {
+    // 回 null 代表 compose 結構變了，下一條規則會空轉成「沒有 env_file」
+    expect(sharedBaseBlock()).not.toBeNull();
+    expect(sharedBaseBlock()?.length ?? 0).toBeGreaterThan(0);
+  });
+
+  it('env_file 只能掛在 api 服務，不得放進共用的 x-app-base', () => {
+    const shared = sharedBaseBlock() ?? '';
+
+    expect(
+      /^ {2}env_file:/m.test(shared)
+        ? 'env_file 出現在 x-app-base：這會讓 e2e 服務也讀進開發者本機的 apps/api/.env，' +
+            '\n而那條路徑的目的正是密封（與 CI 同形、不受本機設定影響）。' +
+            '\n開發者的環境檔只該進 api 服務——把 env_file 移回 api: 底下。'
+        : '',
     ).toBe('');
   });
 });

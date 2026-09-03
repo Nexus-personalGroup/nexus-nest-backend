@@ -102,6 +102,36 @@ export const SWAGGER_EXEMPT_ROUTES: Array<{ route: string; reason: string }> = [
 ];
 
 /**
+ * 不必在 compose 的 api `environment` 釘死的連線類變數。
+ *
+ * 容器以 `env_file` 讀入開發者本機的 `apps/api/.env`（compose 沒設的就吃本機值），
+ * 所以連線類變數**沒釘死就等於採用 host 的值**——而那個值多半指向 `localhost`，
+ * 在容器裡連不到。症狀是靜默的：Redis 連不上會降級運行、SMTP 要到真的寄信才失敗、
+ * 而信件連結錯了根本不會失敗。
+ *
+ * 這份清單的門檻是「**它不是容器要連出去的目標**」。
+ * 「暫時還沒釘」不屬於這裡——那會讓規則變成一份待辦清單。
+ */
+export const COMPOSE_UNPINNED_CONNECTION_VARS: Array<{
+  name: string;
+  reason: string;
+}> = [
+  {
+    name: 'APP_FRONT_URL',
+    reason:
+      '前台網站的位址，不是容器連出去的目標；釘死等於逼所有人用同一個前台設定',
+  },
+  {
+    name: 'APP_PASSWORD_RESET_URL',
+    reason: '後台密碼重設頁的位址，同 APP_FRONT_URL',
+  },
+  {
+    name: 'LOCAL_MEDIA_BASE_URL',
+    reason: '公開檔案的 URL 路徑前綴（如 /media），不含主機也不發起連線',
+  },
+];
+
+/**
  * WS 事件資源存取的豁免。
  *
  * 這份清單的門檻要高於其他規則：能列進來的只有「該操作對非成員也無害」，

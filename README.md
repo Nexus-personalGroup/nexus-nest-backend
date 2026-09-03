@@ -110,8 +110,15 @@ REDIS_PORT=6389       # 非預設 6379
 
 > **這份 `.env` 與 `apps/api/.env` 是兩回事。** 根目錄那份是**基礎設施設定**
 > （埠、密碼），由 compose 在展開 `${...}` 時讀取；`apps/api/.env` 是**應用程式設定**，
-> 而且**容器內那份是被遮蔽的**——容器的設定只有 compose 的 `environment`
-> 與 envSchema 的預設值兩個來源。詳見 `docker/api.container.env` 的檔頭。
+> 容器**會**讀它（`env_file`，沒有這個檔也能啟動）。優先序：
+>
+> ```
+> compose 的 environment  >  apps/api/.env  >  docker/api.container.env  >  envSchema 預設
+> ```
+>
+> 連線類變數（`REDIS_URL` / `SMTP_HOST` / `SMTP_PORT` / `API_BASE_URL`）在 compose
+> 釘死，本機的值蓋不掉——本機那些位址在容器裡連不到。詳見
+> `docker/api.container.env` 的檔頭。
 
 `pnpm verify:ci` 用的 `postgres-verify` 預設綁 **15432**（可用 `VERIFY_DB_PORT` 改），跑完即拋，不與上面的開發用資料庫共用。
 
