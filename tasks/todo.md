@@ -5,29 +5,35 @@
 
 ## 進行中
 
-**`improve-container-env-precedence`（#39）已完成，待 commit。**
+**`seal-test-env-and-exempt-infra-probes`（#40）已完成，待 commit。**
+收 #39 驗收撈出的兩個既有缺陷：
+① 基礎設施探針（`/api/health`、`/api/metrics`）豁免於 IP ACL；
+② e2e 只取 `DB_*` 而不整份載入 `apps/api/.env`。
+兩者的共同根因是**機制的作用範圍被寫得比它的理由更寬，而超出的那部分沒有徵兆**。
+⚠️ 刻意**不**讓 IP guard 認 `@Public()`——實機驗過：白名單啟用且清單為空時，
+`POST /api/admin/auth/login` 仍回 403（若用 `@Public()` 當判準會變成 200，
+黑名單對登入就失效了）。
+
+**`improve-container-env-precedence`（#39）已合併並封存。**
 容器改吃開發者的 `apps/api/.env`（`env_file`，`required: false`），
 連線類變數在 compose 釘死 + 守則擋住新增時漏釘。
 四層優先序：`compose environment` > `apps/api/.env` > `docker/api.container.env` > `envSchema` 預設。
 **它取代了 `platform-container-dev` 原本「完全遮蔽」的需求**——
 保護的對象從「整份 env」收斂到「真正會打壞容器的那些」。
 
-**下一支已定案**：把實機驗收撈出的兩件事合成一支 follow-up change（見「待辦 → 設定洩漏」）。
-兩件都**不是 #39 造成的**，但都是 #39 的驗收才讓它們顯形。
-
 ## 路線圖
 
-**下一支：設定洩漏的兩件事**（follow-up change，內容見「待辦」）。
-之後沒有已排程的序列——候選與各自卡在什麼，見下面的「待辦」。
+**目前沒有已排程的序列**——設定洩漏那兩件已由 #40 做掉。
 
-除了那一支之外，**待辦裡「可以直接動」的只剩兩項**：
-**營運快照的無界 count**（但要先加觀測再選方案）與
-**master spec 的 `--strict` 有 7 支紅**。
+**待辦裡「可以直接動」的剩三項**：
+**營運快照的無界 count**（要先加觀測再選方案）、
+**master spec 的 `--strict` 有 7 支紅**、
+**白名單啟用後沒有 UI 恢復路徑**（優先度低，功能預設關閉）。
 其餘全落在三類：卡外部條件（前台 repo 未開、`seq` 缺口的設計、NestJS 上游）、
 需要產品或帳務決定（CI 擋合併、帳號鎖定要不要預設開啟、建群組同意權）、
 以及刻意不做（UUID 探測、`domain/exception` 攤平）。
 
-### 已走完：2026-08-20 → 09-03，39 支 PR
+### 已走完：2026-08-20 → 09-03，40 支 PR
 
 M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽，
 接著是**分表工程**（把前台使用者從後台帳號表拆出來），
@@ -36,7 +42,8 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 再來是後台的可讀性（Sidebar 依管理對象分組、首頁改營運摘要、權限樹中文化），
 再把累積的小技術債一次清掉，然後補上兩項審查報告當初判斷「先不做」的修正，
 再清掉「延後功能」裡最後一項（帳號鎖定列表），排第三輪審查並收尾它的小項，
-最後把容器的環境變數優先序從「完全遮蔽」改成「釘死連線類、其餘吃本機」。
+把容器的環境變數優先序從「完全遮蔽」改成「釘死連線類、其餘吃本機」，
+最後收掉那次驗收撈出的兩個既有缺陷（探針被 ACL 擋、e2e 吃整份 `.env`）。
 逐支見「已完成」的索引。
 
 **第一則：那批修的都不是 bug**，是**「做到一半而且沒有東西會提醒」**
@@ -85,31 +92,31 @@ trgm 為什麼三字以下用不上）。**找不到問題不是因為沒找，�
 
 ## 待辦
 
-### 設定洩漏（下一支 follow-up change，兩件合開）
+### 設定洩漏（✅ 已由 #40 `seal-test-env-and-exempt-infra-probes` 做掉）
 
 > 兩件都在 `improve-container-env-precedence`（#39）的實機驗收時撈出來，
 > **都不是 #39 造成的**，但形狀相同：**設定跑到不該去的地方，而失敗訊息指不到原因**。
+> 保留內文是因為下面那條「白名單沒有恢復路徑」還沒做，而它的背景在這裡。
 
-- 🔴 **`@Public()` 擋不住 IP guard，健康檢查被 ACL 擋掉**。
-  `HealthController` 標了 `@Public()` + `@SkipThrottle()`，但 `@Public()` 的語意只有
-  「跳過認證」，**只有 `JwtAuthGuard` 讀那個 metadata**；
-  `IpWhitelistGuard` / `IpBlacklistGuard` 是獨立的全域 guard，完全不看。
-  現象：白名單開著而 `ip_whitelist` 為空 → 每個請求 403 → `/api/health` 403 →
-  容器 unhealthy → nginx 的 `depends_on: service_healthy` 永不滿足 → **整組起不來**，
-  而且能加白名單的後台 UI 自己也 403，**沒有恢復路徑**。
-  **正式環境同形且更嚴重**：開白名單 → k8s liveness probe 403 → CrashLoopBackOff。
-  ⚠️ **不要讓 IP guard 直接認 `@Public()`**——登入／註冊也是 `@Public()`，
-  而擋惡意 IP 打登入正是黑名單存在的意義。要的是一個更窄的「基礎設施探針」標記。
-- 🔴 **e2e 會載入開發者整份 `.env`**。`test/helpers/e2e-env.ts` 的
-  `config({ path: apps/api/.env })` 載的是整份檔案（該函式 TSDoc 寫「連線帳密」，不準確），
-  開發者所有功能開關都進 `process.env`。
-  實測：`APPLICATION_SESSION_IDLE_ENABLED=true` → **183 failed**；強制 `false` → **417 passed**。
-  失敗訊息是「Session 已因閒置過久而過期」，指不到真正原因。
-  **CI 永遠綠**，因為 CI 沒有 `apps/api/.env`，dotenv 靜默 no-op，旗標走預設 `false`。
-  修法方向：測試環境的設定**顯式釘死**，而不是「載入真環境再蓋掉幾個」。
+- ✅ **`@Public()` 擋不住 IP guard，健康檢查被 ACL 擋掉**（#40 修）。
+  判準改為 `@InfraEndpoint()`——**刻意不認 `@Public()`**，因為登入端點也是
+  `@Public()`，而擋惡意 IP 打登入正是黑名單存在的意義。
+  實機驗過：白名單啟用且清單為空時，`/api/health` 與 `/api/metrics` 回 200、
+  五個容器全 Healthy，而 `POST /api/admin/auth/login` 仍回 403。
+- ✅ **e2e 會載入開發者整份 `.env`**（#40 修）。
+  `applyE2EDbEnv` 改用 dotenv 的 `processEnv` 解析到暫存物件，只複製 `DB_*`。
+  反向驗證：`APPLICATION_SESSION_IDLE_ENABLED=true` 之下，
+  改前 **183 failed**、改後 **417 passed**。
 - 🟡 順帶：`docker/api.container.env` 現在**目標是共用基準但優先序最低**
   （個人的 `.env` 會蓋掉它）。目前無實害——該檔一個有效設定都沒有，全是註解。
   已在檔頭標註，真正不可被覆寫的要寫進 compose 的 `environment:`。
+- 🟡 **白名單啟用後沒有恢復路徑**（#40 的範圍外事項，design D4）。
+  `ip_whitelist` 為空時 guard 是 fail-closed，於是**能加白名單的後台 UI 自己也 403**。
+  #40 之後健康檢查與指標不再被擋（服務起得來、403 說得出原因），
+  但「把自己加回白名單」仍然只能改 `.env` 或直接動資料庫。
+  ⚠️ **不要用「空清單就放行」來解**——那會讓開關形同虛設。
+  方向是：啟用時要求至少一筆，或提供 CLI / seed 入口。
+  **優先度不高**：這個功能預設關閉，且踩到的人知道自己剛開了什麼。
 
 ### 聊天功能的下一批（前置條件已解除）
 
@@ -254,6 +261,7 @@ trgm 為什麼三字以下用不上）。**找不到問題不是因為沒找，�
   | 7 | 08-22 | `beforeEach` 逾時，`resetDb` 跑不完 5 秒 | 第三種症狀；累積出「跟在 `test:cov` 後面」的共同點 |
   | 8 | 08-28 | 同第 6 次（登入回應無 `data`） | **推翻「跟在 test:cov 後面」**——這次是單獨的 `test:e2e` |
   | 9 | 09-03 | `role.e2e-spec.ts` 的 `beforeEach` 登入拿不到 `data` | **首次抓到底層原因：登入回的是 `401`**，不是回應格式壞掉 |
+  | 10 | 09-03 | `front-registration.e2e-spec.ts` 單一測試 `read ECONNRESET` | **削弱「`.env` 洩漏」的解釋**——它發生在密封之後 |
 
   **第 9 次是第一次留下有用的證據**（前幾次只記到「無 `data`」這個表象）：
 
@@ -285,10 +293,15 @@ trgm 為什麼三字以下用不上）。**找不到問題不是因為沒找，�
   驗法很便宜：發生時記下 `.env` 的旗標狀態，並查 `account_locks` 表有無該帳號。
 
   **第 9 次發生在 `pnpm verify:ci`，而它是「host 跑測試 + 容器只提供 tmpfs 資料庫」**
-  （`verify-ci.sh` 只覆寫 `DB_*`），所以它**同樣吃得到 `.env` 的旗標**——
-  假設對得上第 9 次。對照組是 `--profile e2e`（`pnpm test:e2e:docker`）：
-  那條路徑的服務**沒有 `env_file`**、容器內 `.env` 又被遮蔽，是密封的。
-  修「e2e 吃整份 `.env`」時可以順著這個對照做：**讓 host 的跑法也密封**。
+  （`verify-ci.sh` 只覆寫 `DB_*`），所以它**當時同樣吃得到 `.env` 的旗標**。
+
+  ⚠️ **但第 10 次（同日稍晚）發生在密封改完之後**——`.env` 的旗標已經進不來了，
+  它還是紅了一次（`read ECONNRESET`，重跑即全綠）。
+  所以「`.env` 洩漏造成間歇性失敗」這個假設**對第 10 次不成立**，
+  也就不能拿它解釋整條追蹤紀錄。第 4、5 次同樣是 `ECONNRESET`，
+  那一支的形狀（連線層被重置）從頭到尾都不是設定問題。
+  **兩件事要分開看**：`.env` 洩漏是**確定的、可重現的**缺陷（已修，見 #40）；
+  這條間歇性失敗**仍然沒有解釋**，計數 10。
 
   **目前確定的只有三件事**：
   (a) 三種症狀（連線層錯誤 / 回應內容不對 / DB 操作變慢）都指向**環境**而非測試邏輯；
@@ -311,12 +324,13 @@ trgm 為什麼三字以下用不上）。**找不到問題不是因為沒找，�
   CI 的 E2E 從 #29 起連續九支一次過——**但本機已經抽中兩次**，
   所以「CI 都過」不代表它變少了，只代表 CI 的執行環境比較不容易觸發。
   **安靜不等於修好了**——中間沒有任何針對它的改動，所以這段空窗只是還沒再抽中，
-  不是證據。條目保留，**計數 9**。
+  不是證據。條目保留，**計數 10**。
 
   ⚠️ **本機的 e2e 全紅不要記進這裡**：#35 / #36 各有一次本機 409 全紅、
   #39 有一次 183 紅，但三次都有明確原因且百分之百重現
   （Nest re-export、模組接線、`.env` 的 `SESSION_IDLE` 旗標漏進 e2e）。
   把有原因的失敗混進這條追蹤紀錄，會讓「無法重現」這個關鍵特徵失焦。
+  **判準是「重跑會不會綠」**：重跑即綠 → 記這裡；重跑照樣紅 → 有原因，去查。
 
 - **傳遞依賴漏洞（77 個）**：2026-08-20 轉 PostgreSQL 後重跑 `pnpm audit`，**數字與模板時期相同**——移除 `mysql2` 沒有減少任何一項，代表這些全都不在資料庫 driver 這條路徑上。分佈 5 low / 35 moderate / 35 high / 2 critical，多數深埋在 `apps/web > shadcn > @modelcontextprotocol/sdk` 與 `prisma` / `@nestjs/terminus` 的上游相依樹。**刻意不加 override 強制提版**——相容風險大於收益。追蹤方式：定期 `pnpm audit`，待上游更新後再評估。
 
@@ -386,6 +400,7 @@ trgm 為什麼三字以下用不上）。**找不到問題不是因為沒找，�
 | #37 | 09-03 | `add-account-lock-management` | 帳號鎖定列表頁。範圍**刻意小於** todo 記載（不做手動鎖定與第二支解鎖端點）；驗收時才發現鎖定功能預設關閉，回應因此帶 `lockEnabled` |
 | #38 | 09-03 | `fix-review-followup-cleanup` | 第三輪審查的六個小項；nginx 改條件式 upgrade（潛伏問題，加 keepalive 才會咬人）；`verify-ci.sh` 改問 `docker compose port` 而非自己組埠 |
 | #39 | 09-03 | `improve-container-env-precedence` | 容器改吃本機 `apps/api/.env`，連線類在 compose 釘死 + 守則；順帶修掉 `API_BASE_URL` 指向已關閉埠的潛伏 bug；驗收撈出兩個既有問題（`@Public()` 擋不住 IP guard、e2e 吃整份 `.env`） |
+| #40 | 09-03 | `seal-test-env-and-exempt-infra-probes` | 基礎設施探針（health / metrics）豁免於 IP ACL——判準是 `@InfraEndpoint()` 而非 `@Public()`（登入端點也是 `@Public()`）；e2e 只取 `DB_*`，不再整份載入開發者的 `.env` |
 
 ### 幾個反覆出現的教訓
 

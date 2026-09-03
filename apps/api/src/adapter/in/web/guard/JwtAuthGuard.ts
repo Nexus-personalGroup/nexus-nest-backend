@@ -16,11 +16,12 @@ import { MemberContext } from '@app/application/port/member-context';
 import { getEnv } from '@app/infrastructure/validate-env';
 import { addMonths } from '@app/infrastructure/date';
 import { IS_PUBLIC_KEY } from '../decorator/public.decorator';
+import { isInfraEndpoint } from './infra-endpoint';
 import { PasswordChangeRequiredException } from '@app/domain/exception/PasswordChangeRequiredException';
 
 /**
  * 全域認證 Guard（APP_GUARD）。
- * - `@Public()` 標記的路由與 `/api/metrics` 跳過認證。
+ * - `@Public()` 標記的路由，以及基礎設施探針（`isInfraEndpoint`）跳過認證。
  * - token 的驗證與 MemberContext 解析委由 `ResolveMemberContextUseCase`——
  *   WebSocket 的連線認證呼叫的是同一個實作，避免兩條路徑的判定邏輯分歧。
  * - 本 Guard 只保留 HTTP 專屬的部分：路由層級的豁免、從 header 取 token、
@@ -45,12 +46,9 @@ export class JwtAuthGuard implements CanActivate {
     ]);
     if (isPublic) return true;
 
-    // Prometheus /api/metrics 由第三方 controller 提供、無法掛 @Public，以路徑略過
-    const url = request.originalUrl ?? request.url ?? '';
-    // **精確比對而非前綴**：`startsWith` 的性質是「未來新增的任何 /api/metrics 開頭
-    // 路由自動免認證」，而那不會有任何錯誤訊息提醒你——它是一條會自己長大的豁免。
-    // 去掉 query string：Prometheus 帶參數 scrape 時仍須通過
-    if (url.split('?')[0] === '/api/metrics') return true;
+    // 基礎設施探針（/api/metrics 等第三方 controller 無法掛 @Public）以共用述詞略過。
+    // 「精確比對而非前綴」的推理住在 isInfraEndpoint，三支 guard 共用同一份判斷
+    if (isInfraEndpoint(context, this.reflector)) return true;
 
     const token = this.extractToken(request);
     if (!token) {

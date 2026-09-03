@@ -192,7 +192,7 @@ pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行�
 | `env-schema.spec.ts` | 每個 `process.env.X` 都必須宣告於 `envSchema`；**布林變數必須用 `z.enum(['true','false'])`**（`z.string()` 會把 `TRUE` / `1` 靜默當成 false，`z.coerce.boolean()` 則把 `'false'` 當成 true）|
 | `dto-from-zod.spec.ts` | DTO 一律由 `z.infer` 推導，不得手寫 class / interface |
 | `commonjs-baseline.spec.ts` | root 與 `apps/api` 不得出現 `"type": "module"` |
-| `e2e-real-database.spec.ts` | e2e 不得 mock DB；spec 一律放 `test/e2e/` |
+| `e2e-real-database.spec.ts` | e2e 不得 mock DB；spec 一律放 `test/e2e/`；**測試環境的設定必須密封**——`e2e-env.ts` 只能從開發者的 `.env` 取 `DB_*`，`config()` 必須帶 `processEnv` |
 | `swagger-sync.spec.ts` | 契約三段轉換同步；**成功狀態碼須與 `@HttpCode` 一致** |
 | `hook-scripts.spec.ts` | `.agents/hooks/*.sh` 語法正確且都有註冊 |
 | `openspec-schema.spec.ts` | 自訂 schema 存在；建立 change 一律帶 `--schema`；opsx 指令維持薄殼 |
@@ -204,7 +204,7 @@ pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行�
 | `traditional-chinese.spec.ts` | 全專案不得混入日文假名或非繁體漢字 |
 | `authorization-coverage.spec.ts` | 收外部輸入的 handler 必須有 `@Permissions` / `@Roles` / `@Public`——本專案第一條「檢查應存在而不存在」的規則。**自帶合成輸入的自我測試**（註解冒充裝飾器、識別碼走 body、裝飾器寫在 method 上方等七個判定） |
 | `guardrail-inventory.spec.ts` | 守則檔數量不得低於基準（**只擋變少**）；文件不得寫死守則數量；本表必須涵蓋每一支守則 |
-| `public-surface.spec.ts` | 免認證路徑必須精確比對；`app.use()` 掛載須列入豁免清單（那些完全不經過 Nest 的 guard） |
+| `public-surface.spec.ts` | 免認證路徑必須精確比對；`app.use()` 掛載須列入豁免清單（那些完全不經過 Nest 的 guard）；**IP 黑白名單 Guard 不得以 `@Public()` 作為豁免依據**（登入端點也是 `@Public()`），基礎設施探針的路徑豁免要寫理由且不得過期 |
 | `session-revocation.spec.ts` | 停用帳號的路徑必須撤銷既有 WS 連線——**只注入不呼叫不算** |
 | `role-permission-cache.spec.ts` | 變更角色授權的路徑必須清除成員的 `MemberContext` 快取 |
 | `layering.spec.ts` 內另含 | **admin 模組不得 import `ChatWsModule`**——需要撤銷連線走 `SessionRevocationModule`、需要推播走 `EventPublisherModule` |

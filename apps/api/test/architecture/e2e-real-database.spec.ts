@@ -75,4 +75,61 @@ describe('架構守則：e2e 對真實資料庫執行', () => {
       ),
     ).toBe('');
   });
+
+  /**
+   * 測試環境的設定必須密封於開發者的 `.env`。
+   *
+   * 2026-09-03 踩過：`config({ path })` 把整份 `.env` 灌進 `process.env`，
+   * 開發者的 `APPLICATION_SESSION_IDLE_ENABLED=true` 讓本機 e2e **183 個失敗**，
+   * 訊息卻只說「Session 已因閒置過久而過期」。**CI 永遠是綠的**——
+   * CI 沒有 `apps/api/.env`，dotenv 靜默 no-op。
+   *
+   * 差別在預設值：逐項指名的預設是密封，新增旗標不必改任何東西；
+   * 載入全部的預設是洩漏，每新增一個旗標就多一條路徑，而沒有東西會提醒你。
+   */
+  describe('測試環境的設定必須密封', () => {
+    const ENV_HELPER = 'test/helpers/e2e-env.ts';
+
+    it('掃描範圍有效', () => {
+      const source = readSource(ENV_HELPER);
+      expect(source.length).toBeGreaterThan(0);
+      // 讀不到 dotenv 的呼叫代表解析對象變了，下面的規則會空轉成綠
+      expect(/\bconfig\s*\(/.test(source)).toBe(true);
+    });
+
+    it('⭐ dotenv 的解析結果不得直接進 process.env', () => {
+      const source = readSource(ENV_HELPER);
+      // config() 必須帶 processEnv，把解析結果導向暫存物件；
+      // 少了它就是「整份載入」，而那是預設洩漏
+      const callsConfig = /\bconfig\s*\(/.test(source);
+      const sealed = /processEnv\s*:/.test(source);
+
+      expect(
+        callsConfig && !sealed
+          ? `${ENV_HELPER} 呼叫 dotenv 的 config() 但沒有帶 processEnv：\n` +
+              `解析結果會整份寫進 process.env，開發者的功能開關就會影響測試結果，\n` +
+              `而 CI 沒有 apps/api/.env，那一側永遠是綠的——缺陷不會被 CI 發現。\n` +
+              `請用 config({ processEnv: <暫存物件> }) 並只複製需要的鍵。`
+          : '',
+      ).toBe('');
+    });
+
+    it('只有資料庫連線變數可以從 .env 取得', () => {
+      const source = readSource(ENV_HELPER);
+      const copied = [...source.matchAll(/'([A-Z][A-Z0-9_]*)'/g)].map(
+        (m) => m[1],
+      );
+      const nonDb = copied.filter((name) => !name.startsWith('DB_'));
+
+      expect(
+        nonDb.length === 0
+          ? ''
+          : `${ENV_HELPER} 從 .env 取用了非資料庫變數：\n${nonDb
+              .map((name) => `  ${name}`)
+              .join(
+                '\n',
+              )}\n測試要驗的是程式碼，不是某台機器的設定組合——請改寫在 test/setup/setup-env.e2e.ts`,
+      ).toBe('');
+    });
+  });
 });

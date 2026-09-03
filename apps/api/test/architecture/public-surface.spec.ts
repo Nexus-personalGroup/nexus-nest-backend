@@ -1,9 +1,25 @@
 import { PUBLIC_MOUNT_EXEMPTIONS } from './allowlist';
 import { readSource } from './helpers';
 import { stripComments } from './ws-source';
+import { INFRA_EXEMPT_PATHS } from '@app/adapter/in/web/guard/infra-endpoint';
 
 const GUARD = 'src/adapter/in/web/guard/JwtAuthGuard.ts';
+const INFRA = 'src/adapter/in/web/guard/infra-endpoint.ts';
 const MAIN = 'src/main.ts';
+
+/**
+ * 會做路徑豁免的檔案。
+ *
+ * ⚠️ **搬移邏輯時要一起更新這份清單**：判斷從 `JwtAuthGuard` 搬到
+ * `infra-endpoint` 時，只掃原檔的規則會照樣綠——它守的東西已經不在那裡了。
+ */
+const PATH_EXEMPTION_SOURCES = [GUARD, INFRA];
+
+/** IP 黑白名單 Guard——它們的豁免依據不得是 `@Public()` */
+const IP_GUARDS = [
+  'src/adapter/in/web/guard/IpWhitelistGuard.ts',
+  'src/adapter/in/web/guard/IpBlacklistGuard.ts',
+];
 
 /**
  * `JwtAuthGuard` 內以前綴比對做的路徑豁免。
@@ -48,18 +64,79 @@ describe('架構守則：未認證可達的表面', () => {
     expect(mountedPaths(readSource(MAIN)).length).toBeGreaterThan(0);
   });
 
-  it('JwtAuthGuard 不得以前綴比對做豁免', () => {
-    const offenders = prefixExemptions(readSource(GUARD));
+  it('路徑豁免不得以前綴比對', () => {
+    const offenders = PATH_EXEMPTION_SOURCES.flatMap((file) =>
+      prefixExemptions(readSource(file)).map((path) => `${file} → ${path}`),
+    );
 
     expect(
       offenders.length === 0
         ? ''
-        : `JwtAuthGuard 用前綴比對豁免了以下路徑：\n${offenders
-            .map((path) => `  ${path}`)
+        : `以下檔案用前綴比對做路徑豁免：\n${offenders
+            .map((entry) => `  ${entry}`)
             .join(
               '\n',
-            )}\n前綴豁免會讓「未來新增的任何同前綴路由」自動免認證，而那不會有任何錯誤訊息提醒你。\n請改用精確比對（記得先去掉 query string）。`,
+            )}\n前綴豁免會讓「未來新增的任何同前綴路由」自動豁免，而那不會有任何錯誤訊息提醒你。\n請改用精確比對（記得先去掉 query string）。`,
     ).toBe('');
+  });
+
+  describe('基礎設施探針的豁免', () => {
+    it('掃描範圍有效', () => {
+      // 清單空掉的話「每筆都有理由」會空轉成綠
+      expect(INFRA_EXEMPT_PATHS.length).toBeGreaterThan(0);
+      expect(IP_GUARDS.every((file) => readSource(file).length > 0)).toBe(true);
+    });
+
+    it('每筆路徑豁免都必須註明理由', () => {
+      const noReason = INFRA_EXEMPT_PATHS.filter(
+        (item) => item.reason.trim().length === 0,
+      ).map((item) => `  ${item.path}`);
+
+      expect(
+        noReason.length === 0
+          ? ''
+          : `以下豁免沒有理由：\n${noReason.join(
+              '\n',
+            )}\n豁免一旦失去理由就會逐漸長大`,
+      ).toBe('');
+    });
+
+    it('豁免路徑必須仍存在於程式碼中（過期項目要紅）', () => {
+      // 路徑在 src 其他地方被引用 = 該端點還存在。端點移除後這裡會紅，
+      // 避免留下指向不存在路由的死字串
+      const sources = ['src/app.module.ts', 'src/main.ts']
+        .map((file) => readSource(file))
+        .join('\n');
+      const stale = INFRA_EXEMPT_PATHS.filter(
+        (item) => !sources.includes(item.path),
+      ).map((item) => `  ${item.path}`);
+
+      expect(
+        stale.length === 0
+          ? ''
+          : `以下豁免路徑在應用程式中已找不到：\n${stale.join(
+              '\n',
+            )}\n端點移除後遺留的死字串，請一併刪除`,
+      ).toBe('');
+    });
+
+    it('⭐ IP 黑白名單 Guard 不得以 @Public() 作為豁免依據', () => {
+      const offenders = IP_GUARDS.filter((file) =>
+        /IS_PUBLIC_KEY|public\.decorator/.test(stripComments(readSource(file))),
+      );
+
+      expect(
+        offenders.length === 0
+          ? ''
+          : `以下 Guard 引用了 @Public() 的 metadata：\n${offenders
+              .map((file) => `  ${file}`)
+              .join(
+                '\n',
+              )}\n登入 / 註冊端點也是 @Public()，而擋惡意來源打登入正是 IP 黑名單存在的主要理由。\n` +
+              `用 @Public() 當判準等於讓黑名單對登入失效——那是用一個安全缺陷換掉一個可用性缺陷。\n` +
+              `豁免的判準必須是「這是不是基礎設施探針」（@InfraEndpoint()），不是「需不需要認證」。`,
+      ).toBe('');
+    });
   });
 
   it('app.use() 掛載的路徑必須列入豁免清單', () => {

@@ -1,7 +1,11 @@
 /**
  * E2E setupFiles（每個 test 檔載入前跑）:
- * 先套 e2e DB 環境（真 `.env` 帳密 + 測試庫），再補其餘測試 env 讓 getEnv() 通過驗證。
- * DB 連線帳密由 applyE2EDbEnv 從真 `.env` 載入，此處刻意不設 DB_HOST / USER / PASSWORD。
+ * 先套 e2e DB 環境（真 `.env` 的 DB 連線 + 測試庫），再補其餘測試 env 讓 getEnv() 通過驗證。
+ * DB 連線帳密由 applyE2EDbEnv 從真 `.env` 取得，此處刻意不設 DB_HOST / USER / PASSWORD。
+ *
+ * **除了 `DB_*` 之外，開發者的 `.env` 不會進到測試行程**（見 applyE2EDbEnv）。
+ * 因此測試要用的設定一律寫在本檔——寫在自己的 `.env` 不會生效，
+ * 這是刻意的：測試要驗的是程式碼，不是某台機器的設定組合。
  */
 import { tmpdir } from 'os';
 import { join } from 'path';

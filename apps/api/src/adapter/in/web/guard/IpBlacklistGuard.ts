@@ -5,26 +5,34 @@ import {
   Inject,
   Injectable,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { FeatureFlagService } from '@app/application/service/shared/FeatureFlagService';
 import {
   IP_LIST_PORT,
   IpListPort,
 } from '@app/application/port/out/security/IpListPort';
+import { isInfraEndpoint } from './infra-endpoint';
 
 /**
  * 全域 Guard：當 IP 黑名單功能啟用時，檢查請求來源 IP 是否在黑名單中。
  * 功能關閉時直接放行。
+ *
+ * 基礎設施探針（健康檢查 / 指標）不受限制——理由同白名單。
+ * ⚠️ 豁免的判準是 `@InfraEndpoint()`，**不是 `@Public()`**：
+ * 登入端點也是 `@Public()`，而擋惡意來源打登入正是黑名單存在的主要理由。
  */
 @Injectable()
 export class IpBlacklistGuard implements CanActivate {
   constructor(
     private readonly featureFlags: FeatureFlagService,
+    private readonly reflector: Reflector,
     @Inject(IP_LIST_PORT) private readonly ipList: IpListPort,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     if (!this.featureFlags.isEnabled('ipBlacklistEnabled')) return true;
+    if (isInfraEndpoint(context, this.reflector)) return true;
 
     const request = context.switchToHttp().getRequest<Request>();
     const ip = request.ip;
