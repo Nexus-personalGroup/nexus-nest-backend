@@ -5,10 +5,14 @@ import type { HealthCheckResult } from '@nestjs/terminus';
 import { DbHealthIndicator } from './indicators/DbHealthIndicator';
 import { RedisHealthIndicator } from './indicators/RedisHealthIndicator';
 import { Public } from '../decorator/public.decorator';
+import { InfraEndpoint } from '../decorator/infra-endpoint.decorator';
 
 @Controller('health')
 @SkipThrottle()
 @Public()
+// 探針是給機器用的：IP 黑白名單開啟時仍須可達，否則容器 healthcheck 與
+// k8s liveness probe 會被自己的存取控制擋掉（前者整組起不來、後者無限重啟）
+@InfraEndpoint()
 export class HealthController {
   constructor(
     private readonly health: HealthCheckService,
