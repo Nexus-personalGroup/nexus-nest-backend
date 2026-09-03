@@ -63,8 +63,15 @@ export const AccountLocksPage = () => {
     <div className="flex flex-col gap-4 p-6">
       <div>
         <h1 className="text-2xl font-bold">帳號鎖定</h1>
+        {/*
+          副標描述的是**啟用後**的行為，所以功能關閉時不能用現在式陳述——
+          「連續登入失敗會自動鎖定」與底下的停用提示會直接互相矛盾，
+          而使用者只會讀到其中一句。關閉時改成中性的說明，狀態交給 banner 講
+        */}
         <p className="text-muted-foreground text-sm">
-          連續登入失敗達門檻時自動鎖定；時效到期會自動解開，也可以在這裡提前解鎖
+          {lockDisabled
+            ? '列出目前有鎖定紀錄的後台帳號。'
+            : '連續登入失敗達門檻時自動鎖定；時效到期會自動解開，也可以在這裡提前解鎖'}
         </p>
       </div>
 
@@ -75,7 +82,8 @@ export const AccountLocksPage = () => {
             <p className="font-medium">帳號鎖定功能目前停用</p>
             <p>
               系統不會因為連續登入失敗而鎖定帳號，因此這份清單會是空的。
-              要啟用請設定環境變數 <code>APPLICATION_ACCOUNT_LOCK_ENABLED=true</code>。
+              要啟用請設定環境變數{' '}
+              <code>APPLICATION_ACCOUNT_LOCK_ENABLED=true</code>。
             </p>
           </div>
         </div>

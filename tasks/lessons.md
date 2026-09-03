@@ -996,3 +996,27 @@ const taipeiMidnightUtc = new Date(
 **Why**：全域的 `TransformInterceptor` 把所有回傳值包成 `{ success, data, timestamp }`。Nest 的 redirect 是在 interceptor **之後**才讀回傳值的 `url`，包完之後 `url` 跑到 `data.url` 裡，它讀不到就不設 header。`@Render()` 早就因為完全相同的理由被豁免了——`@Redirect()` 只是在這之前沒有人用過。
 
 **How to apply**：任何「回傳值有特殊語意」的 Nest 裝飾器（`@Render` / `@Redirect` / `@Sse`）都要在回應包裝的 interceptor 裡豁免。加新的這類端點時，**先去看那支 interceptor 有沒有涵蓋**。判準：這個裝飾器是不是靠讀回傳值的形狀在運作。
+
+### 2026-09-03 — `指令 | tail` 讓退出碼永遠是 0
+
+**踩到什麼**：背景跑 `pnpm --filter @app/api test:e2e 2>&1 | tail -30`，工具回報 **exit code 0**，我差點就當它綠了。實際是 `Exit status 1`、**183 個測試失敗**——而且因為只留了 30 行，連失敗原因都看不到，得整支重跑。
+
+**Why**：shell 的 pipeline 退出碼取**最後一個指令**的，也就是 `tail` 的（`tail` 幾乎不會失敗）。前面那支炸掉的退出碼被整個吃掉。`grep` / `head` / `tee` 同理。
+
+**How to apply**：**要判斷成敗的指令一律不接 pipe**。改成 `cmd > file 2>&1; echo "EXIT=$?"`，再從檔案裡 grep。這與既有的「驗證看 exit code，別數錯誤行數」是同一條規則的另一半——那條講的是「別用輸出內容判斷」，這條講的是「**輸出內容的取得方式會毀掉退出碼**」。（若真的要 pipe，`set -o pipefail` 或看 `${PIPESTATUS[0]}`。）
+
+### 2026-09-03 — e2e 會載入開發者整份 `.env`，功能開關全漏進測試
+
+**踩到什麼**：本機 `pnpm --filter @app/api test:e2e` **183 failed / 234 passed**，CI 卻一直全綠。失敗訊息是「Session 已因閒置過久而過期，請重新登入」，登入本身回 200、下一個請求才 401——訊息完全指不到真正的原因。根因是 `apps/api/.env` 有 `APPLICATION_SESSION_IDLE_ENABLED=true`。
+
+**Why**：`test/helpers/e2e-env.ts` 的 `config({ path: apps/api/.env })` 載入的是**整份檔案**（該函式的 TSDoc 寫「載入連線帳密」，不準確），所以開發者所有的功能開關都進了 `process.env`。CI 沒有 `apps/api/.env`，dotenv 靜默 no-op，旗標走 envSchema 預設（`false`）→ 永遠綠。**這類 bug 只會在「有設定的那台機器」上出現，而 CI 定義上就是沒設定的那台。**
+
+**How to apply**：測試環境的設定要**顯式釘死**，不是「載入真環境再蓋掉幾個」。判準：測試要驗的是**程式碼**，不是開發者這台機器的設定組合。查這類問題時，先問「CI 綠而本機紅」——差別幾乎都在沒進版控的檔案裡。
+
+### 2026-09-03 — `@Public()` 只有 `JwtAuthGuard` 認，其他全域 guard 不看
+
+**踩到什麼**：`apps/api/.env` 開了 `APPLICATION_IP_WHITELIST_ENABLED=true` 而白名單表是空的，結果**整組容器起不來**：每個請求 403 →`/api/health` 也 403 → healthcheck 失敗 → 容器 unhealthy → nginx 的 `depends_on: service_healthy` 永不滿足。
+
+**Why**：`HealthController` 標了 `@Public()` + `@SkipThrottle()`，看起來已經宣告「我是基礎設施端點」。但 `@Public()` 的語意只有「跳過認證」，**只有 `JwtAuthGuard` 會去讀那個 metadata**；`IpWhitelistGuard` / `IpBlacklistGuard` 是各自獨立的全域 guard，完全不看。而且 guard 是 fail-closed，空白名單 = 全鎖死，連能加白名單的後台 UI 自己也進不去。
+
+**How to apply**：加全域 guard 時，**明確列出它對既有豁免標記的態度**，別假設 `@Public()` 是通用逃生門——它不是，而且 `@Public()` 也**不該**被 IP guard 認（登入端點正是黑名單最需要擋的地方）。基礎設施探針要的是另一個更窄的標記。這個形狀在正式環境更嚴重：開白名單 → k8s liveness probe 403 → CrashLoopBackOff。

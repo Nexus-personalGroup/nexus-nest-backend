@@ -116,9 +116,14 @@ CI 不另外宣告版號。
    是指向根目錄 `.pnpm` store 的 symlink，漏任一個就會載到 host 的 macOS/arm64 產物
    （症狀：bcrypt 或 Prisma 引擎 invalid ELF header）。用具名 volume 而非匿名，
    否則 Docker Desktop 清單裡十個隨機 hash 無從辨識。
-3. **host 的 `apps/api/.env` 會被 bind mount 帶進容器**，而 dotenv 不覆寫既有的
-   `process.env`——等於「compose 沒設的都由開發者本機補」。用 `docker/api.container.env`
-   遮掉，設定才只有 compose 與 envSchema 預設兩個來源。
+3. **容器的設定優先序是四層**：`compose 的 environment` > `apps/api/.env`
+   （由 `env_file` 讀入，`required: false`）> `docker/api.container.env`
+   （bind mount 遮蔽容器內同名檔）> `envSchema` 預設。
+   「compose 沒設的由開發者本機補」是**刻意的**——但連線類變數
+   （`*_HOST` / `*_PORT` / `*_URL`）必須在 compose 釘死，否則 host 的
+   `localhost` 位址會漏進容器；`REDIS_URL` 尤其要釘成**空字串**，因為連線工廠是
+   `URL ? url : {host, port}`，釘成非空值反而會蓋掉 `REDIS_HOST`。
+   守則 `compose-files.spec.ts` 會擋住新增時漏釘。
 4. **api 不能用 `nest start --watch`**——重啟時舊行程還在跑 `enableShutdownHooks` 的
    優雅關閉（Prisma pool + Redis quit），新行程搶埠失敗直接死，症狀是**編譯成功但
    改動不生效**，log 完全正常。改為 `nest build --watch` + `node --watch` 兩段，
