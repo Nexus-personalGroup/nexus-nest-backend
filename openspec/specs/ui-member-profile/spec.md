@@ -112,9 +112,10 @@
 
 ### Requirement: 概覽頁不得預先載入檢舉詳情
 
+相關檢舉列表 MUST NOT prefetch 任何一筆的詳情（含 hover 預載）。
+
 概覽頁列出的是檢舉的**摘要**，點進詳情才會看到內容快照並留下稽核。
 
-- 相關檢舉列表 MUST NOT prefetch 任何一筆的詳情（含 hover 預載）。
 - 概覽本身的查詢不寫稽核，因此 MUST NOT 為了「省一次請求」而改用詳情端點取資料。
 
 #### Scenario: 在相關檢舉列表上 hover

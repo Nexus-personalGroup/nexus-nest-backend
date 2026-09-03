@@ -57,8 +57,9 @@ payload MUST 帶 `side: 'admin' | 'front'`，且驗證時 MUST 比對。
 
 ### Requirement: 缺少 side 的 token 是有時效的相容措施
 
-本需求上線前簽出的 token 沒有 `side` 欄位。後台的驗證 MAY 把
-「缺少 `side`」視為 `admin`，使既有 session 不被立即中斷。
+缺少 `side` 的 token MUST 被當成**有時效的相容措施**處理：後台的驗證 MAY 把
+「缺少 `side`」視為 `admin`，使既有 session 不被立即中斷
+——本需求上線前簽出的 token 沒有 `side` 欄位。
 
 **這個相容 MUST 被標記為暫時的**：程式碼註解與本 spec 都要寫明它可以在
 「部署時間超過 refresh token 效期」之後改成拒絕——屆時所有流通中的 token

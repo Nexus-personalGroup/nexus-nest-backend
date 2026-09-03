@@ -63,6 +63,14 @@ const metricsProviders = (): Provider[] =>
           help: '安全防護因相依不可用而降級放行的次數，依防護分類',
           labelNames: ['guard'],
         }),
+        makeHistogramProvider({
+          name: METRIC_NAMES.DASHBOARD_QUERY_SECONDS,
+          help: '營運快照中單一查詢的耗時（秒），依查詢名分類',
+          labelNames: ['query'],
+          // 桶跨三個數量級：現在應該都在毫秒級，而要看的正是「哪一個開始不是」。
+          // 上限取到快照週期（預設 5 秒）——超過就代表下一輪已經追上來了
+          buckets: [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1, 2.5, 5],
+        }),
         PrometheusMetricsAdapter,
         { provide: METRICS_PORT, useExisting: PrometheusMetricsAdapter },
       ]

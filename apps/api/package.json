@@ -28,6 +28,7 @@
     "swagger:bundle": "swagger-cli bundle docs/swagger/admin/openapi.yaml -o docs/swagger/admin/openapi.bundle.yaml -t yaml && swagger-cli bundle docs/swagger/front/openapi.yaml -o docs/swagger/front/openapi.bundle.yaml -t yaml",
     "swagger:check": "ts-node -r tsconfig-paths/register -P tsconfig.scripts.json scripts/check-swagger-sync.ts",
     "db:seed": "ts-node -r tsconfig-paths/register -P tsconfig.scripts.json scripts/seed-runner.ts",
+    "ip:allow": "ts-node -r tsconfig-paths/register -P tsconfig.scripts.json scripts/ip-allow.ts",
     "db:create": "ts-node -r tsconfig-paths/register scripts/create-database.ts",
     "db:drop": "ts-node -r tsconfig-paths/register scripts/drop-database.ts",
     "db:migrate": "ts-node -r tsconfig-paths/register scripts/prisma-env.ts prisma migrate dev",

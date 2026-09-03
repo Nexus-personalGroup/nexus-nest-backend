@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import {
+  DashboardQuery,
   MetricsPort,
   SecurityGuard,
   WsEventOutcome,
@@ -41,4 +42,9 @@ export class NoopMetricsAdapter implements MetricsPort {
   }
 
   incrementHeartbeatSkipped(): void {}
+
+  observeDashboardQuerySeconds(query: DashboardQuery, seconds: number): void {
+    void query;
+    void seconds;
+  }
 }

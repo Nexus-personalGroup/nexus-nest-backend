@@ -349,9 +349,9 @@ Token 無效與欄位驗證失敗**刻意共用 `400`**：重設連結是否有�
 
 ### Requirement: 後台簽發的 token 帶側別，且後台端點拒絕其他側
 
-`/api/admin/auth/login` 與 `/api/admin/auth/refresh` 簽出的 token
-MUST 在 payload 帶 `side: 'admin'`，且 MUST 以後台的 secret
-（`ACCESS_SECRET` / `REFRESH_SECRET`）簽發。
+後台簽出的 token MUST 在 payload 帶 `side: 'admin'`，且 MUST 以後台的 secret
+（`ACCESS_SECRET` / `REFRESH_SECRET`）簽發——`/api/admin/auth/login` 與
+`/api/admin/auth/refresh` 兩個端點皆然。
 
 後台的 token 驗證（`ResolveMemberContextService`，HTTP 與 WebSocket 共用）
 MUST 拒絕 `side` 不為 `admin` 的 token。

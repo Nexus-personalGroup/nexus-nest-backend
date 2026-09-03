@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { InjectMetric } from '@willsoto/nestjs-prometheus';
 import { Counter, Gauge, Histogram } from 'prom-client';
 import {
+  DashboardQuery,
   MetricsPort,
   SecurityGuard,
   WsEventOutcome,
@@ -17,6 +18,7 @@ export const METRIC_NAMES = {
   SECURITY_DEGRADED: 'security_guard_degraded_total',
   HEARTBEAT_SECONDS: 'chat_ws_heartbeat_seconds',
   HEARTBEAT_SKIPPED: 'chat_ws_heartbeat_skipped_total',
+  DASHBOARD_QUERY_SECONDS: 'dashboard_query_seconds',
 } as const;
 
 @Injectable()
@@ -38,6 +40,8 @@ export class PrometheusMetricsAdapter implements MetricsPort {
     private readonly heartbeatSeconds: Histogram<string>,
     @InjectMetric(METRIC_NAMES.HEARTBEAT_SKIPPED)
     private readonly heartbeatSkipped: Counter<string>,
+    @InjectMetric(METRIC_NAMES.DASHBOARD_QUERY_SECONDS)
+    private readonly dashboardQuerySeconds: Histogram<string>,
   ) {}
 
   incrementMessages(): void {
@@ -72,5 +76,10 @@ export class PrometheusMetricsAdapter implements MetricsPort {
 
   incrementHeartbeatSkipped(): void {
     this.heartbeatSkipped.inc();
+  }
+
+  observeDashboardQuerySeconds(query: DashboardQuery, seconds: number): void {
+    // 標籤只有查詢名：五個值的封閉集合，基數可控
+    this.dashboardQuerySeconds.observe({ query }, seconds);
   }
 }
