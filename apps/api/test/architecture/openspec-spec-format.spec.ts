@@ -53,6 +53,19 @@ const requirementBlocks = (body: string): { title: string; text: string }[] => {
 };
 
 /**
+ * 需求內文的第一個非空行。
+ *
+ * openspec 的 validator 取的就是這一行當 `requirements[N].text`——
+ * 它**不會**把斷行的段落接起來。本專案排版在 80 字左右斷行，
+ * 所以 normative 關鍵字落在第二行就等於沒寫。
+ */
+const firstLine = (text: string): string =>
+  text
+    .split('\n')
+    .find((line) => line.trim().length > 0)
+    ?.trim() ?? '';
+
+/**
  * 宣告 endpoint 的需求：內文第一個非空行以「`METHOD /path`」開頭。
  *
  * 只認開頭而不是全文搜尋，是為了排除「在說明裡順帶提到某條路由」的需求
@@ -201,6 +214,46 @@ describe('架構守則：openspec master spec 的命名與格式', () => {
             )}\nopenspec archive 只合併 ## Requirements，**Purpose 要手動補**——` +
             `\n剛 archive 完新能力的話，現在就是補的時機。` +
             `\nPurpose 要寫「讀的人最需要先知道的那件事」，不是需求摘要（底下就寫著）`,
+    ).toBe('');
+  });
+
+  /**
+   * 每條需求的第一行就要表態。
+   *
+   * openspec 的 validator 取需求內文的**第一行**當 `requirements[N].text`，
+   * 它不會把斷行的段落接起來。本專案排版在 80 字左右斷行，
+   * 所以 `SHALL` 落在第二行就等於沒寫——2026-09-03 有 7 支 spec 因此紅著，
+   * 而**沒有任何檢查在跑它**（`validate --specs` 不在任何測試或 CI 路徑上）。
+   *
+   * 即使沒有工具限制這條也成立：**規定先講，理由後補**。
+   * 先寫三行背景再說要求的需求，讀者要讀到最後才知道到底規定了什麼。
+   *
+   * ⚠️ `MAY` 不算——openspec 只認 `SHALL` 與 `MUST`。純授權性質的需求
+   * 仍要有一句界定邊界的 `MUST`（例如「這個放寬 MUST 被標記為暫時的」），
+   * 否則沒有邊界的放寬會變成永久的預設。
+   */
+  it('每條需求的第一行必須含 SHALL 或 MUST', () => {
+    const items = capabilities();
+    const all = items.flatMap((c) =>
+      requirementBlocks(c.body).map((r) => ({ cap: c.name, ...r })),
+    );
+    // 掃不到需求時這條規則會空轉成「全部通過」
+    expect(items.length).toBeGreaterThan(0);
+    expect(all.length).toBeGreaterThan(0);
+
+    const offenders = all.filter(
+      (r) => !/\b(SHALL|MUST)\b/.test(firstLine(r.text)),
+    );
+
+    expect(
+      offenders.length === 0
+        ? ''
+        : `以下需求的第一行沒有 SHALL / MUST：\n${offenders
+            .map((r) => `  ${r.cap} → ${r.title}`)
+            .join('\n')}\n` +
+            `openspec 的 validator 只讀需求內文的**第一行**，斷行之後的內容它看不到。\n` +
+            `把 normative 陳述搬到第一行（規定先講、理由後補）。\n` +
+            `⚠️ MAY 不算：純授權的需求也要有一句界定邊界的 MUST。`,
     ).toBe('');
   });
 

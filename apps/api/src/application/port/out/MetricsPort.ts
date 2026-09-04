@@ -12,6 +12,19 @@ export type WsEventOutcome = 'success' | 'error';
 export type SecurityGuard = 'account-lock' | 'ip-block';
 
 /**
+ * 營運快照的五個查詢；封閉集合，標籤基數可控。
+ *
+ * 分得這麼細是刻意的：快照總耗時說得出「慢」，說不出「該修哪一個」，
+ * 而修法的選項（加索引 / 改寫查詢 / 快取整份快照）代價各不相同。
+ */
+export type DashboardQuery =
+  | 'online-members'
+  | 'pending-reports'
+  | 'total-rooms'
+  | 'total-members'
+  | 'messages-today';
+
+/**
  * 應用指標。
  *
  * 業務服務要能說「訊息送出了」「這次被限流擋下」，但不該知道那是 counter
@@ -62,4 +75,18 @@ export interface MetricsPort {
    * @param guard - 哪一道防護降級了
    */
   incrementSecurityDegraded(guard: SecurityGuard): void;
+
+  /**
+   * 營運快照中**單一查詢**的耗時（秒）。
+   *
+   * 快照掛在固定週期上（預設 5 秒），且首頁與營運總覽頁共用它——
+   * 成本會隨資料量成長，而**成長是無聲的**。
+   *
+   * 逐個查詢量測而非量總耗時：要據此決定修哪一個，
+   * 而在有資料之前，「哪個 count 貴」只是靜態推論。
+   *
+   * @param query - 哪一個查詢
+   * @param seconds - 該查詢的耗時（秒）
+   */
+  observeDashboardQuerySeconds(query: DashboardQuery, seconds: number): void;
 }

@@ -1013,6 +1013,24 @@ const taipeiMidnightUtc = new Date(
 
 **How to apply**：測試環境的設定要**顯式釘死**，不是「載入真環境再蓋掉幾個」。判準：測試要驗的是**程式碼**，不是開發者這台機器的設定組合。查這類問題時，先問「CI 綠而本機紅」——差別幾乎都在沒進版控的檔案裡。
 
+### 2026-09-03 — openspec 的 requirement 檢查只讀第一行
+
+**踩到什麼**：`openspec validate --specs --strict` 有 7 支 master spec 報
+`Requirement must contain SHALL or MUST keyword`，但每一條**都寫了** SHALL/MUST。
+差點就當成工具壞了。
+
+**Why**：validator 取的 `requirements[N].text` 是需求內文的**第一個非空行**
+——它不會把斷行的段落接起來。本專案排版在 80 字左右斷行，
+關鍵字落在第二行就等於沒寫。用 `openspec show <spec> --type spec --json`
+看它實際讀到什麼，就會發現 text 是半句話。
+另外 **`MAY` 不算**，只認 SHALL 與 MUST。
+
+**How to apply**：需求一律**第一行就表態**（規定先講、理由後補）——
+這本來就是比較好的寫法。純授權性質的需求（「MAY 這樣做」）要補一句界定邊界的
+MUST，例如「這個放寬 MUST 被標記為暫時的」。
+更一般的：**工具報錯與你的心智模型衝突時，先問工具實際讀到什麼**，
+別從錯誤訊息的字面去推測它在檢查什麼。
+
 ### 2026-09-03 — 把邏輯搬去別的檔，只掃原檔的守則會靜默空轉
 
 **踩到什麼**：`public-surface.spec.ts` 有一條「不得以前綴比對做路徑豁免」的守則，

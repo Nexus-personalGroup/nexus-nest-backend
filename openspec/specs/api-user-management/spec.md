@@ -265,8 +265,8 @@ token 立即失效並斷開其既有的 WebSocket 連線，**但 MUST NOT 改變
 
 ### Requirement: 前台使用者的模糊搜尋必須用得到索引
 
-前台使用者列表（`GET /api/admin/front-users`）的 `email` 與 `displayName`
-模糊搜尋 SHALL 由資料庫索引支援，MUST NOT 退化為全表掃描。
+前台使用者列表的模糊搜尋 SHALL 由資料庫索引支援，MUST NOT 退化為全表掃描
+——對象是 `GET /api/admin/front-users` 的 `email` 與 `displayName` 兩個欄位。
 
 **本需求不是 endpoint 契約**——請求與回應形狀、搜尋語意都由
 「前台使用者列表查詢」定義且不受本需求影響，這裡約束的只是它怎麼被執行。

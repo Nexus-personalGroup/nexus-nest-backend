@@ -3,6 +3,7 @@ import { SecurityController } from '../../adapter/in/web/admin/security/Security
 import { SecurityFacade } from '../../application/facade/admin/SecurityFacade';
 import { PrismaAccountLockAdapter } from '../../adapter/out/persistence/auth/PrismaAccountLockAdapter';
 import { PrismaIpListRepository } from '../../adapter/out/persistence/security/PrismaIpListRepository';
+import { IpWhitelistBootstrapCheck } from '../../application/service/admin/security/IpWhitelistBootstrapCheck';
 import { RedisIpBlockAdapter } from '../../adapter/out/redis/RedisIpBlockAdapter';
 import { ACCOUNT_LOCK_PORT } from '../../application/port/out/auth/AccountLockPort';
 import { IP_BLOCK_PORT } from '../../application/port/out/security/IpBlockPort';
@@ -84,6 +85,7 @@ import { MemberModule } from './member.module';
       useClass: UpdateIpBlacklistService,
     },
     SecurityFacade,
+    IpWhitelistBootstrapCheck,
   ],
   exports: [ACCOUNT_LOCK_PORT, IP_LIST_PORT, IP_BLOCK_PORT],
 })

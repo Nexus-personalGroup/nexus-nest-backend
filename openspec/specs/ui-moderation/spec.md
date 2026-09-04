@@ -114,10 +114,11 @@
 
 ### Requirement: 詳情頁 MUST NOT 預先載入
 
+佇列頁 MUST NOT prefetch 任何檢舉的詳情（含 hover 預載、可視區域預載）。
+
 查看檢舉詳情**每次都會在後端寫入一筆 `REPORT_VIEWED` 稽核**，稽核量必須與
 「實際看到敏感內容的次數」對齊。
 
-- 佇列頁 MUST NOT prefetch 任何檢舉的詳情（含 hover 預載、可視區域預載）。
 - 詳情查詢 MUST 明確設定 `staleTime`，避免切換瀏覽器分頁回來時重新請求。
 - MUST NOT 因為元件重繪而重打詳情端點。
 

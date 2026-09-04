@@ -7,6 +7,7 @@ import { PrismaChatReportRepository } from '../../adapter/out/persistence/chat-r
 import { CHAT_REPORT_REPOSITORY_PORT } from '../../application/port/out/chat-report/ChatReportRepositoryPort';
 import { ChatRoomCoreModule } from '../chat-room-core.module';
 import { UserPersistenceModule } from '../user-persistence.module';
+import { MetricsModule } from '../metrics.module';
 
 /**
  * 營運總覽模組（路由 `/api/admin/moderation/dashboard`）。
@@ -22,7 +23,7 @@ import { UserPersistenceModule } from '../user-persistence.module';
  * 兩者的相依方向不同，各自 provide 比開一個共用模組單純。
  */
 @Module({
-  imports: [ChatRoomCoreModule, UserPersistenceModule],
+  imports: [ChatRoomCoreModule, UserPersistenceModule, MetricsModule],
   controllers: [DashboardController],
   providers: [
     PrismaChatReportRepository,

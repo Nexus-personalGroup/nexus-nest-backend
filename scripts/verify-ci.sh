@@ -43,4 +43,11 @@ DB_DATABASE=nexus_verify_test \
 DB_TEST_DATABASE=nexus_verify_test \
   pnpm --filter @app/api test:e2e
 
+# master spec 的完整驗證。守則（openspec-spec-format.spec.ts）只涵蓋本專案自訂的
+# 幾條格式規則，這一步是廣撒的網：接住 openspec 本身新增的規則。
+# **沒有它的話，specs/ 的問題只會在有人手動跑 validate 時才浮現**——
+# 2026-09-03 就有 7 支紅著沒人知道。
+echo "→ 驗證 master spec"
+npx openspec validate --specs --strict
+
 echo "✅ 本機 CI 驗證通過"
