@@ -128,4 +128,123 @@ describe('架構守則：權限目錄與前端的同步', () => {
             `\n否則權限樹會顯示「不可指派」而實際上已經可以指派了`,
     ).toBe('');
   });
+
+  /**
+   * 前端的權限碼常數必須對得上後端目錄。
+   *
+   * 打錯一個字的後果是**靜默的**：`BACKEND:ACCOUNT:VEIW` 會讓那個 sidebar 項目
+   * 對所有人消失（含 SUPERADMIN），而 typecheck / lint / 測試全綠——
+   * 回報進來只會是「選單不見了」，那句話指不到任何地方。
+   *
+   * 型別（`PermissionCode`）是第一道防線，這條是第二道：
+   * 它擋的是「常數本身就寫錯」與「後端把碼改名或移除」。
+   */
+  describe('前端的權限碼', () => {
+    const codesFile = 'lib/permission-codes.ts';
+    const codes = readWeb(codesFile);
+
+    /** 取出 `KEY: '值'` 的值 */
+    const literalValues = (body: string, constName: string): string[] => {
+      const start = body.indexOf(`export const ${constName}`);
+      if (start === -1) return [];
+      const block = body.slice(start, body.indexOf('};', start));
+      return [...block.matchAll(/^\s{2}[A-Z][A-Z0-9_]*:\s*'([^']+)'/gm)].map(
+        (m) => m[1],
+      );
+    };
+
+    it('掃描範圍有效', () => {
+      // 讀不到檔案或解不出值時，下面那條會空轉成「全部通過」
+      expect(codes).not.toBe('');
+      expect(literalValues(codes, 'PERMISSION_CODE').length).toBeGreaterThan(0);
+      expect(PERMISSION_CATALOG.length).toBeGreaterThan(0);
+    });
+
+    it('⭐ 每個前端權限碼都必須存在於後端目錄', () => {
+      const backend = new Set(PERMISSION_CATALOG.map((entry) => entry.code));
+      const unknown = literalValues(codes, 'PERMISSION_CODE').filter(
+        (code) => !backend.has(code as never),
+      );
+
+      expect(
+        unknown.length === 0
+          ? ''
+          : `apps/web/src/${codesFile} 有後端目錄沒有的權限碼：\n${unknown
+              .map((c) => `  ${c}`)
+              .join('\n')}\n` +
+              `打錯的話那個 sidebar 項目會對所有人消失（含 SUPERADMIN），而且不會有任何東西失敗。\n` +
+              `請比對 shared/constants/permissions.ts 的 PERMISSION_CATALOG`,
+      ).toBe('');
+    });
+
+    /**
+     * 路由守衛與 sidebar 對同一個 path 必須宣告同一個權限碼。
+     *
+     * 兩邊不一致代表使用者看得到卻進不去，或反過來——而兩種都不會有東西失敗。
+     *
+     * ⚠️ **涵蓋不到明細路由**（`/xxx/:id` 這類不在 sidebar 宣告裡的），
+     * 它們漏掛守衛時抓不到。這個限制寫在 spec 裡，別以為守則涵蓋全部路由。
+     */
+    it('路由與 sidebar 對同一 path 的權限碼必須一致', () => {
+      const navBody = readWeb('routes/_nav-items.ts');
+      const appBody = readWeb('App.tsx');
+      expect(navBody).not.toBe('');
+      expect(appBody).not.toBe('');
+
+      // sidebar：path → PERMISSION_CODE.XXX
+      const navMap = new Map<string, string>();
+      for (const block of navBody.split(/\n {2}\{/)) {
+        const path = /path: '([^']+)'/.exec(block)?.[1];
+        const perm = /requiredPermission: (PERMISSION_CODE\.\w+)/.exec(
+          block,
+        )?.[1];
+        if (path && perm) navMap.set(path, perm);
+      }
+
+      // 路由：先切 <Route 區塊再解析。
+      // **不能用跨區塊的正規式**：`path="/"` 往後找 RequirePermission 會吃到
+      // 下一條路由的，於是那條路由本身反而沒被比對到——本規則第一版就是這樣誤報的
+      const routeMap = new Map<string, string>();
+      for (const block of appBody.split('<Route')) {
+        const path = /path="([^"]+)"/.exec(block)?.[1];
+        const perm = /<RequirePermission code=\{(PERMISSION_CODE\.\w+)\}/.exec(
+          block,
+        )?.[1];
+        if (path && perm) routeMap.set(path, perm);
+      }
+
+      expect(navMap.size).toBeGreaterThan(0);
+      expect(routeMap.size).toBeGreaterThan(0);
+
+      const mismatched = [...navMap.entries()]
+        .filter(
+          ([path, perm]) => routeMap.has(path) && routeMap.get(path) !== perm,
+        )
+        .map(
+          ([path, perm]) =>
+            `  ${path}：sidebar=${perm}、路由=${routeMap.get(path)}`,
+        );
+
+      const unguarded = [...navMap.keys()].filter(
+        (path) => !routeMap.has(path),
+      );
+
+      expect(
+        mismatched.length === 0 && unguarded.length === 0
+          ? ''
+          : [
+              mismatched.length
+                ? `以下 path 的權限碼兩邊不一致：\n${mismatched.join('\n')}`
+                : '',
+              unguarded.length
+                ? `以下 path 在 sidebar 宣告了權限，但路由沒有掛 RequirePermission：\n${unguarded
+                    .map((p) => `  ${p}`)
+                    .join('\n')}\n隱藏不是保護——手動輸入網址就進得去了`
+                : '',
+            ]
+              .filter(Boolean)
+              .join('\n\n'),
+      ).toBe('');
+    });
+  });
 });

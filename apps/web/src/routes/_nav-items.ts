@@ -13,6 +13,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 
 import { ROLE_CODE, type RoleCode } from '@/lib/role-codes';
+import { PERMISSION_CODE, type PermissionCode } from '@/lib/permission-codes';
 
 export type NavItem = {
   label: string;
@@ -21,7 +22,7 @@ export type NavItem = {
   /** 屬於哪個 sidebar group（如「使用者與權限」「安全」）；未指定為「無 group」固定放最上 */
   group?: string;
   /** 需要的權限代碼；undefined 表示所有登入者都看得到 */
-  requiredPermission?: string;
+  requiredPermission?: PermissionCode;
   /** 粗粒度 role gate（與 requiredPermission 並用，兩者皆通才顯示） */
   requiredRoleCode?: RoleCode;
 };
@@ -53,7 +54,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/members',
     icon: Users,
     group: '管理者與權限',
-    requiredPermission: 'BACKEND:ACCOUNT:VIEW',
+    requiredPermission: PERMISSION_CODE.ACCOUNT_VIEW,
   },
   {
     // 角色權限歸在這一組而非獨立：RBAC **只作用於後台帳號**，
@@ -62,7 +63,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/roles',
     icon: Shield,
     group: '管理者與權限',
-    requiredPermission: 'BACKEND:ROLE:VIEW',
+    requiredPermission: PERMISSION_CODE.ROLE_VIEW,
   },
 
   // 會員管理——前台的人。與上面那組分開是本檔頭註解說的那件事
@@ -71,7 +72,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/front-users',
     icon: UserRound,
     group: '會員管理',
-    requiredPermission: 'BACKEND:FRONT_USER:VIEW',
+    requiredPermission: PERMISSION_CODE.FRONT_USER_VIEW,
   },
 
   // 聊天管理
@@ -80,14 +81,14 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/moderation/dashboard',
     icon: LayoutDashboard,
     group: '聊天管理',
-    requiredPermission: 'BACKEND:MODERATION:VIEW',
+    requiredPermission: PERMISSION_CODE.MODERATION_VIEW,
   },
   {
     label: '檢舉審閱',
     path: '/moderation/reports',
     icon: Flag,
     group: '聊天管理',
-    requiredPermission: 'BACKEND:MODERATION:VIEW',
+    requiredPermission: PERMISSION_CODE.MODERATION_VIEW,
   },
 
   {
@@ -95,7 +96,7 @@ export const NAV_ITEMS: NavItem[] = [
     path: '/moderation/rooms',
     icon: MessagesSquare,
     group: '聊天管理',
-    requiredPermission: 'BACKEND:MODERATION:VIEW',
+    requiredPermission: PERMISSION_CODE.MODERATION_VIEW,
   },
 
   // 安全管理（SUPERADMIN-only）
