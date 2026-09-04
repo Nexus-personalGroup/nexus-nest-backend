@@ -74,8 +74,12 @@ describe('CreateRoleService', () => {
 
   it('EDIT 缺同模組 VIEW → 拋 InvalidPermissionCombinationException', async () => {
     (mockRoleRepo.findByName as jest.Mock).mockResolvedValue(null);
+    // 目錄裡**有** ROLE:VIEW，蘊含規則才適用——
+    // 只回 EDIT 等於宣稱該模組沒有 VIEW，那種情況依規則不該擋
+    // （附件就是那樣，見 permission-validator.spec.ts）
     (mockPermissionRepo.findByCodes as jest.Mock).mockResolvedValue([
       permRecord('BACKEND:ROLE:EDIT'),
+      permRecord('BACKEND:ROLE:VIEW'),
     ]);
 
     await expect(
