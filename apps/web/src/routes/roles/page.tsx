@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useState, useMemo } from 'react';
 import { Navigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
@@ -11,6 +11,7 @@ import { useApiQuery } from '@/api/client';
 import { useHasPermission } from '@/lib/use-has-permission';
 import { useCurrentMember } from '@/lib/use-current-member';
 import { useDetailDialog } from '@/lib/use-detail-dialog';
+import { usePermissionOptionsQuery } from './hooks/use-permission-options-query';
 import { useRolesQuery } from './hooks/use-roles-query';
 import { useRolesUrlState } from './hooks/use-roles-url-state';
 import { useRoleMutations } from './hooks/use-role-mutations';
@@ -59,6 +60,20 @@ export const RolesPage = () => {
     status: url.status,
   });
   const mutations = useRoleMutations();
+
+  // normalize 需要知道哪些碼真的存在——字串推導會合成不存在的碼（例如附件只有 EDIT）。
+  // 這支 query 已被 RoleFormDialog 訂閱，這裡是共用快取不是多一次請求
+  const permissionOptions = usePermissionOptionsQuery();
+  const availableCodes = useMemo(() => {
+    const items = permissionOptions.data;
+    if (!items) return undefined;
+    return new Set(
+      items
+        .map((item) => item.permissionCode)
+        .filter((code): code is string => typeof code === 'string'),
+    );
+  }, [permissionOptions.data]);
+
 
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<RoleRow | null>(null);
@@ -139,7 +154,7 @@ export const RolesPage = () => {
       body: {
         name: values.name,
         // defense in depth：UI 已強制 EDIT→VIEW，提交前再 normalize 一次（sort + 去重 + 補 VIEW）
-        permissionCodes: normalizePermissionCodes(values.permissionCodes),
+        permissionCodes: normalizePermissionCodes(values.permissionCodes, availableCodes),
       },
     });
     setCreateOpen(false);
@@ -151,7 +166,7 @@ export const RolesPage = () => {
       params: { path: { id: url.edit } },
       body: {
         name: values.name,
-        permissionCodes: normalizePermissionCodes(values.permissionCodes),
+        permissionCodes: normalizePermissionCodes(values.permissionCodes, availableCodes),
         status: values.status,
       },
     });
