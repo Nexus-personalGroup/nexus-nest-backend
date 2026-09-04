@@ -62,36 +62,53 @@ describe('架構守則：openspec 自訂 schema 的執行路徑', () => {
   });
 
   it('所有教 AI 建立 change 的指令都必須帶 --schema', () => {
-    // 不只盯單一檔案：propose 流程在 .claude/skills/ 與 .claude/commands/opsx/ 各有一份，
-    // 只檢查其中一份的結果，就是改了 skill、command 卻靜默留在內建 schema。
+    // 不只盯單一檔案：建 change 的指令在多處各寫一份（skill、opsx 指令、
+    // openspec-conventions），只檢查其中一份的結果，就是改了一份、
+    // 其餘靜默留在內建 schema。
+    //
+    // 範圍的判準是「**有沒有人會照著它做**」，不是目錄長相。
+    // tasks/ 不列入：todo.md / lessons.md 記的是狀態與教訓，不是操作指示。
+    const INSTRUCTION_SOURCES = [
+      '.claude',
+      'openspec',
+      'CLAUDE.md',
+      'README.md',
+    ];
+    // 封存的是當時的決策紀錄。**今天的規則不該讓昨天的紀錄變紅**——
+    // 那會逼人去改歷史，比漏一條檢查更糟。
+    const ARCHIVE_PREFIX = 'openspec/changes/archive';
+
     const missingFlag: string[] = [];
     let creations = 0;
 
-    const walk = (relativeDir: string): void => {
-      const absolute = join(REPO_ROOT, relativeDir);
-      if (!existsSync(absolute)) return;
-      for (const entry of readdirSync(absolute)) {
-        const relative = `${relativeDir}/${entry}`;
-        if (statSync(join(REPO_ROOT, relative)).isDirectory()) {
-          walk(relative);
-          continue;
-        }
-        if (!entry.endsWith('.md')) continue;
-
-        const body = readFileSync(join(REPO_ROOT, relative), 'utf8');
-        // 只認真正的呼叫（後面接得出名稱），不認散文裡純提及的 `openspec new change`
-        for (const match of body.matchAll(
-          /openspec new change\s+["'<][^\n`]*/g,
-        )) {
-          creations += 1;
-          if (!match[0].includes(`--schema ${SCHEMA_NAME}`)) {
-            missingFlag.push(`  ${relative}\n    ${match[0].trim()}`);
-          }
+    const scanFile = (relative: string): void => {
+      if (!relative.endsWith('.md')) return;
+      const body = readFileSync(join(REPO_ROOT, relative), 'utf8');
+      // 只認真正的呼叫（後面接得出名稱），不認散文裡純提及的 `openspec new change`
+      for (const match of body.matchAll(
+        /openspec new change\s+["'<][^\n`]*/g,
+      )) {
+        creations += 1;
+        if (!match[0].includes(`--schema ${SCHEMA_NAME}`)) {
+          missingFlag.push(`  ${relative}\n    ${match[0].trim()}`);
         }
       }
     };
 
-    walk('.claude');
+    const walk = (relative: string): void => {
+      if (relative.startsWith(ARCHIVE_PREFIX)) return;
+      const absolute = join(REPO_ROOT, relative);
+      if (!existsSync(absolute)) return;
+      if (!statSync(absolute).isDirectory()) {
+        scanFile(relative);
+        return;
+      }
+      for (const entry of readdirSync(absolute)) {
+        walk(`${relative}/${entry}`);
+      }
+    };
+
+    for (const source of INSTRUCTION_SOURCES) walk(source);
 
     // 指令全數消失（檔案改名或流程改寫）時先紅，否則這條規則會空轉
     expect(creations).toBeGreaterThan(0);
