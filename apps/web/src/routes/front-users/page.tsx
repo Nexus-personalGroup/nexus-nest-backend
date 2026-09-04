@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 
+import { PageHeader } from '@/components/PageHeader';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
 import { useListUrlState } from '@/lib/use-list-url-state';
 import { useHasPermission } from '@/lib/use-has-permission';
@@ -77,12 +78,10 @@ export const FrontUsersPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header>
-        <h1 className="text-2xl font-semibold">會員列表</h1>
-        <p className="text-muted-foreground text-sm">
-          聊天服務的使用者。後台管理員的帳號在「管理者帳號」，兩者是獨立的體系
-        </p>
-      </header>
+      <PageHeader
+        title="會員列表"
+        description="聊天服務的使用者。後台管理員的帳號在「管理者帳號」，兩者是獨立的體系"
+      />
 
       <FrontUsersSearchBar
         initialEmail={url.searches.email}

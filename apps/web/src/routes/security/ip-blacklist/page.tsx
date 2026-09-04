@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Plus } from 'lucide-react';
 
+import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
@@ -110,18 +111,15 @@ export const IpBlacklistPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">IP 黑名單</h1>
-          <p className="text-muted-foreground text-sm">
-            封鎖嘗試攻擊系統的 IP（系統自動封鎖會標示為「自動」來源）
-          </p>
-        </div>
+      <PageHeader
+        title="IP 黑名單"
+        description="封鎖嘗試攻擊系統的 IP（系統自動封鎖會標示為「自動」來源）"
+      >
         <Button onClick={() => setCreateOpen(true)}>
           <Plus />
           新增黑名單
         </Button>
-      </header>
+      </PageHeader>
 
       <IpBlacklistSearchBar
         initialSearch={url.search}

@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { Plus } from 'lucide-react';
 
+import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
 import { DeleteConfirmDialog } from '@/components/DeleteConfirmDialog';
@@ -110,18 +111,15 @@ export const IpWhitelistPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">IP 白名單</h1>
-          <p className="text-muted-foreground text-sm">
-            管理允許存取系統的 IP（適用於辦公網段、特定客戶端等）
-          </p>
-        </div>
+      <PageHeader
+        title="IP 白名單"
+        description="管理允許存取系統的 IP（適用於辦公網段、特定客戶端等）"
+      >
         <Button onClick={() => setCreateOpen(true)}>
           <Plus />
           新增白名單
         </Button>
-      </header>
+      </PageHeader>
 
       <IpWhitelistSearchBar
         initialSearch={url.search}
