@@ -5,15 +5,11 @@
 
 ## 進行中
 
-**`fix-todo-backlog-cleanup`（#41）已完成，待 commit。**
-把「可以直接動」的三項一次清掉：
-① 營運快照**逐個查詢**的耗時指標（**只加觀測、一個索引都沒動**）；
-② 七支 master spec 的 requirement 改成開頭第一行就表態 + 守則；
-③ IP 白名單啟用而清單為空時的啟動 error 與 `ip:allow` 恢復指令。
-
-**`seal-test-env-and-exempt-infra-probes`（#40）已合併並封存。**
-探針豁免於 IP ACL（判準是 `@InfraEndpoint()` 不是 `@Public()`）；
-e2e 只取 `DB_*`，不再整份載入開發者的 `.env`。
+**`widen-schema-flag-scan`（#42）已完成，待 commit。**
+「建 change 必帶 `--schema`」的守則只掃 `.claude/`，
+而慣例來源 `openspec/project/openspec-conventions.md` 在範圍外——
+**這條守則自己犯了它要防的錯**（有多份真相，只守其中一份）。
+範圍擴到所有現行指示文件，封存區明確排除。
 
 ## 路線圖
 
@@ -27,7 +23,7 @@ e2e 只取 `DB_*`，不再整份載入開發者的 `.env`。
 `chat_rooms` 改成 index-only scan / 整份快照快取）代價各不相同，
 而現在終於能看出哪個 count 貴。
 
-### 已走完：2026-08-20 → 09-03，41 支 PR
+### 已走完：2026-08-20 → 09-04，42 支 PR
 
 M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營運總覽，
 接著是**分表工程**（把前台使用者從後台帳號表拆出來），
@@ -38,7 +34,8 @@ M0 骨架 → M1 WebSocket 地基 → M2 訊息核心 → M3 監控 → M4 營�
 再清掉「延後功能」裡最後一項（帳號鎖定列表），排第三輪審查並收尾它的小項，
 把容器的環境變數優先序從「完全遮蔽」改成「釘死連線類、其餘吃本機」，
 收掉那次驗收撈出的兩個既有缺陷（探針被 ACL 擋、e2e 吃整份 `.env`），
-最後把待辦裡「可以直接動」的三項一次清空。
+把待辦裡「可以直接動」的三項一次清空，
+最後補上一條守則自己的掃描漏洞。
 逐支見「已完成」的索引。
 
 **第一則：那批修的都不是 bug**，是**「做到一半而且沒有東西會提醒」**
@@ -396,6 +393,7 @@ trgm 為什麼三字以下用不上）。**找不到問題不是因為沒找，�
 | #39 | 09-03 | `improve-container-env-precedence` | 容器改吃本機 `apps/api/.env`，連線類在 compose 釘死 + 守則；順帶修掉 `API_BASE_URL` 指向已關閉埠的潛伏 bug；驗收撈出兩個既有問題（`@Public()` 擋不住 IP guard、e2e 吃整份 `.env`） |
 | #40 | 09-03 | `seal-test-env-and-exempt-infra-probes` | 基礎設施探針（health / metrics）豁免於 IP ACL——判準是 `@InfraEndpoint()` 而非 `@Public()`（登入端點也是 `@Public()`）；e2e 只取 `DB_*`，不再整份載入開發者的 `.env` |
 | #41 | 09-03 | `fix-todo-backlog-cleanup` | 營運快照逐查詢的耗時指標（只加觀測、不改索引）；七支 master spec 改成第一行就表態 + 守則（validator 只讀第一行）；IP 白名單空清單的啟動 error 與 `ip:allow` 恢復指令 |
+| #42 | 09-04 | `widen-schema-flag-scan` | 「建 change 必帶 `--schema`」的掃描範圍從 `.claude/` 擴到所有現行指示文件，封存區明確排除；掃整個 `openspec/` 是為了讓那條排除**承重**而不是死程式碼 |
 
 ### 幾個反覆出現的教訓
 
