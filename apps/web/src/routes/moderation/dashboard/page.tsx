@@ -1,6 +1,7 @@
 import { Link, Navigate } from 'react-router-dom';
 import { AlertTriangle, Info } from 'lucide-react';
 
+import { PageHeader } from '@/components/PageHeader';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
@@ -80,7 +81,7 @@ export const DashboardPage = () => {
   if (!snapshot) {
     return (
       <div className="flex flex-col gap-4">
-        <h1 className="text-2xl font-semibold">營運總覽</h1>
+        <PageHeader title="營運總覽" />
         <Skeleton className="h-32 w-full" />
       </div>
     );
@@ -90,20 +91,17 @@ export const DashboardPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">營運總覽</h1>
-          <p className="text-muted-foreground text-sm">
-            最後更新於 {formatRelativeTime(snapshot.generatedAt)}
-          </p>
-        </div>
+      <PageHeader
+        title="營運總覽"
+        description={`最後更新於 ${formatRelativeTime(snapshot.generatedAt)}`}
+      >
         {stale ? (
           <span className="text-destructive inline-flex items-center gap-1 text-sm font-medium">
             <AlertTriangle className="size-4" />
             連線中斷，重新連線中——以下為過期的數字
           </span>
         ) : null}
-      </header>
+      </PageHeader>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Stat label="線上人數" value={snapshot.onlineMembers} stale={stale} />

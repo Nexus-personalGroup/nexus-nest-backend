@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import type { paths } from '@app/api-client';
 
+import { PageHeader } from '@/components/PageHeader';
 import { Button } from '@/components/ui/button';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
 import { useApiQuery } from '@/api/client';
@@ -171,18 +172,15 @@ export const RolesPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">角色管理</h1>
-          <p className="text-muted-foreground text-sm">
-            管理後台角色、權限指派與啟用狀態
-          </p>
-        </div>
+      <PageHeader
+        title="角色管理"
+        description="管理後台角色、權限指派與啟用狀態"
+      >
         <Button disabled={!canEdit} onClick={() => setCreateOpen(true)}>
           <Plus />
           新增角色
         </Button>
-      </header>
+      </PageHeader>
 
       <RolesSearchBar
         initialName={url.name}

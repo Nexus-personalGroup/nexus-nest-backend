@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
 
+import { PageHeader } from '@/components/PageHeader';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
 import { useHasPermission } from '@/lib/use-has-permission';
 import { ReportsTable } from '../components/ReportsTable';
@@ -35,15 +36,9 @@ export const ReportsPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">檢舉審閱</h1>
-          <p className="text-muted-foreground text-sm">
-            處理使用者提出的訊息檢舉
-          </p>
-        </div>
+      <PageHeader title="檢舉審閱" description="處理使用者提出的訊息檢舉">
         <ReportStatusFilter value={url.status} onChange={url.setStatus} />
-      </header>
+      </PageHeader>
 
       <ReportsTable
         data={list}

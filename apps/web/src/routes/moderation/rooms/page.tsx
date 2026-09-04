@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 
+import { PageHeader } from '@/components/PageHeader';
 import { DataTablePagination } from '@/components/data-table/DataTablePagination';
 import { useListUrlState } from '@/lib/use-list-url-state';
 import { useHasPermission } from '@/lib/use-has-permission';
@@ -49,15 +50,9 @@ export const RoomsPage = () => {
 
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-semibold">聊天室</h1>
-          <p className="text-muted-foreground text-sm">
-            檢視聊天室的成員與活動概況
-          </p>
-        </div>
+      <PageHeader title="聊天室" description="檢視聊天室的成員與活動概況">
         <RoomTypeFilter value={roomType} onChange={setRoomType} />
-      </header>
+      </PageHeader>
 
       <RoomsTable
         data={list}
