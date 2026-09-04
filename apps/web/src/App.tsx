@@ -6,6 +6,7 @@ import { Tooltip as TooltipPrimitive } from 'radix-ui';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
 import { RequireAuth } from '@/components/RequireAuth';
+import { RequirePermission } from '@/components/RequirePermission';
 import { RequireRole } from '@/components/RequireRole';
 import { Layout } from '@/routes/_layout';
 import { LoginPage } from '@/routes/login/page';
@@ -25,6 +26,7 @@ import { AccountLocksPage } from '@/routes/security/account-locks/page';
 import { IpBlacklistPage } from '@/routes/security/ip-blacklist/page';
 import { queryClient } from '@/api/query-client';
 import { Toaster } from '@/components/ui/sonner';
+import { PERMISSION_CODE } from '@/lib/permission-codes';
 import { ROLE_CODE } from '@/lib/role-codes';
 
 const TooltipProvider = TooltipPrimitive.Provider;
@@ -45,30 +47,85 @@ export const App = () => {
                 }
               >
                 <Route path="/" element={<HomePage />} />
-                <Route path="/members" element={<MembersPage />} />
-                <Route path="/front-users" element={<FrontUsersPage />} />
+                <Route
+                  path="/members"
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.ACCOUNT_VIEW}>
+                      <MembersPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/front-users"
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.FRONT_USER_VIEW}>
+                      <FrontUsersPage />
+                    </RequirePermission>
+                  }
+                />
                 <Route
                   path="/front-users/:userId"
-                  element={<FrontUserDetailPage />}
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.FRONT_USER_VIEW}>
+                      <FrontUserDetailPage />
+                    </RequirePermission>
+                  }
                 />
-                <Route path="/roles" element={<RolesPage />} />
-                <Route path="/moderation/reports" element={<ReportsPage />} />
+                <Route
+                  path="/roles"
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.ROLE_VIEW}>
+                      <RolesPage />
+                    </RequirePermission>
+                  }
+                />
+                <Route
+                  path="/moderation/reports"
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.MODERATION_VIEW}>
+                      <ReportsPage />
+                    </RequirePermission>
+                  }
+                />
                 <Route
                   path="/moderation/reports/:reportId"
-                  element={<ReportDetailPage />}
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.MODERATION_VIEW}>
+                      <ReportDetailPage />
+                    </RequirePermission>
+                  }
                 />
                 <Route
                   path="/moderation/members/:memberId"
-                  element={<MemberProfilePage />}
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.MODERATION_VIEW}>
+                      <MemberProfilePage />
+                    </RequirePermission>
+                  }
                 />
                 <Route
                   path="/moderation/dashboard"
-                  element={<DashboardPage />}
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.MODERATION_VIEW}>
+                      <DashboardPage />
+                    </RequirePermission>
+                  }
                 />
-                <Route path="/moderation/rooms" element={<RoomsPage />} />
+                <Route
+                  path="/moderation/rooms"
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.MODERATION_VIEW}>
+                      <RoomsPage />
+                    </RequirePermission>
+                  }
+                />
                 <Route
                   path="/moderation/rooms/:roomId"
-                  element={<RoomDetailPage />}
+                  element={
+                    <RequirePermission code={PERMISSION_CODE.MODERATION_VIEW}>
+                      <RoomDetailPage />
+                    </RequirePermission>
+                  }
                 />
                 <Route
                   path="/security/ip-whitelist"

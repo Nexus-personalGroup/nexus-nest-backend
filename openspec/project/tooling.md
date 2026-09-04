@@ -129,6 +129,15 @@ CI 不另外宣告版號。
    改動不生效**，log 完全正常。改為 `nest build --watch` + `node --watch` 兩段，
    並用 `nest-cli.docker.json` 關掉 `deleteOutDir`（否則 rebuild 清空 dist 的空窗期
    會讓 `node --watch` MODULE_NOT_FOUND 後放棄）。
+
+   ⚠️ **容器在跑的時候，host 不要跑 `pnpm build`。** host 的 `nest build` 用的是
+   `nest-cli.json`（`deleteOutDir` 沒關），會清空 `apps/api/dist`——**那是 bind mount**，
+   容器的 `node --watch dist/main` 當場 `MODULE_NOT_FOUND` 然後停在
+   「Waiting for file changes」。而 `nest build --watch` 只在**原始碼**變動時才重建，
+   dist 被外部刪掉不算，所以**它不會自己回來**。
+   症狀是畫面上的 nginx `502 Bad Gateway`，而 api 容器顯示 `unhealthy`。
+   修法：`docker compose restart api`。
+   ⚠️ 這個組合會固定重現——`pnpm build` 就寫在 Pre-Change Checklist 裡。
 5. **bind mount 不傳遞 inotify 事件**（macOS）——看 host 改動的 watch 必須輪詢：
    tsc 用 `TSC_WATCHFILE`、Vite 用 `server.watch.usePolling`。反過來，容器**自己**
    寫出的檔案（`dist`）事件是通的，不必輪詢。
