@@ -1,122 +1,130 @@
 ---
 name: tidy-todo
-description: Review tasks/todo.md as a whole and fix what the latest change made stale. Use after finishing or archiving an openspec change, or when the user says "todo 要整理" / "todo整體要整理". Not a rewrite — a checklist pass over every section.
+description: Review tasks/todo.md as a whole and fix what the latest change made stale. Use after finishing or archiving an openspec change, or when the user says "todo 要整理". Not a rewrite — a checklist pass over every section.
 license: MIT
 metadata:
   author: nexus
-  version: "1.0"
+  version: "2.0"
 ---
 
 # Review the whole of tasks/todo.md, not the part you touched
 
 The recurring failure this skill exists to fix: **only the section related to the change
-gets updated**, and the rest of the file quietly goes stale — a PR count that is one
-behind, a roadmap claiming the backlog is empty while three actionable items sit below
-it, a counter that says 8 next to a table with 9 rows.
+gets updated**, and the rest of the file quietly goes stale — a change still listed as
+待收尾 that was archived last week, a deferred item whose blocking condition already
+arrived, a count in a heading that no longer matches reality.
 
 **This is a review pass, not a regeneration.**
+
+## The file's shape
+
+`tasks/todo.md` has **eight fixed `##` sections, in this order**. Do not add a ninth;
+if something does not fit, it belongs in one of these or not in this file at all.
+（本專案與 atago / kgie / hexagonal / nexus / times 五個 repo 使用同一套章節，2026-09-21 統一。）
+
+| 章節 | 放什麼 |
+| --- | --- |
+| `## 撰寫格式` | 本檔自己的格式規則。改格式時先改這裡 |
+| `## 待辦` | 還沒開始、可動工的新工作 |
+| `## 技術債` | 既有實作的欠債，**現在就在付成本** |
+| `## 待收尾的 change` | 已封存、但仍有前端配合或 smoke test 未完 |
+| `## 延後項目` | 刻意延後，**要寫解除條件** |
+| `## 已決議不做` | 評估過決定不做，**要寫理由與重提條件** |
+| `## 注意事項` | 長期提醒、觀察中的現象、需人工處理的操作 |
+| `## 已完成` | 完成的項目 |
+
+兩組最容易混的：
+
+- **`待辦` vs `技術債`**：技術債是既有實作欠下的、現在就在付成本；待辦是還沒做的新東西。
+- **`延後項目` vs `已決議不做`**：前者「之後要做，等某個條件」；後者「評估過決定不做」。
+  混在一起的結果是同一個提案每隔一陣子被重新評估一次。
 
 ## The hard rule
 
 ⚠️ **Delete status. Never delete judgment.**
 
-`tasks/todo.md` is mostly **reasoning**: why reCAPTCHA isn't wired up yet, why the
-four sharding changes were deliberately split, eleven occurrences of a flaky e2e failure
-and what each one refuted. That reasoning is the most valuable content in the file and
-it is **not reconstructible** — it exists nowhere else.
+檔裡多數內容是**判斷**——為什麼某條守則不做、某個欄位不能手改、某個延後是可接受的。
+那些不可重建，除了這裡沒有第二份。
 
-What may be removed or collapsed:
+可以移除或收攏的：不符事實的狀態字、已完成的項目（整條搬到「已完成」）、已經不對的數字。
 
-- Items that are done (mark `✅ …（#N 修）` with a one-line summary of *how*, don't just delete)
-- "In progress" entries for changes that merged
-- Numbers that are now wrong
+**整理時絕不可移除**：為什麼某件事不做、被權衡過的取捨、
+⚠️ 關於某個決定已知代價的註記、判準。
 
-What may **never** be removed while tidying:
-
-- Why something is not being done
-- Trade-offs that were weighed
-- Hypotheses that were refuted, and what refuted them
-- ⚠️ notes about known costs of a decision
-
-If a section feels long, that is not a reason to cut it. Prune only when the user asks.
+> 2026-09-21 章節重組時就踩過一次：把「進行中」整節搬走時，
+> 連同「保留在此是因為底下的判斷仍被後續 change 引用」那句一起丟了。
+> 那是判斷不是狀態。核對腳本抓到才補回。
 
 ## The checklist
 
-Walk **all** of these every time, even the ones the change didn't touch.
+每次都走完**全部八節**，包含這次沒碰到的。
 
-### 1. 進行中
+### 1. 待辦
 
-**This section means in progress. Merged work leaves it entirely.**
+- 這次 change 有沒有把某條待辦做掉？做掉的整條搬到「已完成」。
+- 新發現的可動工項目**現在就寫**，不要等 session 結束。
 
-- The change just finished → `（#N）已完成，待 commit`, with the two or three
-  judgments that matter, not a file list. Not-yet-committed still counts as in progress.
-- **A merged change is deleted from this section**, not reworded to "已合併". Its
-  record lives in 索引 and in the 已走完 narrative — keeping a third copy here is
-  exactly the duplication that makes the file go stale, and it makes "進行中" stop
-  meaning what it says.
-  ⚠️ Check with `git log --oneline` rather than memory; "the user said they merged it"
-  and "it is merged" are different facts.
-- Normally there is **one** entry. Two means two changes are genuinely open.
-  Three or more means something was never closed out — say so.
+### 2. 技術債
 
-### 2. 路線圖
+- ⚠️ **數字會漂。** 標題或內文裡的份數、支數，每次有人修過就不對了。
+  核對方式：`ls apps/api/test/architecture/*.spec.ts | wc -l`。
+- **這次 change 有沒有讓某條技術債的理由失效？**
+- 某條已經被測試擋住了嗎？是的話從這裡移除——**機器記得的東西不需要人記**。
 
-- **Cross-check against 待辦.** If it says "可以直接動的只剩兩項" then exactly two
-  actionable items must exist below. This sentence is wrong more often than any other
-  line in the file.
-- The "next up" pointer must name a change that is actually next.
+### 3. 待收尾的 change
 
-### 3. 已走完：`<start> → <end>，N 支 PR`
+- ⚠️ **逐一核對，用指令不是憑印象**：
 
-Three things go stale here and they go stale **separately**:
+  ```bash
+  ls openspec/changes | grep -v archive
+  ls openspec/changes/archive | tail -5
+  ```
 
-- **`N 支 PR`** — bump it.
-- **The end date** — bump it when the date rolled over.
-- **The narrative paragraph below it** — it ends with "最後…"; that sentence describes
-  the previous change. Append the new one and move "最後" along.
+- 已封存**且底下沒有未完項目**的，整條搬到「已完成」。
+- 仍有前端配合或 smoke test 未完的留著，但確認那些項目還沒被做掉。
 
-### 4. 待辦 subsections
+### 4. 延後項目
 
-- Finished items → `✅ **<原標題>**（#N 修）` + one or two lines on *how it was fixed*,
-  **keeping the original reasoning underneath**.
-- A subsection whose items are now all done → keep the section, add a header note saying
-  why it's still there (usually: the judgments are still referenced elsewhere).
-- New cross-change side effects discovered during the work → write them here now.
+- 最容易被遺忘的一節，沒人會主動去讀標題寫著「延後」的段落。
+- **逐條問一次：當初延後的條件到了嗎？** 到了就移出來，沒到就確認理由還成立。
+- 沒寫解除條件的，補上——沒有條件的延後等於無限期擱置。
 
-### 5. 技術債 / 已知缺口
+### 5. 已決議不做
 
-- Same ✅ treatment.
-- ⚠️ **Check whether the change invalidated a stated reason.** A debt entry saying
-  "要先加觀測" is wrong once observability shipped — rewrite it to say what the next
-  step is now.
+- ⚠️ **這一節的失效方向跟別節相反**：別節是條目過期，這裡是**理由死了條目還活著**。
+- 逐條問：**這個理由現在還成立嗎？** 例如「做不到零假陽性」在技術到位之後就不成立了。
+  不成立就改寫成下一步，或移到「待辦」——不要留著死理由，
+  因為這一節存在的目的就是沒人會再去檢查它。
+- 這次 change 產生的新「看過了，決定不做」結論**現在就寫**，
+  沒寫下來的話兩個月後會再評估一次。
 
-### 6. 觀察中
+### 6. 注意事項
 
-The flaky-e2e entry keeps the same number in **three** places — the table rows,
-the `計數 N` line, and the ⚠️ note at the bottom. **They drift.** Check all three.
+- 這節是長期提醒，不該長。每條都問：它還成立嗎？已經有測試或 hook 擋住了嗎？
+- 間歇性失敗的條目要記**它又出現了幾次、每次推翻了什麼假設**，不是只記症狀。
 
-- New occurrence → add a table row with *what it refuted*, not just the symptom.
-- ⚠️ **Did this change refute an existing hypothesis?** If so, say so explicitly and
-  mark the hypothesis dead. Leaving a disproven hypothesis in place is worse than
-  having none — the next person will chase it.
+### 7. 已完成
 
-### 7. 索引
+- 只用單行格式，**不要出現第二種寫法**，也不要分「較早 / 最近」之類的子區塊。
+- 記的是**這次 change 定下了什麼判斷**，不是動了哪些檔案。
 
-Add the row: `| #N | MM-DD | \`<change-name>\` | 一句話 |`.
-The sentence should say **what judgment the change encoded**, not what files it touched.
+### 8. 撰寫格式
 
-### 8. 幾個反覆出現的教訓
-
-Only add here when a pattern has now happened **more than once**. A single occurrence
-belongs in `tasks/lessons.md`, not here.
+- 只有在真的改了格式時才動。改了就要同步本 skill。
 
 ## Verify before claiming done
 
-Numbers are the thing that goes wrong, so check them mechanically rather than by eye:
+數字與狀態最常出錯，用機械方式核對而不是用眼睛：
 
-- PR count in the heading vs. rows in the 索引 table
-- `計數 N` vs. rows in the flake table
-- Roadmap's "可以直接動的 N 項" vs. actual unmarked actionable items
+```bash
+# [x] 不得出現在「已完成」以外的章節
+awk '/^## /{s=$0} /^- \[x\]/{if(s!="## 已完成") print "✗ "s": "$0}' tasks/todo.md
 
-State what you changed section by section. If a section needed nothing, say that —
-"looked at it, nothing stale" is a real result and tells the user the pass was complete.
+# 章節必須剛好是那八個、順序不變
+grep '^## ' tasks/todo.md
+```
+
+「索引」那張 PR 表要對 `git log --oneline`；間歇性失敗的次數要對實際發生紀錄，不要憑印象加一。
+
+逐節說明你改了什麼。某節不需要動就說「看過了，沒有過期的」——
+那是真實結果，代表這次 pass 是完整的。

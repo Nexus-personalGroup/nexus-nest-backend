@@ -198,6 +198,7 @@ pnpm --filter @app/api test        # 單元測試 + 架構守則（串接執行�
 | `openspec-schema.spec.ts` | 自訂 schema 存在；建立 change 一律帶 `--schema`（掃**所有現行指示文件**：`.claude/`、`openspec/`、`CLAUDE.md`、`README.md`，**排除封存區**）；opsx 指令維持薄殼 |
 | `openspec-spec-format.spec.ts` | 能力命名前綴；`api-*` 的 endpoint 需求須寫請求與回應；**Purpose 不得留空或含 `TBD`**（`openspec archive` 只合併 `## Requirements`，Purpose 是留給人補的） |
 | `project-docs.spec.ts` | `project.md` 索引連結有效、無孤兒子檔、全 repo 引用有效 |
+| `ci-parity.spec.ts` | CI 必須跑 typecheck / lint / **test:cov**（不是 test，否則覆蓋率門檻靜默失效）/ e2e / build；**CI 與 `compose.yml` 的映像版本必須一致**（版本漂移的症狀是「本機過、CI 掛」而差異不在程式碼）；`DB_TEST_DATABASE` 須含 `test` |
 | `compose-files.spec.ts` | 每份 compose 都有 script 會啟動；對外埠須寫進 README；docker 相關檔案提到的 `pnpm <script>` 須存在 |
 | `global-guards.spec.ts` | 認證與授權 guard 全域註冊，且授權排在 `JwtAuthGuard` 之後 |
 | `sanitize-coverage.spec.ts` | request DTO 中看起來敏感的欄位，實際餵進 `sanitize()` 驗證真被遮蔽 |

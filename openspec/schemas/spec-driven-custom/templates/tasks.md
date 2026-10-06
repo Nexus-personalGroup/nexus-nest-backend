@@ -2,7 +2,7 @@
 > `pnpm typecheck && pnpm lint && pnpm test`
 > 動到 controller / 路由再加 `pnpm --filter @app/api test:e2e`；動到 module 接線 / path alias / 裝飾器再加 `pnpm build`；
 > 動到 swagger yaml 再加 `pnpm --filter @app/api swagger:bundle && pnpm --filter @app/api-client generate`。
-> 綠燈後給 commit 指令，由使用者手動執行，再進下一塊。
+> 綠燈才進下一塊。（commit 粒度見 CLAUDE.md 的 Change lifecycle。）
 >
 > <!-- 交代塊與塊的依賴：哪幾塊互相獨立可先做、哪一塊是動 production code 前的安全網不可跳過。
 >      例：塊 1～2 為 A 功能，與塊 3～4 獨立，可先做；塊 3 是改寄信前的 characterization test，不可跳過。 -->

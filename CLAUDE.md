@@ -18,9 +18,7 @@ At the start of every new session:
 
 ## Critical Rules
 
-- **Never run `git commit` / `git push` on your own** unless explicitly asked. Provide the commands for the user to run manually.
 - **Do not over-engineer**: implement only what's asked — no extra endpoints, migration scripts, debug APIs, or entity files. When in doubt, do less.
-- **Output data directly**: when asked for data / JSON, print it straight to stdout. Do not give placeholder values, setup steps, or scripts unless explicitly asked.
 - **Verify schema before modifying queries**: before assuming a field exists, check `apps/api/prisma/schema.prisma`.
 - **Reuse before creating**: before writing anything new, search `apps/api/src/` (backend), `apps/web/src/` (frontend), and `packages/api-client/src/` (shared) for an existing helper / facade / port / adapter / hook.
 
@@ -28,34 +26,34 @@ At the start of every new session:
 
 ## Hard Rules
 
-> Scannable red-line list; complements the Critical Rules above.
->
-> Each rule is tagged with **how it is enforced** — `型別` (compiler), `測試` (architecture
-> test / e2e), `lint` (eslint), `hook` (agent hook), or `自律` (convention only, nothing
-> catches it). The `自律` ones are where your attention actually matters.
+Split by **how each rule is enforced**. The machine-enforced ones are one-liners on purpose — the test is what actually stops you, so more words here would not make them more obeyed, and the reasoning already lives in `openspec/project/`. **The self-discipline ones are where your attention actually matters**, and they carry their full reasoning because nothing else will catch them.
 
-- 🚫 **Never let a controller touch Prisma / a repository directly** — always go through `Facade → UseCase / Service → Port` (hexagonal layering). 〔**lint + 測試**〕
-- 🚫 **Never hand-scaffold a feature module or misplace the front/back split** — the codebase has two API sides: 後台 `admin/` (`/api/admin/*`) and 前台 `front/` (`/api/front/*`). The **in-side 5 layers** (controller / facade / service / port-in / module) live under `<side>/`; **out-side** (persistence / port-out), **domain**, and cross-cutting (guard / filter / interceptor / decorator) are **shared — never under a side**. Scaffold new modules with `pnpm --filter @app/api gen:module <name> [--admin|--front]` (defaults to admin); front module classes get a `Front` prefix. The generator also injects the error code + message, writes swagger yaml stubs, registers them in `openapi.yaml`, and re-runs bundle/generate — **its output passes typecheck / lint / all guardrails with zero hand edits**. If you ever change a domain base class, shared constant, or layering rule, re-run the generator on a throwaway name and verify it still comes out green. Swagger/api-client is admin-only (`/api/admin/docs`); front has its own doc (`/api/front/docs`), see `openspec/project/backend-architecture.md`. 〔**測試**〕
-- 🚫 **Never `throw new Error('...')`** — use a domain exception (a subclass of `DomainException` passing a `ResponseCodes` code + a semantic `kind`) or a NestJS `HttpException`. The filter maps `kind → HTTP status` automatically, so you do **not** touch `GlobalExceptionFilter` when adding an exception. Adding a code means editing **two** files: `shared/constants/response-codes.ts` and `shared/constants/response-messages.ts` — the message table is `satisfies Record<ResponseCode, …>`, so a missing message fails typecheck immediately. 〔**測試**〕
-- 🚫 **Never inline a user-facing message inside an exception** — messages live only in `response-messages.ts`. Static messages take `super(code, kind)` (two args, the base looks it up); parameterised ones take `super(code, kind, ResponseMessages.X(arg))`. A constructor overload makes the parameterised case a **compile error** if you forget the message, and an architecture test rejects Chinese string literals under `domain/exception/`. 〔**型別 + 測試**〕
-- 🚫 **Never validate domain input with `of()` on a DB-restore path** — value objects have two entry points: `of()` validates and throws `INVALID` (→ 400) for user input; `trusted()` skips validation for `reconstitute()`. Re-validating on restore reports data corruption as a client input error. 〔**自律**〕
-- 🚫 **Never hand-write a DTO class** — request / response types are always inferred from a Zod schema via `z.infer`, validated with `ZodValidationPipe`. 〔**測試**〕
-- 🚫 **Never set `"type": "module"` on the root or `apps/api` `package.json`** — stay on the NestJS CommonJS baseline; switching to ESM cascades into breaking nest CLI / ts-jest / decorator metadata (`apps/web` is the exception — it's Vite ESM by design). 〔**測試**〕
-- 🚫 **Never skip env validation** — any new env var must be added to the `envSchema` in `apps/api/src/infrastructure/validate-env.ts` (production-mandatory ones also into `productionErrors`), or it fails silently as `undefined` at runtime. 〔**測試**〕
-- 🚫 **Never let an Exception message leak sensitive info** — SQL / stack traces must not reach the client; unexpected errors always return 500 + a generic message (domain exceptions return only a safe message). 〔**自律**〕
-- 🚫 **Never mock the database in e2e / integration tests** — run against a dedicated test database (`test/setup/setup-env.e2e.ts` overrides `DB_DATABASE` to a `*_test` DB — object-config Prisma, no `DATABASE_URL`). `globalSetup` must verify the target DB name ends in `_test` before migrating/resetting; run serially (`--runInBand`) since all specs share one test DB. 〔**測試**〕
-- 🚫 **Never run `pnpm dev` on your own** (including per-`--filter`) — the dev server is started by the user for verification. 〔**自律**〕
-- 🚫 **Never modify `.env`** — that's the user's DB / secret config; only edit `.env.example`. 〔**自律**〕
+### Machine-enforced — violating these fails `pnpm test`
 
----
+- 🚫 Never let a controller touch Prisma / a repository directly — go through `Facade → UseCase / Service → Port`. 〔lint + `layering.spec.ts`〕
+- 🚫 Never hand-scaffold a feature module or misplace the front/back split — use `pnpm --filter @app/api gen:module <name> [--admin|--front]` (defaults to admin). Layout and generator output: `project/backend-architecture.md`, `project/backend-utilities.md`. **If you change a domain base class, shared constant, or layering rule, re-run the generator on a throwaway name and confirm it still comes out green.** 〔`side-isolation.spec.ts` + layering〕
+- 🚫 Never `throw new Error('...')` — use a `DomainException` subclass or a NestJS `HttpException`; adding a code means editing both `response-codes.ts` and `response-messages.ts`. 〔`no-native-error.spec.ts`, typecheck〕
+- 🚫 Never inline a user-facing message where it can reach a client — messages live only in `response-messages.ts` (`ResponseMessages` for `DomainException`, `HttpMessages` for framework `HttpException`s). Guardrail's two-criteria design: `project/testing.md`. 〔type + `no-inline-message.spec.ts`〕
+- 🚫 Never hand-write a DTO class — infer from a Zod schema via `z.infer`, validated by `ZodValidationPipe`. 〔`dto-from-zod.spec.ts`〕
+- 🚫 Never set `"type": "module"` on the root or `apps/api` `package.json` — stay on the NestJS CommonJS baseline (`apps/web` is Vite ESM by design). 〔`commonjs-baseline.spec.ts`〕
+- 🚫 Never skip env validation — new vars go into `envSchema` in `apps/api/src/infrastructure/validate-env.ts` (production-mandatory ones also into `productionErrors`). 〔`env-schema.spec.ts`〕
+- 🚫 Never mock the database in e2e / integration tests — they run against the dedicated `*_test` PostgreSQL DB (`pnpm docker:deps`; Redis is mocked). Setup, the `globalSetup` guard and `--runInBand`: `project/testing.md`. 〔`e2e-real-database.spec.ts`〕
 
-## Communication Style
+### Self-discipline — nothing catches these
 
-- Default reply language is **Traditional Chinese**; switch to English only when the user does.
-- When the user says 「不用」 or interrupts, stop immediately and keep replies brief.
-- Before a change touching 3+ files, outline the plan (which files, what changes) and wait for confirmation.
-- When a requirement is ambiguous, ask one key question rather than guessing the implementation.
-- Match reply length to question complexity. Simple question → direct answer, no headers.
+- 🚫 **Never validate domain input with `of()` on a DB-restore path.**
+
+  Value objects have two entry points: `of()` validates and throws `INVALID` (→ 400) for user input; `trusted()` skips validation for `reconstitute()`. Re-validating on restore reports **data corruption as a client input error** — the user sees a 400 for a row that was already broken before they touched it, and the real problem stays invisible.
+
+- 🚫 **Never let an exception message leak sensitive info** (SQL, stack traces, connection strings).
+
+  The generic-message fallback is narrower than it looks: it only covers **unexpected errors**. Domain and framework exception messages reach the client as written, so anything you put in one is outward-facing. No test inspects message contents.
+
+- 🚫 **Never run `pnpm dev` on your own** (including per-`--filter`).
+
+  The dev server is started by the user for verification. Starting it yourself takes the port, produces output nobody is watching, and leaves a process running after the session ends.
+
+- 🚫 **Never modify `.env`** — that's the user's DB / secret config; only edit `.env.example`.
 
 ---
 
@@ -76,7 +74,7 @@ This project has explicit per-file language rules:
 | Code comments (all files)     | Traditional Chinese only |
 | Frontend UI strings           | Traditional Chinese only |
 
-- **Never use Japanese** in any artifact (overrides the bilingual default in the global CLAUDE.md).
+- **Never use Japanese** in any artifact.
 - **Never write code comments in English or bilingual** — Traditional Chinese only.
 - **The `##` headings in openspec artifacts stay English** — `## Why`, `## What Changes`, `## Capabilities`, `## Impact`, `## Context`, `## Decisions`, `## ADDED Requirements`, `### Requirement:`, `#### Scenario:` and friends are parsed by the openspec CLI, and `## Capabilities` in particular is the contract between the proposal and specs phases. Translating them breaks parsing silently. Everything under those headings is Traditional Chinese.
 
@@ -108,26 +106,105 @@ Three layers work together:
 | **Spec**    | `openspec/changes/<name>/`           | Per-change proposal / design / specs / tasks                 |
 | **Process** | openspec + selected superpowers      | Change management + TDD / verification / debugging discipline |
 
+### How openspec and superpowers divide the work
+
+**Core principle: openspec owns artifacts and state; superpowers owns thinking discipline.**
+
+- **openspec** = the artifact / state machine — the change folder, proposal / design / specs / tasks, progress checkboxes, archive merge-back. It knows where you are, what artifact comes next, and what format it must take.
+- **superpowers** = cognitive discipline — how to ask, how to debug, how to confirm done. **It produces no files and owns no state.**
+
+**Rule 1 — superpowers never creates files.** Conclusions go back into openspec's locations: a brainstorming outcome goes to `changes/<name>/design.md`; a systematic-debugging root cause is routed by the table below. Never open a separate plan file or report file — superpowers will want to, and this rule is what stops it.
+
+**Root-cause routing** — not "write every root cause into lessons", that is what bloats it:
+
+| Root cause | Goes to | Accumulates? |
+| --- | --- | --- |
+| **A** Fixable inside the current change | a task in `tasks.md` (insert as `2b`) | ❌ leaves with the archive |
+| **B** Can become a guardrail | an architecture test | ❌ the machine remembers it |
+| **C** Will be hit again and nothing catches it | `tasks/lessons.md` | ✅ **the only accumulating one — highest bar** |
+| **D** One-off (typo, environment, upstream already fixed) | nowhere | ❌ |
+
+Most root causes are A / B / D. **Only C goes into `lessons.md`.**
+
+**Rule 2 — which explore tool:**
+
+| Situation | Use |
+| --- | --- |
+| **You don't know what to build** (requirement undefined, several options, needs a human decision) | `superpowers:brainstorming` — one question at a time, decisions via `AskUserQuestion` |
+| **You know what to build, not how things look today** (which modules it touches, how they currently work) | `openspec-explore` — it runs inside the openspec context and knows what is in `specs/` |
+
+**Rule 3 — superpowers skills are conditional, not default.** Even whitelisted skills fire only when their condition holds; do not run the whole set because one "might apply":
+
+| Skill | Fires when | Does not fire |
+| --- | --- | --- |
+| `brainstorming` | requirement is vague or has several options | requirement is clear → go straight to propose |
+| `test-driven-development` | service / use case / domain logic | CRUD scaffolding, config, docs |
+| `verification-before-completion` | **unconditional** — before any "done" claim | never skipped |
+| `systematic-debugging` | a bug **whose root cause is unclear** | obvious typo / type error → just fix it |
+| `grill-me` *(local skill, not superpowers)* | the user asks for it, **or** the design converged with no option ever rejected, **or** the proposal asserts "X needs no change" without evidence | requirement is clear, single file, behaviour unchanged |
+
+**Rule 4 — on conflict, the openspec schema wins.** The schema is per-project, is fed in by `openspec instructions` at the moment an artifact is generated, and has guardrail tests behind it; superpowers is global and injected wholesale by a SessionStart hook. When they disagree about format or splitting, follow the schema.
+
+**Rule 5 — the *superpowers* whitelist is four skills** (skills under `.claude/skills/` are this repo's own and are governed by the table above, not by this rule): `brainstorming`, `test-driven-development`, `verification-before-completion`, `systematic-debugging`. **The SessionStart hook injects all 14 — nothing else is used.** Explicitly not used: `using-git-worktrees`, `finishing-a-development-branch`, `requesting-code-review`, `receiving-code-review`, `subagent-driven-development`, `dispatching-parallel-agents`, `writing-plans`, `executing-plans` — planning and execution go through openspec, review goes through `cr-zh`, branching goes through GitFlow.
+
+**Rule 6 — requirements and bugs take different paths.**
+
+- **Vague requirement → ask the user one key question.** Do not guess and implement.
+- **Unclear bug → find the root cause yourself** (`systematic-debugging`). Do not push it back to the user, unless you cannot reproduce it — then ask for repro steps.
+
+### Change lifecycle — the exact order
+
+1. **Branch first** — cut from `develop`, before the change folder exists.
+
+   **The branch is named after what it delivers (its PR title), not after a change.** A change is one commit — an independently revertable logical unit. A branch is one PR — an independently mergeable *delivery* unit. **One branch holding N changes is normal, not an exception.**
+
+   ```
+   N=1   the change is the whole delivery → the verb prefix becomes the type
+         change add-role-management       → branch feat/role-management
+         change refactor-switch-to-postgres → branch refactor/switch-to-postgres
+   N>1   name the theme; type follows its dominant nature
+         → feat/admin-moderation
+   too big  split one theme across several PRs
+         → feat/admin-moderation-1 / -2
+   ```
+
+   `add-` / `improve-` → `feat/`, `fix-` → `fix/`, `refactor-` → `refactor/`, `enforce-` / tooling / config → `chore/`, plus `perf/` and `docs/`.
+
+   Branch names are always **noun phrases** — `feat/role-management`, never `feat/add-role-management`. The verb is already said by the type.
+
+   **No placeholder branch names** (`1`, `2`, `3`). The theme is known before you start. Only genuine exploration justifies a temporary name, and it **must be renamed before the first push** — renaming after a push means `git push origin :old new` plus resetting upstream, and it breaks any open PR link.
+
+2. **Create the change** — `openspec new change "<name>" --schema spec-driven-custom`, then design → proposal → specs → tasks. **The user approves before any code is written.**
+3. **Mark it in progress** — record the change name and goal in `tasks/todo.md`.
+4. **Implement** — block by block (see Phase 3). Each block passes the Pre-Change Checklist before the next one starts, but **no commit between blocks**.
+5. **Archive** — `openspec-archive-change`.
+6. **Write lessons** — only if a real pitfall was hit (route C above). Nothing hit, nothing written.
+7. **Update todo** — tick the change off, move deferred items to the deferred section.
+8. **Commit — one commit per change.** Implementation, archive, lessons, and todo all go into a single commit. Not one per block, not one per file.
+9. **Push** — the user pushes.
+10. **Merge** — PR into `develop`.
+
+**Only step 8 produces a commit.** Blocks are units of verification, not units of commit — a block going green means "safe to continue", not "time to commit". Never run `git commit` / `git push` yourself.
+
 ### Phase 1 — Explore & Design (new feature)
 
 - Gather design context from available sources — MCP design files (Pencil, Figma, etc.), PNGs / screenshots in `openspec/assets/`, or referenced docs.
 - Use `openspec-explore` (or `superpowers:brainstorming` — one question at a time, decisions via `AskUserQuestion`) as a thinking partner to clarify requirements.
+- **Optional adversarial pass — `grill-me`**, after the design takes shape and before `openspec-propose`. It is the mirror of brainstorming: brainstorming grows the idea, grill-me assumes it has a hole and goes looking. **Do not interleave the two** — one diverges, the other probes. It writes nothing; its output is a decision summary that feeds straight into propose.
 - Write the approved design to `openspec/changes/<name>/design.md`.
 
 ### Phase 2 — Specify
 
 - Use `openspec-propose` → generates `proposal.md`, `specs/`, `tasks.md` in the change folder.
-- **Changes must be created with `--schema spec-driven-custom`.** The project's format rules live in `openspec/schemas/spec-driven-custom/` and reach you through `openspec instructions`; `openspec config` is global-scope only, so a missing flag silently falls back to the built-in schema and every rule below stops applying. `openspec-schema.spec.ts` fails if the flag or the schema goes missing.
-- Capability names carry a mandatory prefix that dictates how the spec is written: `api-` (backend endpoint contract, admin by default), `api-front-`, `ui-`, `platform-`. Full table in `openspec/project/openspec-conventions.md`.
-- API changes must define request / response specs in the change's `specs/` **before any controller code** — each endpoint requirement needs **Request**, **Success Response**, and **Failure Responses** with real JSON. Two things are easy to get wrong: returning `null` omits the `data` key entirely (not `"data": null`), and `204 No Content` carries no body at all. `openspec-spec-format.spec.ts` enforces this.
-- For backend changes, `tasks.md` phases follow this order: Schema/Migration → Domain/Port → Exceptions/Filter → Services (TDD) → Out Adapter → Controller/DTO → Facade + Module → Swagger → Unit tests → E2E tests → Verification → Wrap-up.
+- **Changes must be created with `--schema spec-driven-custom`.** The project's format rules live in `openspec/schemas/spec-driven-custom/` and reach you through `openspec instructions`; falling back to the built-in schema silently drops every rule below. Two things keep that from happening and **both must stay** — `openspec/config.yaml` pins the project default (it covers the case nothing scans: a human typing `openspec new change` in a terminal), and the flag is what `openspec-schema.spec.ts` can actually see and fail on. The config file fails silently when deleted or mis-set; the flag fails loudly. Note the `openspec config` **command** is global-scope only, but the config **file** is per-project — conflating the two is why the project default went unset for so long.
+- **Everything about artifact *format* lives in `openspec/schemas/spec-driven-custom/schema.yaml`** and is fed to you by `openspec instructions` at the moment each artifact is generated — capability prefixes, the `api-*` request/response format, delta operations, the `tasks.md` phase order and block-splitting rule, the design writing requirements. **Do not restate them here or in `openspec/project/`**; read the schema. `openspec-spec-format.spec.ts` guards the spec side.
 - The user reviews and approves before any code is written.
 
 ### Phase 3 — Implement
 
 - Use `openspec-apply` to work task by task.
 - For service / use case implementation use `superpowers:test-driven-development` — spec first, then implementation; write unit tests per block (mock ports at the service layer).
-- **Work in blocks**: split the change into blocks that each build / verify independently (mind chained dependencies — e.g. dropping a column hits service / seed, so bind them into the same block; never leave a non-compiling intermediate state). Each block: run the Pre-Change Checklist green → give one bulleted commit command (the user runs it) → move to the next block.
+- **Work in blocks**: split the change into blocks that each build / verify independently (mind chained dependencies — e.g. dropping a column hits service / seed, so bind them into the same block; never leave a non-compiling intermediate state). Each block: run the Pre-Change Checklist green → move to the next block. **No commit between blocks** — blocks are units of verification, not units of commit (see the lifecycle above).
 - Before marking a task done, use `superpowers:verification-before-completion` — never claim "done" without running the verification command.
 - Create `smoke-test.md` in the change folder with curl commands for manually verifying new endpoints.
 
@@ -138,10 +215,29 @@ Three layers work together:
 - **Review follow-up**: from the branch review report, open a fix change (same propose → apply → archive), split by severity (🔴 blockers first → same-topic 🟡 → the rest 🟡 / 🟢 in a separate cleanup change).
 - Debug at any phase with `superpowers:systematic-debugging` (find the root cause before fixing).
 
+### Does a bug get its own change?
+
+The test: **if this bug is not fixed, can the current change still claim to be done?**
+
+| Situation | What to do |
+| --- | --- |
+| No change in progress (bug in production, user-reported, from a review report) | **Open a fix change** |
+| In progress, and the bug is inside this change's scope (you just wrote it) | Fold it into the current change, inserted as `2b` in `tasks.md` |
+| In progress, but the bug is unrelated to this change | **Open a separate fix change** — folding it in costs the current change its "independently revertable" property |
+
+**Threshold**: if behaviour does not change (typo, comment, formatting), no change is opened — just fix and commit.
+
+**How a fix change writes its spec** — this matters more than whether to open one:
+
+| Nature of the bug | Spec handling |
+| --- | --- |
+| The spec was clear; the code just didn't do it | No spec change; add the test. `skip_specs: true` is acceptable |
+| **The spec never covered this situation (most common)** | Add a `#### Scenario:` to the existing requirement — *that* is the real spec delta |
+
+If the spec were complete and had matching tests, the bug usually would not exist — so **most bugs expose a gap in the spec, not an oversight in the implementation**. A fix change **adds a scenario by default**, so `openspec archive` merges it into the master spec and the same bug cannot come back. Fixing the code without adding the scenario skips that protection entirely.
+
 ### Working Habits
 
-- **Subagent strategy**: offload research, broad searches, or cross-file comparison to an Explore subagent to protect the main context.
-- **Demand elegance**: before acting, ask "is there a more elegant / smaller way?"
 - **Lessons format**: record immediately when corrected or after hitting a non-obvious pitfall. Short rules stay one-line bullets; anything needing more than three lines uses the three-part form (踩到什麼 / Why / How to apply) under a dated `###` heading. See the "撰寫格式" section at the top of `tasks/lessons.md`.
 
 ### Memory rules
@@ -153,7 +249,13 @@ Three layers work together:
 3. **Cross-change side effect discovered**: write it immediately, don't wait until session end.
 4. **Feature deferred due to external dependency**: record the reason and condition.
 
-**`tasks/lessons.md`** — append after corrections OR after the user confirms a non-obvious approach worked. **Only real pitfalls belong here.** Three things do not: knowledge that is just restating official docs (delete), project conventions and architecture decisions (move to `openspec/project.md` — **move first, then delete**, never drop information), and rules already enforced by a guardrail (delete — if a machine catches it, nobody needs to remember it). Prune periodically rather than appending forever; an unpruned lessons file becomes noise nobody reads.
+**`tasks/lessons.md`** — append after corrections OR after the user confirms a non-obvious approach worked. **Only real pitfalls belong here** (route C in the root-cause table above). Three things do not: knowledge that is just restating official docs (delete), project conventions and architecture decisions (move to `openspec/project.md` — **move first, then delete**, never drop information), and rules already enforced by a guardrail (delete — if a machine catches it, nobody needs to remember it).
+
+**Pruning trigger and criterion** — "prune periodically" with no trigger means it never happens:
+
+- **Trigger**: check on every archive (same moment as `tidy-todo`).
+- **The criterion is duplication, not entry count.** An entry earns its place if it is a specific pitfall that nothing else records. Delete only when the same rule already lives in `openspec/project/`, in this CLAUDE.md, or in another entry of the same file — and when it does, keep the canonical copy and leave a pointer rather than dropping the reasoning. A 2026-09-16 pass over 133 entries found exactly **4** genuine duplicates. **Never cut by headcount** — it destroys knowledge that exists nowhere else.
+- **The per-session cost is real, but deletion is the wrong lever.** The Session Start Checklist reads this file every session. When it grows past what is worth loading wholesale, change *how* it is read — scan the `##` topic headings and open only the section relevant to the work at hand — instead of deleting entries that earn their place.
 
 **Design docs** always live in `openspec/changes/<name>/design.md`.
 

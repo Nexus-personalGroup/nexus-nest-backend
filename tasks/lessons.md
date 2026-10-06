@@ -12,7 +12,7 @@
 | 專案慣例與架構決策 | `openspec/project.md`（**先搬再刪**，不要弄丟資訊） |
 | 已被護欄自動擋住的 | 刪掉——機器在守就不需要人記得 |
 
-**條目累積後要定期回頭整理**，不是只增不減：2026-08-14 一次整理從 102 條降到 69 條，砍掉的全是上表三類。沒整理的 lessons 會變成沒人讀的雜訊。
+**條目累積後要定期回頭整理**，不是只增不減。但**判準是重複，不是條數**——只有當同一條規則已經存在於 `openspec/project/`、CLAUDE.md 或本檔另一條時才刪，刪時留指標、不要丟推理。2026-08-14 那次從 102 條降到 69 條，砍掉的全是上表三類；2026-09-16 再掃一次 133 條只找到 4 條真重複。**照條數砍會砍掉存在於別處的知識。**
 
 **依主題分組**（Prisma / JWT / NestJS…）而非日期流水——同主題聚在一起才找得到。
 
@@ -230,8 +230,6 @@ Aborted. No files were changed.
 
 - **一次性 token 要原子 claim**：`validateToken + markUsed` 兩步驟之間有 bcrypt 雜湊，併發請求可雙雙通過。改用 Prisma extended where 在單一 UPDATE 同時檢查條件 + 標記使用（`update({ where: { token, usedAt: null, expiresAt: { gt: now } } })`），找不到 record 會丟 P2025。
 
-- **P2002 要在 Repository 層轉成 domain exception**：`findByEmail + create` 存在競態。Repository 的 `create` 外層 try/catch，`err.code === 'P2002'` 時丟 domain exception；Service 層不該感知 Prisma 錯誤。
-
 - **PostgreSQL 的 `DELETE` 不支援 `LIMIT`**：MySQL 可以 `DELETE ... LIMIT n` 分批，PostgreSQL 語法上就沒有這件事。分批要寫成 `DELETE FROM t WHERE ctid IN (SELECT ctid FROM t WHERE ... ORDER BY ... LIMIT n)`。用 `ctid`（實體位置）而非 PK 可省掉第二次索引查找；子查詢與 DELETE 在同一 statement 的快照內求值，對唯寫入不更新的日誌表是安全的。
 
 - **PostgreSQL 容器的 healthcheck 一定要用 `pg_isready`，不能只看行程或埠**：官方映像首次啟動時會**先起一次臨時伺服器**跑 initdb 與初始化腳本，該階段行程已存在但對外連線尚未開放。只檢查行程會得到「已就緒」的錯誤結論，症狀是 api 在資料庫初始化中途連線並以認證失敗告終。
@@ -291,11 +289,11 @@ export {};
 
 ## Domain Exception / 錯誤處理
 
-- **型別能保證的完整性，不要退回用測試檢查**：錯誤碼與訊息表用 `as const satisfies Record<ResponseCode, …>` 約束，新增 code 忘了補訊息當場 `TS1360`，回饋即時出現在編輯器。用 `satisfies` 而非型別註記（後者會把動態訊息的參數型別抹成 `never[]`）；「靜態／動態」的分類也從表推導，不要手工維護第二份清單。架構測試只做型別擋不住的部分。
+- **型別能保證的完整性，不要退回用測試檢查**：用 `satisfies` 而非型別註記（後者會把動態訊息的參數型別抹成 `never[]`）；「靜態／動態」的分類從表推導，不要手工維護第二份清單。架構測試只做型別擋不住的部分。（錯誤碼與訊息表的機制本身見 `openspec/project/backend-architecture.md`。）
 
 - **建構子重載可以把「哪些情況必須傳參數」寫進型別**：`DomainException` 兩個重載讓靜態訊息只傳 `(code, kind)`，需要參數的訊息漏傳直接 `TS2345`，不會出現「函式被當成訊息字串」的執行期怪象。實作簽名的 fallback 分支雖不可達也別留空字串（取 code 本身較安全）；重載寫完務必用探針驗證「該擋的擋、該過的過」。
 
-- **value object 要分 `of()` 與 `trusted()` 兩條路徑**：`of()` 驗證新輸入並拋 `INVALID`（400）；`trusted()` 不驗證，供 `reconstitute()` 從 DB 還原使用。還原路徑若重跑驗證，**資料損毀會被回報成 400**（客戶端輸入錯誤），但客戶端根本沒做錯——那是 500 的情境。改這類設計時注意既有測試可能正在保護舊行為。
+- **改 `of()` / `trusted()` 這類設計時，注意既有測試可能正在保護舊行為**：兩條路徑的分工本身見 CLAUDE.md 的 Hard Rules 與 `openspec/project/backend-runtime.md`；這裡只記那次踩到的——測試綠不代表新設計對，它可能正在釘住你要改掉的行為。
 
 ## 測試
 
@@ -537,8 +535,6 @@ zsh 常見的 `cp`/`rm` 互動 alias 會讓還原**靜默失敗**——
 **Why**：`JwtPayload` 刻意輕量只存 `sub`，`request.member.roleCode` 是 `JwtAuthGuard` **每個 request 從 DB 撈的**。seed 的 role 沒設 `roleCode`，guard 撈到的自然不是 `SUPERADMIN`。
 
 **How to apply**：`seedMember` / `seedRole` 開 `roleCode?` 參數。注意 **roleName（顯示名「管理者」）與 roleCode（權限碼）是兩回事**，gate 比對的是後者。
-
-- **`jest.clearAllMocks()` 不會清掉 `mockReturnValue` 設定的實作**：它只清呼叫紀錄。前一個 `it` 設的回傳值會滲進後面所有測試，症狀是「單獨跑會過、整支跑會失敗」。`beforeEach` 要明確重設每個 mock 的回傳值，或改用 `mockReset()`。
 
 - **debug 測試時不要相信 console.log 的輸出順序**：jest 會緩衝並在報告階段統一輸出，同一支測試內的先後看起來會亂掉，跨 hook（`afterEach`）更明顯。追時序問題要在訊息裡自帶時間戳，或直接量測耗時。
 
