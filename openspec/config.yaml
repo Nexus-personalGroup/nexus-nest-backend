@@ -1,1 +1,9 @@
+# 專案預設的 openspec schema。
+#
+# 格式規範（能力命名前綴、api- 的四段式請求/回應、tasks 的分塊標準）住在
+# openspec/schemas/spec-driven-custom/，由 `openspec instructions` 餵給 AI。
+# 少了這份設定，手打 `openspec new change` 會靜默落回內建 schema，規範一條都不生效。
+#
+# 這不是 `--schema` 旗標的替代品，兩道並存：本檔被刪或值改錯是**靜默**失效，
+# 旗標漏帶則由 openspec-schema.spec.ts **顯性**擋下。
 schema: spec-driven-custom

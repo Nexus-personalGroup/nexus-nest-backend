@@ -149,6 +149,33 @@ CI 不另外宣告版號。
 ——它只砍 `node_modules` 的 volume 再重建，**不動 `postgres-data` / `redis-data`**。
 `docker:reset`（`down -v`）會移除專案的**所有** volume 含資料庫，之後得重跑 `docker:init`。
 
+#### 這套設計不是本專案獨創，但有三樣是本專案特有的
+
+容器化的形狀承自 `times-account-backend`（Laravel + MySQL）。**四件事是共通的設計**，
+改動前要知道它們是刻意的，不是碰巧長成這樣：
+
+- **Dockerfile 只給開發與驗證用，不是部署映像。** 單 stage、原始碼 bind mount、
+  刻意不 `COPY`——`COPY` 進去改一行就要重 build，而開發映像的重點正是不用重 build。
+  部署要的是相反的東西（最小、不可變、原始碼烘進去），兩者**要求相反**，不該是同一支。
+- **連線類變數由 compose 的 `environment` 釘死**，蓋過開發者本機的設定。
+  不釘的話每個人為了跑容器都得去改自己的 `.env`。
+- **驗證環境與開發環境分開**（`--profile verify` 的 tmpfs DB）：對資料的要求相反，
+  開發要重啟保留、驗證要每次乾淨。
+- **反向代理作為單一入口**，`docker/nginx/default.conf`。
+
+**以下三樣是 monorepo + Node 的代價，不是標準做法**——下一個人看到不要以為該照抄：
+
+1. **五個 `node_modules` 具名 volume**（上面 gotcha 2）。pnpm 的 workspace
+   `node_modules` 是 symlink 到根目錄的 `.pnpm` store，漏任一個就載到 host 的
+   macOS/arm64 產物。PHP 的 `vendor/` 是單一目錄、沒有這個問題，所以那邊一個都不需要。
+2. **兩份 env**（repo 根的基礎設施 + `apps/api/` 的應用設定）。
+   `dotenv.config()` 不帶路徑時解析的是 `process.cwd()`，而 `pnpm --filter @app/api`
+   的 cwd 是 `apps/api`——compose 要展開 `${...}` 的變數卻必須在 repo 根。
+   **單一 app repo 兩者天然重合，所以那邊只有一份。**
+3. **`docker/api.container.env` 的遮蔽掛載**。它是第 2 點的衍生物：
+   兩份 env 分家之後，才需要一個「隊友共用的容器基準」。
+
+
 要點：
 
 - **四個 job 都在 Pull Request 觸發** —— PR 正是最該擋下問題的時機。`build` 尤其不能只在推送時跑：`nest build` / `vite build` 會抓到 path alias 解析、decorator metadata 與 emit 階段的錯誤，這些 `tsc --noEmit` 抓不到；只在 push 跑等於「PR 綠燈、合併完 develop 才紅」。
